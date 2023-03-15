@@ -6,10 +6,8 @@ This repository contains an interpreter of [Cerise](https://github.com/logsem/ce
 Dependencies: opam
 
 ```
-git clone https://github.com/logsem/cerise.git 
-cd cerise
-git checkout dev-interpreter
-cd interpreter
+git clone https://github.com/logsem/cerise-interpreter.git 
+cd cerise-interpreter
 opam switch create -y --repositories=default . ocaml-base-compiler.4.14.0
 eval $(opam env --set-switch)
 make
