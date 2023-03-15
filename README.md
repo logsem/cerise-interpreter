@@ -1,5 +1,5 @@
 # Cerise interpreter
-This repository contains an interpreter of [Cerise][https://github.com/logsem/cerise], a model of a capability machine.
+This repository contains an interpreter of [Cerise](https://github.com/logsem/cerise), a model of a capability machine.
 
 ## Build the interpreter
 
