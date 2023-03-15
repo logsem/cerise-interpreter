@@ -1,0 +1,268 @@
+For posterity, this is the discussion on the PR that was opened on the original repository.
+
+.Dev interpreter #15
+ Open
+AStenbaek wants to merge 42 commits into main from dev-interpreter
+ Open
+Dev interpreter
+#15
+AStenbaek wants to merge 42 commits into main from dev-interpreter
++1,790 −18
+ Conversation 31
+ Commits 42
+ Checks 2
+ Files changed 24
+Conversation
+AStenbaek
+Tip
+Collaborator
+AStenbaek commented on Oct 1, 2021
+No description provided.
+
+@AStenbaek AStenbaek requested a review from Armael 2 years ago
+AStenbaek added 13 commits 2 years ago
+@AStenbaek
+got started on lexer and parser
+ec6cab8
+@AStenbaek
+Started on parser
+770d73c
+@AStenbaek
+wrote some more of the parser
+fc1cf90
+@AStenbaek
+updated change of ast
+88e34dc
+@AStenbaek
+fixed some bugs, currently program is just parsed and printed to term…
+d067264
+@AStenbaek
+Did some refactoring of printing parsed structures
+bc8050b
+@AStenbaek
+added some redimentary testing
+c04c9b6
+@AStenbaek
+Added basic unit tests for the parsing of each individual instructions
+242676b
+@AStenbaek
+added encoding and decoding of two arbitrary length integers into a s…
+2cc063b
+@AStenbaek
+statement encoding started
+74a4cde
+@AStenbaek
+fixed wrong module
+1a504d8
+@AStenbaek
+mostly done with encoder
+1deac59
+@AStenbaek
+Encode decode is done
+a1977d7
+@AStenbaek AStenbaek force-pushed the dev-interpreter branch from bbccd7d to a1977d7
+2 years ago
+Armael
+Armael reviewed on Oct 4, 2021
+Tip
+Member
+Armael left a comment
+Looks good! I only had minor (mostly stylistic) comments -- see below.
+
+Additionally, menhir says that there is a shift/reduce conflict in the parser, it would be nice to see if that can be fixed.
+
+interpreter/Makefile
+Outdated
+interpreter/lib/ast.ml
+Outdated
+interpreter/lib/dune
+Outdated
+interpreter/lib/encode.ml
+Outdated
+interpreter/lib/encode.ml
+Outdated
+15 hidden conversations
+Load more…
+interpreter/lib/encode.ml
+    | Const i -> (succ opcode, of_int i)
+    | Perm p -> (succ @@ succ opcode, encode_perm p)
+  end in
+  let two_const_convert opcode c1 c2 = begin
+Tip
+Member
+@Armael Armael on Oct 4, 2021
+same remark here
+
+
+interpreter/lib/encode.ml
+  match s with
+  | Jmp r -> !$"0x00" ^! (encode_reg r)
+  | Jnz (r1, r2) -> !$"0x01" ^! encode_int (encode_reg r1) (encode_reg r2)
+  | Move (r, c) -> begin (* 0x02, 0x03, 0x04 *)
+Tip
+Member
+@Armael Armael on Oct 4, 2021
+the begin..ends are not strictly necessary here
+
+
+interpreter/lib/encode.ml
+    and r2 = decode_reg r2_enc in
+    Jnz (r1, r2)
+  end else
+  (* Move *)
+Tip
+Member
+@Armael Armael on Oct 4, 2021
+I think the different cases for Move can be factorized just like what you do later for Add?
+
+
+interpreter/lib/encode.ml
+    and p = Perm (decode_perm c_enc) in
+    Store (r, p)
+  end else
+  (* Add *)
+Tip
+Member
+@Armael Armael on Oct 4, 2021
+Can these cases be factorized further, by sharing the first 3 lines, and only then splitting cases for knowing how to decode each argument?
+
+
+interpreter/lib/pretty_printer.ml
+@@ -0,0 +1,50 @@
+open Ast
+
+let (^-) s1 s2 = s1 ^ " " ^ s2
+Tip
+Member
+@Armael Armael on Oct 4, 2021
+It does not matter too much here, so you might not want to bother too much, but in the general case, concatenating strings is an inefficient way to do printing. The "standard" way of doing composable printing in OCaml is to use the Format module (see e.g. https://ocaml.org/learn/tutorials/format.html or https://blag.cedeela.fr/format-all-the-data-structures/), which allows you to define pretty printing functions e.g. pp_t : Format.formatter -> t -> unit for any custom type t, which can then be used within format strings with %a, e.g. Format.fprintf Format.std_formatter "... %a ..." pp_t foo (where foo is of type t).
+
+That would be the "proper" way to do it, but I don't blame you if you'd rather postpone this.
+
+
+AStenbaek added 14 commits 2 years ago
+@AStenbaek
+fixed shift/reduce conflict
+cfc2fa3
+@AStenbaek
+updated test call to dune test
+23f4a2f
+@AStenbaek
+changed a lot of ands to lets
+7cc712a
+@AStenbaek
+removed 'hack' from dune file
+fa32e93
+@AStenbaek
+implemented some of the feedback
+0522978
+@AStenbaek
+began creating the machine
+d56a08c
+@AStenbaek
+Changed memory and register to maps
+d70400c
+@AStenbaek
+refactored the reg_const type such that constants and permission have…
+9f0c949
+@AStenbaek
+added a trash file by mistake
+79528ab
+@AStenbaek
+began working on some execution
+f88fc28
+@AStenbaek
+added execution for some more instructions
+84b7191
+@AStenbaek
+things are starting to work!
+8f4c2ad
+@AStenbaek
+checkpoint
+5f7ff3c
+@AStenbaek
+updated with main
+1cda702
+@AStenbaek AStenbaek requested a review from Armael 2 years ago
+AStenbaek added 2 commits 2 years ago
+@AStenbaek
+fixed a bug in lea and had forgotten to add isptr instruction
+9c3eb6f
+@AStenbaek
+apparently I forgot Lt aswell... How messy
+2b6c20e
+Armael
+Armael reviewed on Nov 16, 2021
+Tip
+Member
+Armael left a comment
+looks good!
+
+interpreter/lib/machine.ml
+Outdated
+interpreter/lib/machine.ml
+Outdated
+interpreter/lib/machine.ml
+Outdated
+AStenbaek and others added 9 commits 2 years ago
+@AStenbaek
+added labels to interpreter, likely needs more testing but the labele…
+6843d83
+@Armael
+lexer: only support "mov" (and not "move")
+04bbb55
+@Armael
+Fully initialize the machine memory with zeroes
+012d368
+@Armael
+tweak
+967bfb2
+@Armael
+lib/machine.ml: get rid of RuntimeException
+65d9739
+@Armael
+rm outdated comment
+70c06b1
+@Armael
+small tweaks
+83977fe
+@Armael
+interpreter.ml, lib/program.ml: small refactoring
+9666eb0
+@Armael
+Start scaffolding an interactive interpreter, currently only displayi…
+4532ba6
+@Armael
+Tip
+Member
+Armael commented on Dec 26, 2021
+I've pushed some tweaks and basic scaffolding for an interactive interpreter. Right now I've only implemented a panel to display the state of registers.
+
+Armael and others added 4 commits 2 years ago
+@Armael
+Add a basic program viewer panel
+4b20eed
+@Armael
+program panel: show the range of the PC capability
+e0ce16b
+@Armael
+display execution state
+a4689bc
+@BastienRousseau
+opam dependencies
+df95fdc
+Merge state
+Add more commits by pushing to the dev-interpreter branch on logsem/cerise.
+
+This branch has not been deployed
+No deployments
+Some checks were not successful
+2 cancelled checks
+@github-actions
+Test compilation / build (build) (pull_request) Cancelled after 5s
+Details
+@github-actions
+Test compilation / build (build) (push) Cancelled after 27s
+Details
+This branch has no conflicts with the base branch
+Merging can be performed automatically..
