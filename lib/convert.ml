@@ -32,7 +32,7 @@ match s with
 | Inr r -> Ast.Register (translate_regname r)
 | Inl z -> Ast.CP (Const z)
 
-let translate_instr (i : instr) : Ast.machine_op =
+let translate_instr (i : cerise_instruction) : Ast.machine_op =
   match i with
   | Jmp r -> Ast.Jmp (translate_regname r)
   | Jnz (r1, r2) -> Ast.Jnz (translate_regname r1, translate_regname r2)
@@ -90,7 +90,7 @@ let tr_sum (c : Ast.reg_or_const) : (Big_int_Z.big_int, regName) sum =
       let n = Encode.encode_perm_pair p g in
       Inl n
 
-let tr_statement (s : Ast.machine_op) : instr =
+let tr_statement (s : Ast.machine_op) : cerise_instruction =
   match s with
   | Ast.Jmp r -> Jmp (tr_reg r)
   | Ast.Jnz (r1, r2) -> Jnz (tr_reg r1, tr_reg r2)

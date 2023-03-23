@@ -17,9 +17,11 @@ let () =
 mov r1 pc
 lea r1 -1
 load r1 r1
+storeU stk 0 0
+storeU stk 0 0
 storeU stk 0 r29
 storeU stk 0 0
 storeU stk 0 0
 mov r29 0\n";
-  pp_of_instrs (Extract.compile Convert.driver Extract.bank_example_call);
+  pp_of_instrs (Extract.compile Convert.driver Extract.bank_example_call Extract.type_bank);
   Printf.printf "end:";
