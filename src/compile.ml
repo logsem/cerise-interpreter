@@ -7,26 +7,32 @@ let rec pp_of_instrs l =
     Printf.printf "%s\n%!" (Pretty_printer.string_of_machine_op (Convert.translate_instr i));
   pp_of_instrs l'
 
+let pp_w (w : Ast.word)
+  = match w with
+  | I z -> (Pretty_printer.string_of_machine_op
+                (Convert.translate_instr (Convert.driver.decodeInstr z)))
+  | Cap (p, g, b, e, a) ->
+    Printf.sprintf "#(%s, %s, %s, %s, %s)" (Pretty_printer.string_of_perm p)
+      (Pretty_printer.string_of_locality g)
+      (Big_int_Z.string_of_big_int b)
+      (Big_int_Z.string_of_big_int e)
+      (Big_int_Z.string_of_big_int a)
+
+
 let () =
-  let (((bank_module, bank_ftype), bank_locals), bank_expr) = Extract.bank_example in
-  let compiled_bank = (Extract.compile Convert.driver bank_module bank_ftype bank_locals bank_expr) in
-  match compiled_bank with
-  | None -> failwith "compilation error"
-  | Some prog ->
-  (* This part of the code is very tied to the bank example, just a temporary
-   workaround *)
-  Printf.printf "data:\n\tjmp pc ; Dummy data for LT \ncode:\n";
-  Printf.printf
-    ";; manually prepare the stack\n
-;; r29 contains a capability that points to the end of the stack\n
-mov r1 pc
-lea r1 -1
-load r1 r1
-storeU stk 0 0
+
+  let compiled_prog = Extract.linked_example Convert.driver in
+  let prog =
+    List.map
+      (fun w -> (fst w, Convert.translate_word (snd w)))
+      compiled_prog
+  in
+  Printf.printf "%s"
+"storeU stk 0 0
 storeU stk 0 0
 storeU stk 0 r29
 storeU stk 0 0
 storeU stk 0 0
-mov r29 0\n";
-  pp_of_instrs prog;
-  Printf.printf "end:";
+mov r29 0\n
+lea pc 6\n";
+  List.iter (fun w -> Printf.printf "%s\n" (pp_w (snd w))) prog

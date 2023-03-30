@@ -33,6 +33,16 @@ let fst = function
 let snd = function
 | (_, y) -> y
 
+(** val uncurry : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
+
+let uncurry f = function
+| (x, y) -> f x y
+
+(** val prod_curry_subdef : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
+
+let prod_curry_subdef =
+  uncurry
+
 (** val length : 'a1 list -> Big_int_Z.big_int **)
 
 let rec length = function
@@ -69,6 +79,11 @@ type 'a compSpecT = compareSpecT
 
 let compSpec2Type _ _ =
   compareSpec2Type
+
+(** val id : __ -> __ **)
+
+let id x =
+  x
 
 type 'a sig0 = 'a
   (* singleton inductive, whose constructor was exist *)
@@ -289,6 +304,16 @@ type reflect =
 let iff_reflect = function
 | true -> ReflectT
 | false -> ReflectF
+
+(** val compose : ('a2 -> 'a3) -> ('a1 -> 'a2) -> 'a1 -> 'a3 **)
+
+let compose g f x =
+  g (f x)
+
+(** val flip : ('a1 -> 'a2 -> 'a3) -> 'a2 -> 'a1 -> 'a3 **)
+
+let flip f x y =
+  f y x
 
 module Nat =
  struct
@@ -1577,6 +1602,16 @@ module N =
       n0
  end
 
+(** val zero0 : char **)
+
+let zero0 = '\000'
+
+(** val shift : bool -> char -> char **)
+
+let shift = fun b c -> Char.chr (((Char.code c) lsl 1) land 255 + if b then 1 else 0)
+
+
+
 (** val hd : 'a1 -> 'a1 list -> 'a1 **)
 
 let hd default = function
@@ -1619,6 +1654,12 @@ let rec list_eq_dec eq_dec0 l l' =
 let rec map f = function
 | [] -> []
 | a :: t0 -> (f a) :: (map f t0)
+
+(** val fold_right : ('a2 -> 'a1 -> 'a1) -> 'a1 -> 'a2 list -> 'a1 **)
+
+let rec fold_right f a0 = function
+| [] -> a0
+| b :: t0 -> f b (fold_right f a0 t0)
 
 (** val skipn : Big_int_Z.big_int -> 'a1 list -> 'a1 list **)
 
@@ -1746,6 +1787,13 @@ module Z =
       n0
  end
 
+(** val append : char list -> char list -> char list **)
+
+let rec append s1 s2 =
+  match s1 with
+  | [] -> s2
+  | c::s1' -> c::(append s1' s2)
+
 module Coq_Nat = Nat
 
 type decision = bool
@@ -1762,12 +1810,32 @@ type ('a, 'b) relDecision = 'a -> 'b -> decision
 let decide_rel relDecision0 =
   relDecision0
 
+(** val prod_map :
+    ('a1 -> 'a2) -> ('a3 -> 'a4) -> ('a1 * 'a3) -> 'a2 * 'a4 **)
+
+let prod_map f g p =
+  ((f (fst p)), (g (snd p)))
+
 type 'a empty = 'a
 
 (** val empty0 : 'a1 empty -> 'a1 **)
 
 let empty0 empty1 =
   empty1
+
+type 'a union = 'a -> 'a -> 'a
+
+(** val union0 : 'a1 union -> 'a1 -> 'a1 -> 'a1 **)
+
+let union0 union1 =
+  union1
+
+type ('a, 'b) filter = __ -> ('a -> decision) -> 'b -> 'b
+
+(** val filter0 : ('a1, 'a2) filter -> ('a1 -> decision) -> 'a2 -> 'a2 **)
+
+let filter0 filter1 h x =
+  filter1 __ h x
 
 type 'm mRet = __ -> __ -> 'm
 
@@ -1790,6 +1858,13 @@ type 'm fMap = __ -> __ -> (__ -> __) -> 'm -> 'm
 let fmap fMap0 x x0 =
   Obj.magic fMap0 __ __ x x0
 
+type 'm oMap = __ -> __ -> (__ -> __ option) -> 'm -> 'm
+
+(** val omap : 'a1 oMap -> ('a2 -> 'a3 option) -> 'a1 -> 'a1 **)
+
+let omap oMap0 x x0 =
+  Obj.magic oMap0 __ __ x x0
+
 type ('k, 'a, 'm) lookup = 'k -> 'm -> 'a option
 
 (** val lookup0 : ('a1, 'a2, 'a3) lookup -> 'a1 -> 'a3 -> 'a2 option **)
@@ -1797,12 +1872,19 @@ type ('k, 'a, 'm) lookup = 'k -> 'm -> 'a option
 let lookup0 lookup1 =
   lookup1
 
+type ('k, 'a, 'm) singletonM = 'k -> 'a -> 'm
+
+(** val singletonM0 : ('a1, 'a2, 'a3) singletonM -> 'a1 -> 'a2 -> 'a3 **)
+
+let singletonM0 singletonM1 =
+  singletonM1
+
 type ('k, 'a, 'm) insert = 'k -> 'a -> 'm -> 'm
 
 (** val insert0 : ('a1, 'a2, 'a3) insert -> 'a1 -> 'a2 -> 'a3 -> 'a3 **)
 
-let insert0 insert1 =
-  insert1
+let insert0 insert2 =
+  insert2
 
 type ('k, 'a, 'm) partialAlter = ('a option -> 'a option) -> 'k -> 'm -> 'm
 
@@ -1812,6 +1894,40 @@ type ('k, 'a, 'm) partialAlter = ('a option -> 'a option) -> 'k -> 'm -> 'm
 
 let partial_alter partialAlter0 =
   partialAlter0
+
+type 'm merge =
+  __ -> __ -> __ -> (__ option -> __ option -> __ option) -> 'm -> 'm -> 'm
+
+(** val merge0 :
+    'a1 merge -> ('a2 option -> 'a3 option -> 'a4 option) -> 'a1 -> 'a1 -> 'a1 **)
+
+let merge0 merge1 x x0 x1 =
+  Obj.magic merge1 __ __ __ x x0 x1
+
+type ('a, 'm) unionWith = ('a -> 'a -> 'a option) -> 'm -> 'm -> 'm
+
+(** val union_with :
+    ('a1, 'a2) unionWith -> ('a1 -> 'a1 -> 'a1 option) -> 'a2 -> 'a2 -> 'a2 **)
+
+let union_with unionWith0 =
+  unionWith0
+
+(** val uncurry_dec : ('a1 -> 'a2 -> decision) -> ('a1 * 'a2) -> decision **)
+
+let uncurry_dec p_dec = function
+| (x, y) -> p_dec x y
+
+(** val from_option : ('a1 -> 'a2) -> 'a2 -> 'a1 option -> 'a2 **)
+
+let from_option f y = function
+| Some x -> f x
+| None -> y
+
+(** val option_eq_None_dec : 'a1 option -> decision **)
+
+let option_eq_None_dec = function
+| Some _ -> false
+| None -> true
 
 (** val option_ret : __ -> __ option **)
 
@@ -1828,6 +1944,15 @@ let option_bind f = function
 
 let option_fmap =
   option_map
+
+(** val option_union_with : ('a1, 'a1 option) unionWith **)
+
+let option_union_with f mx my =
+  match mx with
+  | Some x -> (match my with
+               | Some y -> f x y
+               | None -> Some x)
+  | None -> my
 
 module Coq0_Nat =
  struct
@@ -1908,6 +2033,15 @@ let rec foldl f a = function
 let rec list_fmap f = function
 | [] -> []
 | x :: l0 -> (f x) :: (list_fmap f l0)
+
+(** val list_omap : (__ -> __ option) -> __ list -> __ list **)
+
+let rec list_omap f = function
+| [] -> []
+| x :: l0 ->
+  (match f x with
+   | Some y -> y :: (list_omap f l0)
+   | None -> list_omap f l0)
 
 (** val mapM : 'a1 mBind -> 'a1 mRet -> ('a2 -> 'a1) -> 'a2 list -> 'a1 **)
 
@@ -2000,114 +2134,6 @@ let positives_unflatten p =
 let list_eq_dec0 =
   list_eq_dec
 
-type immediate = Big_int_Z.big_int
-
-type handle = { base : Big_int_Z.big_int; offset : Big_int_Z.big_int;
-                bound : Big_int_Z.big_int; valid : bool;
-                id : Big_int_Z.big_int }
-
-type value =
-| Val_int of Big_int_Z.big_int
-| Val_handle of handle
-
-type value_type =
-| T_int
-| T_handle
-
-type binop =
-| BOI_add
-| BOI_sub
-
-type result_type = value_type list
-
-type function_type =
-| Tf of result_type * result_type
-
-type ws_basic_instruction =
-| I_unreachable
-| I_nop
-| I_drop
-| I_block of function_type * ws_basic_instruction list
-| I_loop of function_type * ws_basic_instruction list
-| I_br of immediate
-| I_br_if of immediate
-| I_return
-| I_call of immediate
-| I_get_local of immediate
-| I_set_local of immediate
-| I_tee_local of immediate
-| I_get_global of immediate
-| I_set_global of immediate
-| I_load of value_type
-| I_store of value_type
-| I_segload of value_type
-| I_segstore of value_type
-| I_slice
-| I_segalloc
-| I_handleadd
-| I_segfree
-| I_const of value
-| I_binop of value_type * binop
-
-type expr = ws_basic_instruction list
-
-type typeidx =
-  Big_int_Z.big_int
-  (* singleton inductive, whose constructor was Mk_typeidx *)
-
-type funcidx =
-  Big_int_Z.big_int
-  (* singleton inductive, whose constructor was Mk_funcidx *)
-
-type name = char list
-
-type import_desc =
-  typeidx
-  (* singleton inductive, whose constructor was ID_func *)
-
-type module_import = { imp_module : name; imp_name : name;
-                       imp_desc : import_desc }
-
-type module_export_desc =
-  funcidx
-  (* singleton inductive, whose constructor was MED_func *)
-
-type module_export = { modexp_name : name; modexp_desc : module_export_desc }
-
-type module_func = { modfunc_type : typeidx;
-                     modfunc_locals : value_type list; modfunc_body : 
-                     expr }
-
-type ws_module = { mod_types : function_type list;
-                   mod_funcs : module_func list;
-                   mod_imports : module_import list;
-                   mod_exports : module_export list }
-
-(** val get_type : ws_module -> typeidx -> function_type option **)
-
-let get_type module0 i =
-  nth_error module0.mod_types i
-
-(** val get_functions : module_import list -> typeidx list **)
-
-let rec get_functions = function
-| [] -> []
-| i :: imports' -> i.imp_desc :: (get_functions imports')
-
-(** val get_function_type : ws_module -> immediate -> function_type option **)
-
-let get_function_type module0 i =
-  let imported_functions = get_functions module0.mod_imports in
-  let len_impf = length imported_functions in
-  if leb i len_impf
-  then mbind (Obj.magic (fun _ _ -> option_bind)) (fun ftype_idx ->
-         get_type module0 ftype_idx)
-         (nth_error (Obj.magic imported_functions) i)
-  else let i0 = sub i len_impf in
-       mbind (Obj.magic (fun _ _ -> option_bind)) (fun module_func0 ->
-         get_type module0 module_func0.modfunc_type)
-         (nth_error (Obj.magic module0.mod_funcs) i0)
-
 type 'a countable = { encode : ('a -> Big_int_Z.big_int);
                       decode : (Big_int_Z.big_int -> 'a option) }
 
@@ -2143,11 +2169,180 @@ let nat_countable =
     fmap (Obj.magic (fun _ _ -> option_fmap)) N.to_nat
       ((Obj.magic n_countable).decode p)) }
 
+(** val ascii_eq_dec : (char, char) relDecision **)
+
+let ascii_eq_dec =
+  (=)
+
+(** val string_eq_dec : (char list, char list) relDecision **)
+
+let rec string_eq_dec s x0 =
+  match s with
+  | [] -> (match x0 with
+           | [] -> true
+           | _::_ -> false)
+  | a::s0 ->
+    (match x0 with
+     | [] -> false
+     | a0::s1 ->
+       if decide_rel ascii_eq_dec a a0 then string_eq_dec s0 s1 else false)
+
+(** val digits_to_pos : bool list -> Big_int_Z.big_int **)
+
+let rec digits_to_pos = function
+| [] -> Big_int_Z.unit_big_int
+| b :: _UU03b2_s0 ->
+  if b
+  then (fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+         (digits_to_pos _UU03b2_s0)
+  else Big_int_Z.mult_int_big_int 2 (digits_to_pos _UU03b2_s0)
+
+(** val ascii_to_digits : char -> bool list **)
+
+let ascii_to_digits a =
+  (* If this appears, you're using Ascii internals. Please don't *)
+ (fun f c ->
+  let n = Char.code c in
+  let h i = (n land (1 lsl i)) <> 0 in
+  f (h 0) (h 1) (h 2) (h 3) (h 4) (h 5) (h 6) (h 7))
+    (fun _UU03b2_1 _UU03b2_2 _UU03b2_3 _UU03b2_4 _UU03b2_5 _UU03b2_6 _UU03b2_7 _UU03b2_8 ->
+    _UU03b2_1 :: (_UU03b2_2 :: (_UU03b2_3 :: (_UU03b2_4 :: (_UU03b2_5 :: (_UU03b2_6 :: (_UU03b2_7 :: (_UU03b2_8 :: []))))))))
+    a
+
+(** val string_to_pos : char list -> Big_int_Z.big_int **)
+
+let rec string_to_pos = function
+| [] -> Big_int_Z.unit_big_int
+| a::s0 -> Coq_Pos.app (string_to_pos s0) (digits_to_pos (ascii_to_digits a))
+
+(** val digits_of_pos : Big_int_Z.big_int -> bool list **)
+
+let rec digits_of_pos p =
+  (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+    (fun p0 -> true :: (digits_of_pos p0))
+    (fun p0 -> false :: (digits_of_pos p0))
+    (fun _ -> [])
+    p
+
+(** val ascii_of_digits : bool list -> char **)
+
+let rec ascii_of_digits = function
+| [] -> zero0
+| _UU03b2_ :: _UU03b2_s0 -> shift _UU03b2_ (ascii_of_digits _UU03b2_s0)
+
+(** val string_of_digits : bool list -> char list **)
+
+let rec string_of_digits = function
+| [] -> []
+| _UU03b2_1 :: l ->
+  (match l with
+   | [] -> []
+   | _UU03b2_2 :: l0 ->
+     (match l0 with
+      | [] -> []
+      | _UU03b2_3 :: l1 ->
+        (match l1 with
+         | [] -> []
+         | _UU03b2_4 :: l2 ->
+           (match l2 with
+            | [] -> []
+            | _UU03b2_5 :: l3 ->
+              (match l3 with
+               | [] -> []
+               | _UU03b2_6 :: l4 ->
+                 (match l4 with
+                  | [] -> []
+                  | _UU03b2_7 :: l5 ->
+                    (match l5 with
+                     | [] -> []
+                     | _UU03b2_8 :: _UU03b2_s0 ->
+                       (ascii_of_digits
+                         (_UU03b2_1 :: (_UU03b2_2 :: (_UU03b2_3 :: (_UU03b2_4 :: (_UU03b2_5 :: (_UU03b2_6 :: (_UU03b2_7 :: (_UU03b2_8 :: [])))))))))::
+                         (string_of_digits _UU03b2_s0))))))))
+
+(** val string_of_pos : Big_int_Z.big_int -> char list **)
+
+let string_of_pos p =
+  string_of_digits (digits_of_pos p)
+
+(** val string_countable : char list countable **)
+
+let string_countable =
+  { encode = string_to_pos; decode = (fun p -> Some (string_of_pos p)) }
+
+type ('k, 'a, 'm) finMapToList = 'm -> ('k * 'a) list
+
+(** val map_to_list :
+    ('a1, 'a2, 'a3) finMapToList -> 'a3 -> ('a1 * 'a2) list **)
+
+let map_to_list finMapToList0 =
+  finMapToList0
+
+(** val diag_None :
+    ('a1 option -> 'a2 option -> 'a3 option) -> 'a1 option -> 'a2 option ->
+    'a3 option **)
+
+let diag_None f mx my =
+  match mx with
+  | Some _ -> f mx my
+  | None -> (match my with
+             | Some _ -> f mx my
+             | None -> None)
+
 (** val map_insert :
     ('a1, 'a2, 'a3) partialAlter -> ('a1, 'a2, 'a3) insert **)
 
 let map_insert h i x =
   partial_alter h (fun _ -> Some x) i
+
+(** val map_singleton :
+    ('a1, 'a2, 'a3) partialAlter -> 'a3 empty -> ('a1, 'a2, 'a3) singletonM **)
+
+let map_singleton h h0 i x =
+  insert0 (map_insert h) i x (empty0 h0)
+
+(** val list_to_map :
+    ('a1, 'a2, 'a3) insert -> 'a3 empty -> ('a1 * 'a2) list -> 'a3 **)
+
+let list_to_map h h0 =
+  fold_right (fun p -> insert0 h (fst p) (snd p)) (empty0 h0)
+
+(** val map_union_with : 'a1 merge -> ('a2, 'a1) unionWith **)
+
+let map_union_with h f =
+  merge0 h (union_with option_union_with f)
+
+(** val map_union : 'a1 merge -> 'a1 union **)
+
+let map_union h =
+  union_with (map_union_with h) (fun x _ -> Some x)
+
+(** val kmap :
+    (__ -> ('a1, __, 'a2) insert) -> (__ -> 'a2 empty) -> (__ -> ('a3, __,
+    'a4) finMapToList) -> ('a3 -> 'a1) -> 'a4 -> 'a2 **)
+
+let kmap h h0 h1 f m =
+  list_to_map (Obj.magic h __) (h0 __)
+    (fmap (Obj.magic (fun _ _ -> list_fmap)) (prod_map f id)
+      (map_to_list (h1 __) m))
+
+(** val map_fold :
+    ('a1, 'a2, 'a3) finMapToList -> ('a1 -> 'a2 -> 'a4 -> 'a4) -> 'a4 -> 'a3
+    -> 'a4 **)
+
+let map_fold h f b =
+  compose (fold_right (prod_curry_subdef f) b) (map_to_list h)
+
+(** val map_filter :
+    ('a1, 'a2, 'a3) finMapToList -> ('a1, 'a2, 'a3) insert -> 'a3 empty ->
+    (('a1 * 'a2) -> decision) -> 'a3 -> 'a3 **)
+
+let map_filter h h0 h1 h2 =
+  map_fold h (fun k v m ->
+    if decide (h2 (k, v)) then insert0 h0 k v m else m) (empty0 h1)
 
 type 'a pmap_raw =
 | PLeaf
@@ -2216,6 +2411,49 @@ let rec ppartial_alter_raw f i = function
      (fun _ -> pNode' (f o) l r0)
      i)
 
+(** val pfmap_raw : ('a1 -> 'a2) -> 'a1 pmap_raw -> 'a2 pmap_raw **)
+
+let rec pfmap_raw f = function
+| PLeaf -> PLeaf
+| PNode (o, l, r0) ->
+  PNode ((fmap (Obj.magic (fun _ _ -> option_fmap)) f (Obj.magic o)),
+    (pfmap_raw f l), (pfmap_raw f r0))
+
+(** val pto_list_raw :
+    Big_int_Z.big_int -> 'a1 pmap_raw -> (Big_int_Z.big_int * 'a1) list ->
+    (Big_int_Z.big_int * 'a1) list **)
+
+let rec pto_list_raw j t0 acc =
+  match t0 with
+  | PLeaf -> acc
+  | PNode (o, l, r0) ->
+    app (from_option (fun x -> ((Coq_Pos.reverse j), x) :: []) [] o)
+      (pto_list_raw (Big_int_Z.mult_int_big_int 2 j) l
+        (pto_list_raw
+          ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+          j) r0 acc))
+
+(** val pomap_raw : ('a1 -> 'a2 option) -> 'a1 pmap_raw -> 'a2 pmap_raw **)
+
+let rec pomap_raw f = function
+| PLeaf -> PLeaf
+| PNode (o, l, r0) ->
+  pNode' (mbind (Obj.magic (fun _ _ -> option_bind)) f (Obj.magic o))
+    (pomap_raw f l) (pomap_raw f r0)
+
+(** val pmerge_raw :
+    ('a1 option -> 'a2 option -> 'a3 option) -> 'a1 pmap_raw -> 'a2 pmap_raw
+    -> 'a3 pmap_raw **)
+
+let rec pmerge_raw f t1 t2 =
+  match t1 with
+  | PLeaf -> pomap_raw (compose (f None) (fun x -> Some x)) t2
+  | PNode (o1, l1, r1) ->
+    (match t2 with
+     | PLeaf -> pomap_raw (compose (flip f None) (fun x -> Some x)) t1
+     | PNode (o2, l2, r2) ->
+       pNode' (diag_None f o1 o2) (pmerge_raw f l1 l2) (pmerge_raw f r1 r2))
+
 type 'a pmap =
   'a pmap_raw
   (* singleton inductive, whose constructor was PMap *)
@@ -2240,6 +2478,27 @@ let plookup i m =
 let ppartial_alter f i m =
   partial_alter ppartial_alter_raw f i m
 
+(** val pfmap : (__ -> __) -> __ pmap -> __ pmap **)
+
+let pfmap f m =
+  fmap (fun _ _ -> pfmap_raw) f m
+
+(** val pto_list : (Big_int_Z.big_int, 'a1, 'a1 pmap) finMapToList **)
+
+let pto_list m =
+  pto_list_raw Big_int_Z.unit_big_int m []
+
+(** val pomap : (__ -> __ option) -> __ pmap -> __ pmap **)
+
+let pomap f m =
+  omap (fun _ _ -> pomap_raw) f m
+
+(** val pmerge :
+    (__ option -> __ option -> __ option) -> __ pmap -> __ pmap -> __ pmap **)
+
+let pmerge =
+  pmerge_raw
+
 type ('k, 'a) gmap =
   'a pmap
   (* singleton inductive, whose constructor was GMap *)
@@ -2263,6 +2522,37 @@ let gmap_empty _ _ =
 
 let gmap_partial_alter _ h f i pat =
   partial_alter ppartial_alter f (h.encode i) pat
+
+(** val gmap_fmap :
+    ('a1, 'a1) relDecision -> 'a1 countable -> (__ -> __) -> ('a1, __) gmap
+    -> ('a1, __) gmap **)
+
+let gmap_fmap _ _ f pat =
+  fmap (fun _ _ -> pfmap) f pat
+
+(** val gmap_omap :
+    ('a1, 'a1) relDecision -> 'a1 countable -> (__ -> __ option) -> ('a1, __)
+    gmap -> ('a1, __) gmap **)
+
+let gmap_omap _ _ f pat =
+  omap (fun _ _ -> pomap) f pat
+
+(** val gmap_merge :
+    ('a1, 'a1) relDecision -> 'a1 countable -> (__ option -> __ option -> __
+    option) -> ('a1, __) gmap -> ('a1, __) gmap -> ('a1, __) gmap **)
+
+let gmap_merge _ _ f pat pat0 =
+  merge0 (fun _ _ _ -> pmerge) f pat pat0
+
+(** val gmap_to_list :
+    ('a1, 'a1) relDecision -> 'a1 countable -> ('a1, 'a2, ('a1, 'a2) gmap)
+    finMapToList **)
+
+let gmap_to_list _ h pat =
+  omap (Obj.magic (fun _ _ -> list_omap)) (fun pat0 ->
+    let (i, x) = pat0 in
+    fmap (Obj.magic (fun _ _ -> option_fmap)) (fun x0 -> (x0, x)) (h.decode i))
+    (map_to_list (Obj.magic pto_list) pat)
 
 type regName =
 | PC
@@ -2506,6 +2796,12 @@ type locality =
 | Local
 | Directed
 
+type addr = Big_int_Z.big_int
+
+type cap = (((perm * locality) * addr) * addr) * addr
+
+type word = (Big_int_Z.big_int, cap) sum
+
 type cerise_instruction =
 | Jmp of regName
 | Jnz of regName * regName
@@ -2536,6 +2832,202 @@ type cerise_instruction =
    * (Big_int_Z.big_int, regName) sum
 | PromoteU of regName
 
+type 'symbols cerise_component = { segment : (addr, word) gmap;
+                                   imports : (addr, 'symbols) gmap;
+                                   exports : ('symbols, word) gmap }
+
+(** val insert1 : (addr * 'a1) -> (addr * 'a1) list -> (addr * 'a1) list **)
+
+let rec insert1 x l = match l with
+| [] -> x :: []
+| h :: t0 -> if Nat.ltb (fst h) (fst x) then h :: (insert1 x t0) else x :: l
+
+(** val sort : (addr * 'a1) list -> (addr * 'a1) list **)
+
+let rec sort = function
+| [] -> []
+| h :: t0 -> insert1 h (sort t0)
+
+(** val pp_segment :
+    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
+    (addr * word) list option **)
+
+let pp_segment _ _ = function
+| Some p0 ->
+  Some (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.segment))
+| None -> None
+
+(** val pp_imports :
+    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
+    (addr * 'a1) list option **)
+
+let pp_imports _ _ = function
+| Some p0 -> Some (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.imports)
+| None -> None
+
+(** val pp_exports :
+    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
+    ('a1 * word) list option **)
+
+let pp_exports symbols_eq_dec symbols_countable = function
+| Some p0 -> Some (gmap_to_list symbols_eq_dec symbols_countable p0.exports)
+| None -> None
+
+(** val merge_mem :
+    (addr, 'a1) gmap -> (addr, 'a1) gmap -> (addr, 'a1) gmap **)
+
+let merge_mem m1 m2 =
+  merge0 (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable))
+    (fun a b ->
+    match a with
+    | Some a0 -> (match b with
+                  | Some _ -> None
+                  | None -> Some a0)
+    | None -> (match b with
+               | Some b0 -> Some b0
+               | None -> None)) m1 m2
+
+(** val list_to_addr_gmap : 'a1 list -> addr -> (addr, 'a1) gmap **)
+
+let rec list_to_addr_gmap l a =
+  match l with
+  | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
+  | h :: t0 ->
+    insert0 (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable)) a
+      h
+      (list_to_addr_gmap t0
+        (add a (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+
+(** val shift_mem :
+    (addr, word) gmap -> Big_int_Z.big_int -> (addr, word) gmap **)
+
+let shift_mem m n0 =
+  let shift_addr =
+    kmap (fun _ ->
+      map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+      (fun a -> add a n0) m
+  in
+  fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
+    (fun w ->
+    match w with
+    | Inl _ -> w
+    | Inr y ->
+      let (y0, a) = y in
+      let (y1, e) = y0 in
+      let (y2, b) = y1 in
+      let (p, g) = y2 in Inr ((((p, g), (add b n0)), (add e n0)), (add a n0)))
+    (Obj.magic shift_addr)
+
+type immediate = Big_int_Z.big_int
+
+type handle = { base : Big_int_Z.big_int; offset : Big_int_Z.big_int;
+                bound : Big_int_Z.big_int; valid : bool;
+                id0 : Big_int_Z.big_int }
+
+type value =
+| Val_int of Big_int_Z.big_int
+| Val_handle of handle
+
+type value_type =
+| T_int
+| T_handle
+
+type binop =
+| BOI_add
+| BOI_sub
+
+type result_type = value_type list
+
+type function_type =
+| Tf of result_type * result_type
+
+type ws_basic_instruction =
+| I_unreachable
+| I_nop
+| I_drop
+| I_block of function_type * ws_basic_instruction list
+| I_loop of function_type * ws_basic_instruction list
+| I_br of immediate
+| I_br_if of immediate
+| I_return
+| I_call of immediate
+| I_get_local of immediate
+| I_set_local of immediate
+| I_tee_local of immediate
+| I_get_global of immediate
+| I_set_global of immediate
+| I_load of value_type
+| I_store of value_type
+| I_segload of value_type
+| I_segstore of value_type
+| I_slice
+| I_segalloc
+| I_handleadd
+| I_segfree
+| I_const of value
+| I_binop of value_type * binop
+
+type expr = ws_basic_instruction list
+
+type typeidx =
+  Big_int_Z.big_int
+  (* singleton inductive, whose constructor was Mk_typeidx *)
+
+type funcidx =
+  Big_int_Z.big_int
+  (* singleton inductive, whose constructor was Mk_funcidx *)
+
+type name = char list
+
+type import_desc =
+  typeidx
+  (* singleton inductive, whose constructor was ID_func *)
+
+type module_import = { imp_module : name; imp_name : name;
+                       imp_desc : import_desc }
+
+type module_export_desc =
+  funcidx
+  (* singleton inductive, whose constructor was MED_func *)
+
+type module_export = { modexp_name : name; modexp_desc : module_export_desc }
+
+type module_func = { modfunc_type : typeidx;
+                     modfunc_locals : value_type list; modfunc_body : 
+                     expr }
+
+type ws_module = { mod_types : function_type list;
+                   mod_funcs : module_func list;
+                   mod_imports : module_import list;
+                   mod_exports : module_export list }
+
+(** val get_type : ws_module -> typeidx -> function_type option **)
+
+let get_type module0 i =
+  nth_error module0.mod_types i
+
+(** val get_functions : module_import list -> typeidx list **)
+
+let rec get_functions = function
+| [] -> []
+| i :: imports' -> i.imp_desc :: (get_functions imports')
+
+(** val get_function_type : ws_module -> immediate -> function_type option **)
+
+let get_function_type module0 i =
+  let imported_functions = get_functions module0.mod_imports in
+  let len_impf = length imported_functions in
+  if leb i len_impf
+  then mbind (Obj.magic (fun _ _ -> option_bind)) (fun ftype_idx ->
+         get_type module0 ftype_idx)
+         (nth_error (Obj.magic imported_functions) i)
+  else let i0 = sub i len_impf in
+       mbind (Obj.magic (fun _ _ -> option_bind)) (fun module_func0 ->
+         get_type module0 module_func0.modfunc_type)
+         (nth_error (Obj.magic module0.mod_funcs) i0)
+
 type labeled_instr =
 | Label of Big_int_Z.big_int list
 | BInstr of cerise_instruction
@@ -2561,6 +3053,17 @@ type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
                                            labeled_instr);
                            l_encodeInstr : (labeled_instr ->
                                            Big_int_Z.big_int) }
+
+(** val encodeInstrW : machineParameters -> cerise_instruction -> word **)
+
+let encodeInstrW h i =
+  Inl (h.encodeInstr i)
+
+(** val encodeInstrsW :
+    machineParameters -> cerise_instruction list -> word list **)
+
+let encodeInstrsW h =
+  map (encodeInstrW h)
 
 (** val r_stk : regName **)
 
@@ -3064,14 +3567,14 @@ let reqloc_instrs r0 z0 rtmp1 rtmp2 =
 let r_stk0 =
   STK
 
-(** val r_mem : regName **)
-
-let r_mem =
-  R Big_int_Z.zero_big_int
-
 (** val r_fun : regName **)
 
 let r_fun =
+  R Big_int_Z.zero_big_int
+
+(** val r_mem : regName **)
+
+let r_mem =
   R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
 
 (** val r_glob : regName **)
@@ -3498,7 +4001,7 @@ let rec labeled_compile_expr h module0 f_typeidx f_locals il nreg nlbl ndepth =
     labeled_instr list -> Big_int_Z.big_int -> (Big_int_Z.big_int list,
     Big_int_Z.big_int) gmap **)
 
-let rec addresses_labels' il addr =
+let rec addresses_labels' il addr0 =
   match il with
   | [] ->
     gmap_empty (list_eq_dec0 Coq0_Nat.eq_dec)
@@ -3509,14 +4012,14 @@ let rec addresses_labels' il addr =
        insert0
          (map_insert
            (gmap_partial_alter (list_eq_dec0 Coq0_Nat.eq_dec)
-             (list_countable Coq0_Nat.eq_dec nat_countable))) lbl0 addr
-         (addresses_labels' il' addr)
+             (list_countable Coq0_Nat.eq_dec nat_countable))) lbl0 addr0
+         (addresses_labels' il' addr0)
      | BInstr _ ->
        addresses_labels' il'
-         (add addr (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+         (add addr0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
      | _ ->
        addresses_labels' il'
-         (add addr (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+         (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
            (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
 
 (** val addresses_labels :
@@ -3529,26 +4032,26 @@ let addresses_labels il =
     labeled_instr list -> (Big_int_Z.big_int list, Big_int_Z.big_int) gmap ->
     Big_int_Z.big_int -> cerise_instruction list option **)
 
-let rec branch_labels' il label_map addr =
+let rec branch_labels' il label_map addr0 =
   match il with
   | [] -> Some []
   | l :: il' ->
     (match l with
-     | Label _ -> branch_labels' il' label_map addr
+     | Label _ -> branch_labels' il' label_map addr0
      | BInstr i ->
        mbind (Obj.magic (fun _ _ -> option_bind)) (fun next -> Some
          (i :: next))
          (branch_labels' il' label_map
-           (add addr (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+           (add addr0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
      | Br_Jmp (lbl0, reg_tmp) ->
        mbind (Obj.magic (fun _ _ -> option_bind)) (fun o ->
          mbind (Obj.magic (fun _ _ -> option_bind)) (fun next ->
-           let off = Z.sub (Z.of_nat o) (Z.of_nat addr) in
+           let off = Z.sub (Z.of_nat o) (Z.of_nat addr0) in
            Some
            (app ((Mov ((R reg_tmp), (Inr PC))) :: ((Lea ((R reg_tmp), (Inl
              off))) :: ((Jmp (R reg_tmp)) :: []))) next))
            (branch_labels' il' label_map
-             (add addr (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+             (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
          (lookup0
            (Obj.magic gmap_lookup (list_eq_dec0 Coq0_Nat.eq_dec)
@@ -3559,12 +4062,12 @@ let rec branch_labels' il label_map addr =
            let reg_cond =
              sub reg_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
            in
-           let off = Z.sub (Z.of_nat o) (Z.of_nat addr) in
+           let off = Z.sub (Z.of_nat o) (Z.of_nat addr0) in
            Some
            (app ((Mov ((R reg_tmp), (Inr PC))) :: ((Lea ((R reg_tmp), (Inl
              off))) :: ((Jnz ((R reg_tmp), (R reg_cond))) :: []))) next))
            (branch_labels' il' label_map
-             (add addr (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+             (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
          (lookup0
            (Obj.magic gmap_lookup (list_eq_dec0 Coq0_Nat.eq_dec)
@@ -3590,6 +4093,179 @@ let compile h m f_typeidx f_locals il =
     let (labeled_expr, _) = pat in branch_labels labeled_expr)
     (Obj.magic labeled_compile_expr h m f_typeidx f_locals il min_reg min_lbl
       min_depth)
+
+(** val compile_import_desc :
+    'a1 -> import_desc -> addr -> (addr, 'a1) gmap **)
+
+let compile_import_desc s _ a =
+  singletonM0
+    (map_singleton (gmap_partial_alter Coq0_Nat.eq_dec nat_countable)
+      (gmap_empty Coq0_Nat.eq_dec nat_countable)) a s
+
+(** val compile_import :
+    (name -> name -> 'a1) -> module_import -> addr -> (addr, 'a1) gmap **)
+
+let compile_import symbols_encode0 imp a =
+  let symbol = symbols_encode0 imp.imp_module imp.imp_name in
+  compile_import_desc symbol imp.imp_desc a
+
+(** val compile_imports' :
+    (name -> name -> 'a1) -> module_import list -> addr -> (addr, 'a1) gmap **)
+
+let rec compile_imports' symbols_encode0 imps a =
+  match imps with
+  | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
+  | imp :: imps' ->
+    merge_mem (compile_import symbols_encode0 imp a)
+      (compile_imports' symbols_encode0 imps'
+        (add a (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+
+(** val compile_imports :
+    (name -> name -> 'a1) -> module_import list -> addr -> (addr, 'a1) gmap **)
+
+let compile_imports =
+  compile_imports'
+
+(** val compile_exp_desc : module_export_desc -> Big_int_Z.big_int **)
+
+let compile_exp_desc desc =
+  desc
+
+(** val compile_exports :
+    ('a1, 'a1) relDecision -> 'a1 countable -> (name -> name -> 'a1) ->
+    module_export list -> name -> Big_int_Z.big_int -> (addr, word) gmap ->
+    ('a1, word) gmap **)
+
+let rec compile_exports symbols_eq_dec symbols_countable symbols_encode0 exps module_name offset0 segment0 =
+  match exps with
+  | [] -> gmap_empty symbols_eq_dec symbols_countable
+  | exp :: exps' ->
+    let s = symbols_encode0 module_name exp.modexp_name in
+    let nid = compile_exp_desc exp.modexp_desc in
+    let w =
+      match lookup0 (gmap_lookup Coq0_Nat.eq_dec nat_countable)
+              (add nid offset0) segment0 with
+      | Some w -> w
+      | None -> Inl Big_int_Z.zero_big_int
+    in
+    insert0
+      (map_insert (gmap_partial_alter symbols_eq_dec symbols_countable)) s w
+      (compile_exports symbols_eq_dec symbols_countable symbols_encode0 exps'
+        module_name offset0 segment0)
+
+(** val prologue_function : regName -> labeled_instr list **)
+
+let prologue_function tmp =
+  instrs ((Mov (tmp, (Inr PC))) :: ((Lea (tmp, (Inl (Big_int_Z.minus_big_int
+    Big_int_Z.unit_big_int)))) :: ((Load (tmp, tmp)) :: ((Load (r_fun,
+    tmp)) :: ((Lea (tmp, (Inl Big_int_Z.unit_big_int))) :: ((Load (r_mem,
+    tmp)) :: ((Lea (tmp, (Inl Big_int_Z.unit_big_int))) :: ((Load (r_glob,
+    tmp)) :: []))))))))
+
+(** val compile_expr_mod :
+    machineParameters -> ws_module -> typeidx -> value_type list ->
+    ws_basic_instruction list -> Big_int_Z.big_int -> Big_int_Z.big_int list
+    -> Big_int_Z.big_int -> (labeled_instr list * Big_int_Z.big_int list)
+    option **)
+
+let compile_expr_mod h module0 f_typeidx f_locals il nreg nlbl ndepth =
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
+    let (body, state) = pat in
+    Some ((app (prologue_function (R nreg)) body), state))
+    (labeled_compile_expr h module0 f_typeidx f_locals il nreg nlbl ndepth)
+
+(** val compile_expr :
+    machineParameters -> ws_module -> typeidx -> value_type list ->
+    ws_basic_instruction list -> cerise_instruction list option **)
+
+let compile_expr h m f_typeidx f_locals f_body =
+  let min_reg = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+  in
+  let min_lbl = [] in
+  let min_depth = Big_int_Z.zero_big_int in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
+    let (labeled_instrs, _) = pat in branch_labels labeled_instrs)
+    (Obj.magic compile_expr_mod h m f_typeidx f_locals f_body min_reg min_lbl
+      min_depth)
+
+(** val compile_func :
+    machineParameters -> ws_module -> module_func -> word list option **)
+
+let compile_func h m f =
+  let p = (f.modfunc_type, f.modfunc_locals) in
+  let mf_body = f.modfunc_body in
+  let (mf_type, mf_locals) = p in
+  let frame_cap = ((((RO, Global), Big_int_Z.zero_big_int), base_reg),
+    Big_int_Z.zero_big_int)
+  in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun words -> Some ((Inr
+    frame_cap) :: (encodeInstrsW h words)))
+    (Obj.magic compile_expr h m mf_type mf_locals mf_body)
+
+(** val compile_funcs' :
+    machineParameters -> ws_module -> module_func list -> Big_int_Z.big_int
+    -> (cap list * word list) option **)
+
+let rec compile_funcs' h m funcs offset0 =
+  match funcs with
+  | [] -> Some ([], [])
+  | f :: funcs' ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_f ->
+      mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
+        let (acc_cap, acc_mem) = pat in
+        let cap0 = ((((E, Global), offset0),
+          (add offset0 (length compiled_f))),
+          (add offset0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+        in
+        Some ((cap0 :: acc_cap), (app compiled_f acc_mem)))
+        (compile_funcs' h m funcs' (add offset0 (length compiled_f))))
+      (Obj.magic compile_func h m f)
+
+(** val compile_funcs :
+    machineParameters -> ws_module -> Big_int_Z.big_int -> (addr, word) gmap
+    option **)
+
+let compile_funcs h m offset_start =
+  let offset_local_fun = length m.mod_funcs in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
+    let (caps, mem) = pat in
+    Some
+    (list_to_addr_gmap (app (map (fun c -> Inr c) caps) mem) offset_start))
+    (Obj.magic compile_funcs' h m m.mod_funcs
+      (add offset_start offset_local_fun))
+
+(** val frame_segment :
+    Big_int_Z.big_int -> Big_int_Z.big_int -> (addr, word) gmap **)
+
+let frame_segment addr_fun len_fun =
+  let placeholder = Inl Big_int_Z.zero_big_int in
+  let cap_fun = Inr ((((RO, Global), addr_fun), (add addr_fun len_fun)),
+    addr_fun)
+  in
+  list_to_addr_gmap (cap_fun :: (placeholder :: (placeholder :: [])))
+    Big_int_Z.zero_big_int
+
+(** val compile_module :
+    machineParameters -> ('a1, 'a1) relDecision -> 'a1 countable -> (name ->
+    name -> 'a1) -> ws_module -> name -> 'a1 cerise_component option **)
+
+let compile_module h symbols_eq_dec symbols_countable symbols_encode0 m module_name =
+  let offset_imports = length m.mod_imports in
+  let offset_frame = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+  in
+  let offset_local_funs = add offset_imports offset_frame in
+  let compiled_imports =
+    compile_imports symbols_encode0 m.mod_imports offset_frame
+  in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_segment -> Some
+    { segment =
+    (merge_mem (frame_segment offset_frame (length m.mod_funcs))
+      compiled_segment); imports = compiled_imports; exports =
+    (compile_exports symbols_eq_dec symbols_countable symbols_encode0
+      m.mod_exports module_name offset_local_funs compiled_segment) })
+    (Obj.magic compile_funcs h m offset_local_funs)
 
 (** val bank_example_call : ws_basic_instruction list **)
 
@@ -3646,6 +4322,134 @@ let env_module =
     ({ modexp_name = ('a'::('d'::('v'::[]))); modexp_desc =
     Big_int_Z.zero_big_int } :: []) }
 
+(** val map_compose :
+    'a4 fMap -> (__ -> ('a1, __, 'a4) lookup) -> (__ -> 'a4 empty) -> (__ ->
+    ('a1, __, 'a4) partialAlter) -> 'a4 oMap -> 'a4 merge -> (__ -> ('a1, __,
+    'a4) finMapToList) -> ('a1, 'a1) relDecision -> 'a5 fMap -> (__ -> ('a2,
+    __, 'a5) lookup) -> (__ -> 'a5 empty) -> (__ -> ('a2, __, 'a5)
+    partialAlter) -> 'a5 oMap -> 'a5 merge -> (__ -> ('a2, __, 'a5)
+    finMapToList) -> ('a2, 'a2) relDecision -> 'a5 -> 'a4 -> 'a4 **)
+
+let map_compose _ _ _ _ h4 _ _ _ _ h8 _ _ _ _ _ _ m n0 =
+  omap h4 (fun i -> lookup0 (h8 __) i m) n0
+
+(** val resolve_imports :
+    ('a1, 'a1) relDecision -> 'a1 countable -> (addr, 'a1) gmap -> ('a1,
+    word) gmap -> (addr, word) gmap -> (addr, word) gmap **)
+
+let resolve_imports symbols_eq_dec symbols_countable imp exp ms =
+  union0
+    (map_union
+      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+    (map_compose
+      (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ -> gmap_lookup Coq0_Nat.eq_dec nat_countable))
+      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+      (Obj.magic (fun _ -> gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ _ -> gmap_omap Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+      Coq0_Nat.eq_dec
+      (Obj.magic (fun _ _ -> gmap_fmap symbols_eq_dec symbols_countable))
+      (Obj.magic (fun _ -> gmap_lookup symbols_eq_dec symbols_countable))
+      (fun _ -> gmap_empty symbols_eq_dec symbols_countable)
+      (Obj.magic (fun _ ->
+        gmap_partial_alter symbols_eq_dec symbols_countable))
+      (Obj.magic (fun _ _ -> gmap_omap symbols_eq_dec symbols_countable))
+      (Obj.magic (fun _ _ _ -> gmap_merge symbols_eq_dec symbols_countable))
+      (Obj.magic (fun _ -> gmap_to_list symbols_eq_dec symbols_countable))
+      symbols_eq_dec exp (Obj.magic imp)) ms
+
+(** val size_component :
+    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component ->
+    Big_int_Z.big_int **)
+
+let size_component _ _ comp =
+  add (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.segment))
+    (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.imports))
+
+(** val link :
+    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component -> 'a1
+    cerise_component -> 'a1 cerise_component **)
+
+let link symbols_eq_dec symbols_countable comp_l comp_r =
+  let comp_r0 =
+    let n0 = size_component symbols_eq_dec symbols_countable comp_l in
+    { segment = (shift_mem comp_r.segment n0); imports =
+    (kmap (fun _ ->
+      map_insert (Obj.magic gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+      (fun a -> add a n0) comp_r.imports); exports =
+    (fmap (Obj.magic (fun _ _ -> gmap_fmap symbols_eq_dec symbols_countable))
+      (fun w ->
+      match w with
+      | Inl _ -> w
+      | Inr y ->
+        let (y0, a) = y in
+        let (y1, e) = y0 in
+        let (y2, b) = y1 in
+        let (p, g) = y2 in
+        Inr ((((p, g), (add b n0)), (add e n0)), (add a n0))) comp_r.exports) }
+  in
+  { segment =
+  (union0
+    (map_union
+      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+    (resolve_imports symbols_eq_dec symbols_countable comp_l.imports
+      comp_r0.exports comp_l.segment)
+    (resolve_imports symbols_eq_dec symbols_countable comp_r0.imports
+      comp_l.exports comp_r0.segment)); imports =
+  (filter0 (fun _ ->
+    map_filter (gmap_to_list Coq0_Nat.eq_dec nat_countable)
+      (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (gmap_empty Coq0_Nat.eq_dec nat_countable))
+    (uncurry_dec (fun _ y ->
+      option_eq_None_dec
+        (lookup0 (gmap_lookup symbols_eq_dec symbols_countable) y
+          (union0
+            (map_union
+              (Obj.magic (fun _ _ _ ->
+                gmap_merge symbols_eq_dec symbols_countable))) comp_l.exports
+            comp_r0.exports))))
+    (union0
+      (map_union
+        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+      comp_l.imports comp_r0.imports)); exports =
+  (union0
+    (map_union
+      (Obj.magic (fun _ _ _ -> gmap_merge symbols_eq_dec symbols_countable)))
+    comp_l.exports comp_r0.exports) }
+
+type symbols = name
+
+(** val symbols_encode : name -> name -> symbols **)
+
+let symbols_encode mod_name imp_name0 =
+  append (append mod_name ('.'::[])) imp_name0
+
+(** val bank_component :
+    machineParameters -> symbols cerise_component option **)
+
+let bank_component h =
+  compile_module h string_eq_dec string_countable symbols_encode
+    bank_example_call_module ('B'::('a'::('n'::('k'::[]))))
+
+(** val env_component :
+    machineParameters -> symbols cerise_component option **)
+
+let env_component h =
+  compile_module h string_eq_dec string_countable symbols_encode env_module
+    ('E'::('n'::('v'::[])))
+
+(** val linked_bank : machineParameters -> symbols cerise_component option **)
+
+let linked_bank h =
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun bank ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun env -> Some
+      (link string_eq_dec string_countable bank env)) (env_component h))
+    (bank_component h)
+
 (** val bank_example :
     ((ws_module * typeidx) * value_type list) * ws_basic_instruction list **)
 
@@ -3658,3 +4462,33 @@ let bank_example =
 
 let adv_example =
   (((env_module, Big_int_Z.zero_big_int), []), env_adv)
+
+(** val linked_example : machineParameters -> (addr * word) list **)
+
+let linked_example h =
+  match linked_bank h with
+  | Some p ->
+    sort
+      (gmap_to_list Coq0_Nat.eq_dec nat_countable
+        (shift_mem p.segment (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))))
+  | None ->
+    gmap_to_list Coq0_Nat.eq_dec nat_countable
+      (gmap_empty Coq0_Nat.eq_dec nat_countable)
+
+(** val linked_example_bank : machineParameters -> (addr * word) list **)
+
+let linked_example_bank h =
+  match bank_component h with
+  | Some p ->
+    sort
+      (gmap_to_list Coq0_Nat.eq_dec nat_countable
+        (shift_mem p.segment (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))))
+  | None ->
+    gmap_to_list Coq0_Nat.eq_dec nat_countable
+      (gmap_empty Coq0_Nat.eq_dec nat_countable)

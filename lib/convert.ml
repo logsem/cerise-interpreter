@@ -151,3 +151,12 @@ let driver = {
   l_decodeInstr = (function z -> BInstr Fail);
   l_encodeInstr = (function i -> Encode.encode_machine_op Fail);
 }
+
+
+let translate_word (w : (Big_int_Z.big_int, (((Extract.perm * Extract.locality) * Big_int_Z.big_int) * Big_int_Z.big_int
+                    ) * Big_int_Z.big_int) Extract.sum)
+  = match w with
+  | Inl z -> Ast.I z
+  | Inr ((((p,l),b),e),a) -> Ast.Cap (translate_perm p, translate_locality l,b,e,a)
+
+(* (Convert.translate_instr (Convert.driver.decodeInstr z)) *)
