@@ -8,15 +8,15 @@ let in_list (e :'a) (l : 'a list) : bool =
 let all_registers : regname list =
   [PC; STK] @ List.init 32 (fun i -> Reg i)
 
-let rec rclear (regs : regname list) : (statement list) =
+let rec rclear (regs : regname list) : (machine_op list) =
   match regs with
   | [] -> []
   | r::regs' -> (Move (r,const 0))::(rclear regs')
 
-let rclear_inv (regs : regname list) : statement list =
+let rclear_inv (regs : regname list) : machine_op list =
   (rclear (List.filter (fun r -> not (in_list r regs)) all_registers))
 
-let mclearU : statement list =
+let mclearU : machine_op list =
   let mclear_off_end = 9 in
   let mclear_off_iter = 2 in
   [
@@ -100,12 +100,12 @@ let prepstack r minsize =
   ]
 
 
-let epilogue_scall radv : (statement list) =
-  let w1 = Encode.encode_statement (Move (Reg 1, Register PC)) in
-  let w2 = Encode.encode_statement (Lea (Reg 1, const 6)) in
-  let w3 = Encode.encode_statement (Load (STK, Reg 1)) in
-  let w4a = Encode.encode_statement (Sub (Reg 1, const 0, const 1)) in
-  let w4b = Encode.encode_statement (LoadU (PC, STK, Register (Reg 1))) in
+let epilogue_scall radv : (machine_op list) =
+  let w1 = Encode.encode_machine_op (Move (Reg 1, Register PC)) in
+  let w2 = Encode.encode_machine_op (Lea (Reg 1, const 6)) in
+  let w3 = Encode.encode_machine_op (Load (STK, Reg 1)) in
+  let w4a = Encode.encode_machine_op (Sub (Reg 1, const 0, const 1)) in
+  let w4b = Encode.encode_machine_op (LoadU (PC, STK, Register (Reg 1))) in
   let epilogue_b =
   [
     (* Push activation record *)

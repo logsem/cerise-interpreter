@@ -5,7 +5,11 @@ open Libinterp.Ast
 let statement_eq (a : statement) (b : statement) = (a = b)
 let pprint_statement = Fmt.of_to_string string_of_statement
 
+let machine_op_eq (a : machine_op) (b : machine_op) = (a = b)
+let pprint_machine_op = Fmt.of_to_string string_of_machine_op
+
 let statement_tst = Alcotest.testable pprint_statement statement_eq
+let machine_op_tst = Alcotest.testable pprint_machine_op machine_op_eq
 
 module To_test = struct
   let lex_parse = fun x ->
@@ -14,7 +18,7 @@ module To_test = struct
   let enc_int a b = Encode.encode_int_int a b
   let enc_split = Encode.split_int
   let enc_dec_int a b = Encode.decode_int @@ Encode.encode_int_int a b
-  let enc_dec_stm s = Encode.decode_statement @@ Encode.encode_statement s
+  let enc_dec_op s = Encode.decode_machine_op @@ Encode.encode_machine_op s
 end
 
 let make_op_test ((input, expect) : string * statement) =
@@ -25,33 +29,33 @@ let make_op_test ((input, expect) : string * statement) =
       (To_test.lex_parse input))
 
 let instr_tests = [
-  ("jmp pc", Jmp PC);
-  ("jmp r21", Jmp (Reg 21));
-  ("jnz r11 r9", Jnz (Reg 11, Reg 9));
-  ("mov pc -25", Move (PC, const (-25)));
-  ("mov r30 stk", Move (Reg 30, Register STK));
-  ("load r0 r1", Load (Reg 0, Reg 1));
-  ("store r2 r3", Store (Reg 2, Register (Reg 3)));
-  ("add r4 (10-15) (-37)", Add (Reg 4, const (-5), const (-37)));
-  ("sub r5 6 28", Sub (Reg 5, const 6, const 28));
-  ("lt r6 496 8128 ; perfect numbers are cool!", Lt (Reg 6, const 496, const 8128));
-  ("lea r7 r8", Lea (Reg 7, Register (Reg 8)));
-  ("restrict r9 RX Global", Restrict (Reg 9, CP (Perm (RX, Global))));
-  ("restrict r25 RWL LOCAL", Restrict (Reg 25, CP (Perm (RWL, Local))));
-  ("restrict r26 RWL DIRECTED", Restrict (Reg 26, CP (Perm (RWL, Directed))));
-  ("subseg r10 pc r11", SubSeg (Reg 10, Register PC, Register (Reg 11)));
-  ("isptr r12 r13", IsPtr (Reg 12, Reg 13));
-  ("getp r14 r15", GetP (Reg 14, Reg 15));
-  ("getb r16 r17", GetB (Reg 16, Reg 17));
-  ("gete r18 r19", GetE (Reg 18, Reg 19));
-  ("geta r20 r21", GetA (Reg 20, Reg 21));
-  ("getl r22 r23", GetL (Reg 22, Reg 23));
-  ("loadU r24 r25 3", LoadU (Reg 24, Reg 25, const 3));
-  ("storeu r26 r27 r28", StoreU (Reg 26, Register (Reg 27), Register (Reg 28)));
-  ("promoteu r29", PromoteU (Reg 29));
-  ("fail", Fail);
-  ("halt", Halt);
-  ("nop", Nop);
+  ("jmp pc", Op (Jmp PC));
+  ("jmp r21", Op (Jmp (Reg 21)));
+  ("jnz r11 r9", Op (Jnz (Reg 11, Reg 9)));
+  ("mov pc -25", Op (Move (PC, const (-25))));
+  ("mov r30 stk", Op (Move (Reg 30, Register STK)));
+  ("load r0 r1", Op (Load (Reg 0, Reg 1)));
+  ("store r2 r3", Op (Store (Reg 2, Register (Reg 3))));
+  ("add r4 (10-15) (-37)", Op (Add (Reg 4, const (-5), const (-37))));
+  ("sub r5 6 28", Op (Sub (Reg 5, const 6, const 28)));
+  ("lt r6 496 8128 ; perfect numbers are cool!", Op (Lt (Reg 6, const 496, const 8128)));
+  ("lea r7 r8", Op (Lea (Reg 7, Register (Reg 8))));
+  ("restrict r9 RX Global", Op (Restrict (Reg 9, CP (Perm (RX, Global)))));
+  ("restrict r25 RWL LOCAL", Op (Restrict (Reg 25, CP (Perm (RWL, Local)))));
+  ("restrict r26 RWL DIRECTED", Op (Restrict (Reg 26, CP (Perm (RWL, Directed)))));
+  ("subseg r10 pc r11", Op (SubSeg (Reg 10, Register PC, Register (Reg 11))));
+  ("isptr r12 r13", Op (IsPtr (Reg 12, Reg 13)));
+  ("getp r14 r15", Op (GetP (Reg 14, Reg 15)));
+  ("getb r16 r17", Op (GetB (Reg 16, Reg 17)));
+  ("gete r18 r19", Op (GetE (Reg 18, Reg 19)));
+  ("geta r20 r21", Op (GetA (Reg 20, Reg 21)));
+  ("getl r22 r23", Op (GetL (Reg 22, Reg 23)));
+  ("loadU r24 r25 3", Op (LoadU (Reg 24, Reg 25, const 3)));
+  ("storeu r26 r27 r28", Op (StoreU (Reg 26, Register (Reg 27), Register (Reg 28))));
+  ("promoteu r29", Op (PromoteU (Reg 29)));
+  ("fail", Op (Fail));
+  ("halt", Op (Halt));
+  ("nop", Op (Nop));
 ]
 
 let z_tst =
@@ -125,10 +129,10 @@ let make_enc_dec_stm_tests (stm, test_name) =
     test_name
     `Quick
     (fun _ ->
-       Alcotest.(check statement_tst)
+       Alcotest.(check machine_op_tst)
          "same statement"
          stm
-         (To_test.enc_dec_stm stm))
+         (To_test.enc_dec_op stm))
 
 let test_enc_dec_stm_list = [
   (Jmp PC, "encode-decode Jmp PC");

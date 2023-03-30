@@ -4,7 +4,10 @@ open Scall_ucap
 let () =
   let radv = (Ast.Reg 28) in
   let renv = (Ast.Reg 30) in
-  let prog = awkward_example radv @ adv_instr @ ret_instr in
+  let prog =
+    List.map (fun i -> Ast.Op i)
+      (awkward_example radv @ adv_instr @ ret_instr)
+  in
 
   (* let addr_max = List.length prog in *)
   (* let addr_max = (Int32.to_int Int32.max_int)/4096 in *)

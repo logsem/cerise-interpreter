@@ -167,7 +167,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
   module Instr = struct
     let ui (i: Ast.machine_op) =
-      I.string A.(fg green) (Pretty_printer.string_of_statement i)
+      I.string A.(fg green) (Pretty_printer.string_of_machine_op i)
   end
 
   module Program_panel = struct
@@ -195,7 +195,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let img_instr in_range a w =
       (match w with
        | Machine.I z when in_range a <> `No ->
-         begin match Encode.decode_statement z with
+         begin match Encode.decode_machine_op z with
            | i -> Instr.ui i
            | exception Encode.DecodeException _ -> I.string A.(fg green) "???"
          end

@@ -4,6 +4,7 @@ type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
 type const_perm = Const of Z.t | Perm of perm * locality
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
+type word = I of Z.t | Cap of perm * locality * Z.t * Z.t * Z.t
 type machine_op
   =
   | Nop
@@ -29,7 +30,7 @@ type machine_op
   | PromoteU of regname
   | Fail
   | Halt
-type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
+type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 
 type t = statement list
 

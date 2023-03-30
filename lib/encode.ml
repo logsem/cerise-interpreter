@@ -154,7 +154,7 @@ let decode_int (i : Z.t) : Z.t * Z.t =
                       
 let (~$) = Z.(~$)
 
-let encode_statement (s : statement): Z.t =
+let encode_machine_op (s : machine_op): Z.t =
   let (^!) opcode args = Z.(opcode + (args lsl 8)) in
   let const_convert opcode c = begin
     match c with
@@ -228,7 +228,7 @@ let encode_statement (s : statement): Z.t =
   (* TODO I would prefer to have Nop encoded as 0 *)
   | Nop -> ~$0x48
 
-let decode_statement (i : Z.t) : statement =
+let decode_machine_op (i : Z.t) : machine_op =
   let dec_perm =
     fun c_enc -> let (p,g) = (decode_perm_pair c_enc) in Perm (p,g)
   in

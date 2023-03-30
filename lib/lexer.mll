@@ -61,6 +61,8 @@ rule token = parse
 | ')' { RPAREN }
 | '+' { PLUS }
 | '-' { MINUS }
+| ',' { COMMA }
+| '#' { SHARP }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }

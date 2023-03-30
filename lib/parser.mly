@@ -5,7 +5,7 @@
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN
-%token PLUS MINUS
+%token PLUS MINUS COMMA SHARP
 %token NOP JMP JNZ MOVE LOAD STORE ADD SUB LT LEA RESTRICT SUBSEG ISPTR
 %token GETL GETP GETB GETE GETA FAIL HALT LOADU STOREU PROMOTEU
 %token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
@@ -45,6 +45,11 @@ main:
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }
   | lbl = LABELDEF; p = main; { Lbl lbl :: p }
+  | SHARP ; cap = cap_def; p = main; { Word cap :: p }
+  | SHARP ; z = expr; p = main; { Word (I z) :: p }
+
+cap_def:
+  | LPAREN; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN; { Cap (p, g, b, e, a) }
 
 reg:
   | PC; { PC }

@@ -13,6 +13,9 @@ type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
 type const_perm = Const of expr | Perm of perm * locality
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
+type word = I of expr | Cap of perm * locality * expr * expr * expr
+exception WordException of word
+
 type machine_op
   =
   | Nop
@@ -39,6 +42,7 @@ type machine_op
   | Fail
   | Halt
   | Lbl of string
+  | Word of word
 type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 
 type t = statement list
@@ -98,6 +102,18 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
   | Register r -> Ast.Register (translate_regname r)
   | CP cp -> Ast.CP (translate_const_perm envr cp)
 
+let translate_word (envr : env) (w : word) : Ast.statement =
+  match w with
+  | I e -> Ast.Word (Ast.I (eval_expr envr e))
+  | Cap (p,l,b,e,a) ->
+    Ast.Word (Ast.Cap
+                ((translate_perm p),
+                 (translate_locality l),
+                 (eval_expr envr b),
+                 (eval_expr envr e),
+                 (eval_expr envr a)
+                ))
+
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with
   | Jmp r -> Ast.Jmp (translate_regname r)
@@ -139,13 +155,15 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
   | Nop -> Ast.Nop
+  | Word w -> raise (WordException w)
   | Lbl s -> raise (UnknownLabelException s)
 
 let rec translate_prog_aux (envr : env) (prog : t) : Ast.t =
   match prog with
   | [] -> []
   | (Lbl _) :: p -> translate_prog_aux envr p
-  | instr :: p -> (translate_instr envr instr) :: (translate_prog_aux envr p)
+  | (Word w) :: p -> translate_word envr w :: (translate_prog_aux envr p)
+  | instr :: p -> (Op (translate_instr envr instr)) :: (translate_prog_aux envr p)
 
 let translate_prog (prog : t) : Ast.t =
   let envr = compute_env 0 prog [] in

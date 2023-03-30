@@ -45,7 +45,13 @@ let init_mem_state (addr_max : int) (prog : t) : mem_state =
     loop 0 MemMap.empty
   in
   let enc_prog =
-    List.to_seq @@ List.mapi (fun i x -> i, I (Encode.encode_statement x)) prog in
+    List.to_seq @@ List.mapi
+      (fun i x -> i,
+                  match x with
+                  | Op op -> I (Encode.encode_machine_op op)
+                  | Word (Ast.I z) -> I z
+                  | Word (Ast.Cap (p,g,b,e,a)) -> Cap (p, g, Z.to_int b, Z.to_int e, Z.to_int a))
+      prog in
   MemMap.add_seq enc_prog zeroed_mem
 
 let get_mem (addr : int) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
@@ -76,19 +82,18 @@ let upd_pc_perm (w : word) =
   | Cap (E, g, b, e, a) -> Cap (RX, g, b, e, a)
   | _ -> w
 
-let fetch_decode (conf : exec_conf) : statement option =
+let fetch_decode (conf : exec_conf) : machine_op option =
   match PC @! conf with
   | I _ -> None
   | Cap (_, _, _, _, addr) ->
     match get_mem addr conf with
     | Some (I enc) ->
-      (try Some (Encode.decode_statement enc)
+      (try Some (Encode.decode_machine_op enc)
         with Encode.DecodeException _ -> None)
     | _ -> None
 
 let is_pc_valid (conf : exec_conf) : bool =
-  match PC @! conf with
-  | Cap ((RX|RWX|RWLX), _, b, e, a) -> begin
+  match PC @! conf with | Cap ((RX|RWX|RWLX), _, b, e, a) -> begin
       if b <= a && a < e
       then Option.is_some @@ a @? conf
       else false
