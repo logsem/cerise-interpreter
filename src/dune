@@ -9,6 +9,15 @@
  (libraries   libinterp))
 
 (executable
+ (name        compile_adv)
+ (modules     compile_adv)
+ (libraries   libinterp))
+(executable
+ (name        compile_bank)
+ (modules     compile_bank)
+ (libraries   libinterp))
+
+(executable
  (name      interactive)
  (modules   interactive)
  (libraries libinterp notty notty.unix containers))
