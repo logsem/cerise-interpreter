@@ -31,7 +31,7 @@ let run_prog (filename : string) : mchn  =
   let stk_locality = Ast.Directed in
   let addr_max = 10000 in
   let init_regs = Machine.init_reg_state addr_max true stk_locality in
-  let init_mems = Machine.init_mem_state addr_max parse_res in
+  let init_mems = Machine.init_mem_state 0 addr_max parse_res in
   let m = Machine.init init_regs init_mems in
 
   run m

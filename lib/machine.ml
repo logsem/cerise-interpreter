@@ -17,16 +17,23 @@ type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have 
 type mchn = exec_state * exec_conf
 
 let init_reg_state (addr_max : int) (stack_opt : bool) (stk_locality : locality) : reg_state =
+  let start_heap_addr = 0 in
   let max_heap_addr = addr_max/2 in
+  let start_stk_addr =  max_heap_addr in
+  let max_stk_addr = addr_max in
+
   let l = List.init 32 (fun i -> Reg i, I Z.zero) in
+
   (* The PC register starts with full permission over the entire "heap" segment *)
-  let pc_init = (PC, Cap (RWX, Global, 0, max_heap_addr, 0)) in
+  let pc_init = (PC, Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr)) in
   (* The stk register starts with full permission over the entire "stack" segment *)
   let stk_init =
     if stack_opt
-    then (STK, Cap (URWLX, stk_locality, max_heap_addr, addr_max, max_heap_addr))
+    (* then (STK, Cap (URWLX, stk_locality, max_heap_addr, addr_max, max_heap_addr)) *)
+    then (STK, Cap (URWLX, stk_locality, start_stk_addr, max_stk_addr, start_stk_addr))
     else (STK, I Z.zero)
   in
+
   let seq = List.to_seq (pc_init :: stk_init :: l) in
   RegMap.of_seq seq
 
@@ -37,7 +44,7 @@ let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
 
-let init_mem_state (addr_max : int) (prog : t) : mem_state =
+let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
     let rec loop i m =
@@ -46,7 +53,7 @@ let init_mem_state (addr_max : int) (prog : t) : mem_state =
   in
   let enc_prog =
     List.to_seq @@ List.mapi
-      (fun i x -> i,
+      (fun i x -> i+addr_start,
                   match x with
                   | Op op -> I (Encode.encode_machine_op op)
                   | Word (Ast.I z) -> I z
