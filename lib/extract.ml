@@ -1637,6 +1637,12 @@ let rec nth_error l n0 =
                | _ :: l0 -> nth_error l0 n1)
     n0
 
+(** val concat : 'a1 list list -> 'a1 list **)
+
+let rec concat = function
+| [] -> []
+| x :: l0 -> app x (concat l0)
+
 (** val list_eq_dec : ('a1 -> 'a1 -> bool) -> 'a1 list -> 'a1 list -> bool **)
 
 let rec list_eq_dec eq_dec0 l l' =
@@ -1681,6 +1687,15 @@ let rec seq start len =
     (fun _ -> [])
     (fun len0 -> start :: (seq (Big_int_Z.succ_big_int start) len0))
     len
+
+(** val repeat : 'a1 -> Big_int_Z.big_int -> 'a1 list **)
+
+let rec repeat x n0 =
+  (fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+    (fun _ -> [])
+    (fun k -> x :: (repeat x k))
+    n0
 
 module Z =
  struct
@@ -1912,6 +1927,26 @@ type ('a, 'm) unionWith = ('a -> 'a -> 'a option) -> 'm -> 'm -> 'm
 let union_with unionWith0 =
   unionWith0
 
+(** val unit_eq_dec : (unit, unit) relDecision **)
+
+let unit_eq_dec _ _ =
+  true
+
+(** val sum_eq_dec :
+    ('a1, 'a1) relDecision -> ('a2, 'a2) relDecision -> (('a1, 'a2) sum,
+    ('a1, 'a2) sum) relDecision **)
+
+let sum_eq_dec eqDecision0 eqDecision1 x y =
+  match x with
+  | Inl a ->
+    (match y with
+     | Inl a0 -> decide_rel eqDecision0 a a0
+     | Inr _ -> false)
+  | Inr b ->
+    (match y with
+     | Inl _ -> false
+     | Inr b0 -> decide_rel eqDecision1 b b0)
+
 (** val uncurry_dec : ('a1 -> 'a2 -> decision) -> ('a1 * 'a2) -> decision **)
 
 let uncurry_dec p_dec = function
@@ -2136,6 +2171,35 @@ let list_eq_dec0 =
 
 type 'a countable = { encode : ('a -> Big_int_Z.big_int);
                       decode : (Big_int_Z.big_int -> 'a option) }
+
+(** val unit_countable : unit countable **)
+
+let unit_countable =
+  { encode = (fun _ -> Big_int_Z.unit_big_int); decode = (fun _ -> Some ()) }
+
+(** val sum_countable :
+    ('a1, 'a1) relDecision -> 'a1 countable -> ('a2, 'a2) relDecision -> 'a2
+    countable -> ('a1, 'a2) sum countable **)
+
+let sum_countable _ h _ h0 =
+  { encode = (fun xy ->
+    match xy with
+    | Inl x -> Big_int_Z.mult_int_big_int 2 (h.encode x)
+    | Inr y ->
+      (fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+        (h0.encode y)); decode = (fun p ->
+    (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+      (fun p0 ->
+      let p1 = Obj.magic p0 in
+      Obj.magic fmap (fun _ _ -> option_fmap) (fun x -> Inr x) (h0.decode p1))
+      (fun p0 ->
+      let p1 = Obj.magic p0 in
+      Obj.magic fmap (fun _ _ -> option_fmap) (fun x -> Inl x) (h.decode p1))
+      (fun _ -> None)
+      p) }
 
 (** val list_countable :
     ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 list countable **)
@@ -2772,6 +2836,28 @@ let reg_eq_dec r1 r2 =
              | R n1 -> Nat.eq_dec n0 n1
              | _ -> false)
 
+(** val reg_countable : regName countable **)
+
+let reg_countable =
+  { encode = (fun r0 ->
+    (sum_countable (sum_eq_dec unit_eq_dec unit_eq_dec)
+      (sum_countable unit_eq_dec unit_countable unit_eq_dec unit_countable)
+      Coq0_Nat.eq_dec nat_countable).encode
+      (match r0 with
+       | PC -> Inl (Inl ())
+       | STK -> Inl (Inr ())
+       | R n0 -> Inr n0)); decode = (fun n0 ->
+    match (sum_countable (sum_eq_dec unit_eq_dec unit_eq_dec)
+            (sum_countable unit_eq_dec unit_countable unit_eq_dec
+              unit_countable) Coq0_Nat.eq_dec nat_countable).decode n0 with
+    | Some y ->
+      (match y with
+       | Inl y0 -> (match y0 with
+                    | Inl _ -> Some PC
+                    | Inr _ -> Some STK)
+       | Inr n1 -> Some (R n1))
+    | None -> None) }
+
 (** val r : Big_int_Z.big_int -> (Big_int_Z.big_int, regName) sum **)
 
 let r n0 =
@@ -2832,46 +2918,17 @@ type cerise_instruction =
    * (Big_int_Z.big_int, regName) sum
 | PromoteU of regName
 
-type 'symbols cerise_component = { segment : (addr, word) gmap;
-                                   imports : (addr, 'symbols) gmap;
-                                   exports : ('symbols, word) gmap }
+type symbols = char list
 
-(** val insert1 : (addr * 'a1) -> (addr * 'a1) list -> (addr * 'a1) list **)
+(** val symbols_encode : char list -> char list -> symbols **)
 
-let rec insert1 x l = match l with
-| [] -> x :: []
-| h :: t0 -> if Nat.ltb (fst h) (fst x) then h :: (insert1 x t0) else x :: l
+let symbols_encode mod_name imp_name0 =
+  append (append mod_name ('.'::[])) imp_name0
 
-(** val sort : (addr * 'a1) list -> (addr * 'a1) list **)
-
-let rec sort = function
-| [] -> []
-| h :: t0 -> insert1 h (sort t0)
-
-(** val pp_segment :
-    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
-    (addr * word) list option **)
-
-let pp_segment _ _ = function
-| Some p0 ->
-  Some (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.segment))
-| None -> None
-
-(** val pp_imports :
-    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
-    (addr * 'a1) list option **)
-
-let pp_imports _ _ = function
-| Some p0 -> Some (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.imports)
-| None -> None
-
-(** val pp_exports :
-    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component option ->
-    ('a1 * word) list option **)
-
-let pp_exports symbols_eq_dec symbols_countable = function
-| Some p0 -> Some (gmap_to_list symbols_eq_dec symbols_countable p0.exports)
-| None -> None
+type cerise_component = { segment : (addr, word) gmap;
+                          imports : (addr, symbols) gmap;
+                          exports : (symbols, word) gmap;
+                          submodules : (addr * addr) list; main : word option }
 
 (** val merge_mem :
     (addr, 'a1) gmap -> (addr, 'a1) gmap -> (addr, 'a1) gmap **)
@@ -2898,27 +2955,17 @@ let rec list_to_addr_gmap l a =
       (list_to_addr_gmap t0
         (add a (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
 
-(** val shift_mem :
-    (addr, word) gmap -> Big_int_Z.big_int -> (addr, word) gmap **)
+(** val insert1 : (addr * 'a1) -> (addr * 'a1) list -> (addr * 'a1) list **)
 
-let shift_mem m n0 =
-  let shift_addr =
-    kmap (fun _ ->
-      map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
-      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
-      (fun a -> add a n0) m
-  in
-  fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
-    (fun w ->
-    match w with
-    | Inl _ -> w
-    | Inr y ->
-      let (y0, a) = y in
-      let (y1, e) = y0 in
-      let (y2, b) = y1 in
-      let (p, g) = y2 in Inr ((((p, g), (add b n0)), (add e n0)), (add a n0)))
-    (Obj.magic shift_addr)
+let rec insert1 x l = match l with
+| [] -> x :: []
+| h :: t0 -> if Nat.ltb (fst h) (fst x) then h :: (insert1 x t0) else x :: l
+
+(** val sort : (addr * 'a1) list -> (addr * 'a1) list **)
+
+let rec sort = function
+| [] -> []
+| h :: t0 -> insert1 h (sort t0)
 
 type immediate = Big_int_Z.big_int
 
@@ -2949,6 +2996,8 @@ type ws_basic_instruction =
 | I_drop
 | I_block of function_type * ws_basic_instruction list
 | I_loop of function_type * ws_basic_instruction list
+| I_if of function_type * ws_basic_instruction list
+   * ws_basic_instruction list
 | I_br of immediate
 | I_br_if of immediate
 | I_return
@@ -2998,8 +3047,18 @@ type module_func = { modfunc_type : typeidx;
                      modfunc_locals : value_type list; modfunc_body : 
                      expr }
 
+type module_start =
+  funcidx
+  (* singleton inductive, whose constructor was Build_module_start *)
+
+(** val modstart_func : module_start -> funcidx **)
+
+let modstart_func m =
+  m
+
 type ws_module = { mod_types : function_type list;
                    mod_funcs : module_func list;
+                   mod_start : module_start option;
                    mod_imports : module_import list;
                    mod_exports : module_export list }
 
@@ -3102,445 +3161,87 @@ let pop_env_instrs =
   foldl (fun b r0 -> app (pop_instrs r0) b) []
     (list_difference reg_eq_dec all_registers (PC :: (r_stk :: [])))
 
-(** val activation_record : machineParameters -> cerise_instruction list **)
+(** val activation_record :
+    machineParameters -> regName -> cerise_instruction list **)
 
-let activation_record h =
+let activation_record h rtmp =
   let offset_ret =
     Z.add (Z.of_nat (length push_env_instrs)) Big_int_Z.unit_big_int
   in
   push_instrs
-    (app ((Inl
-      (h.encodeInstr (Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))), (Inr PC))))) :: ((Inl
-      (h.encodeInstr (Lea ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))), (Inl
-        (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))))) :: ((Inl
-      (h.encodeInstr (Load (r_stk, (R (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))))))) :: [])))
-      ((Inl
+    (app ((Inl (h.encodeInstr (Mov (rtmp, (Inr PC))))) :: ((Inl
+      (h.encodeInstr (Lea (rtmp, (Inl (Big_int_Z.minus_big_int
+        Big_int_Z.unit_big_int)))))) :: ((Inl
+      (h.encodeInstr (Load (r_stk, rtmp)))) :: []))) ((Inl
       (h.encodeInstr (LoadU (PC, r_stk, (Inl (Z.opp offset_ret)))))) :: []))
 
 (** val call_instrs_prologue_1 :
-    machineParameters -> cerise_instruction list **)
+    machineParameters -> regName -> cerise_instruction list **)
 
-let call_instrs_prologue_1 h =
+let call_instrs_prologue_1 h rtmp =
   app (push_instrs ((Inl Big_int_Z.zero_big_int) :: []))
     (app (push_instrs ((Inl Big_int_Z.zero_big_int) :: []))
       (app push_env_instrs
-        (app (push_instrs ((Inr r_stk) :: [])) (activation_record h))))
+        (app (push_instrs ((Inr r_stk) :: [])) (activation_record h rtmp))))
 
 (** val call_instrs_prologue :
-    machineParameters -> regName list -> cerise_instruction list **)
+    machineParameters -> regName list -> regName -> cerise_instruction list **)
 
-let call_instrs_prologue h rargs =
+let call_instrs_prologue h rargs rtmp =
   let offset_pc =
     Z.of_nat
-      (add (length (app (activation_record h) push_env_instrs))
+      (add (length (app (activation_record h rtmp) push_env_instrs))
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         Big_int_Z.zero_big_int)))
   in
   let offset_ret =
-    Z.add
-      (Z.add (Big_int_Z.mult_int_big_int 2
-        ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-        (Big_int_Z.mult_int_big_int 2
-        ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-        (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))))
-        ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-        ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-        Big_int_Z.unit_big_int))) (Z.of_nat (length rargs))
+    Z.add ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      (Big_int_Z.mult_int_big_int 2
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      Big_int_Z.unit_big_int))))) (Z.of_nat (length rargs))
   in
-  app (call_instrs_prologue_1 h)
-    (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))), (Inr
-      PC))) :: ((Lea ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))), (Inl
-      offset_ret))) :: [])) ((StoreU (r_stk, (Inl (Z.opp offset_pc)), (Inr (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))))) :: []))
+  app (call_instrs_prologue_1 h rtmp)
+    (app ((Mov (rtmp, (Inr PC))) :: ((Lea (rtmp, (Inl offset_ret))) :: []))
+      ((StoreU (r_stk, (Inl (Z.opp offset_pc)), (Inr rtmp))) :: []))
 
 (** val call_instrs :
-    machineParameters -> regName -> regName list -> cerise_instruction list **)
+    machineParameters -> regName -> regName list -> regName -> regName ->
+    regName -> regName -> regName -> cerise_instruction list **)
 
-let call_instrs h r0 rargs =
-  let len_act = Z.of_nat (length (activation_record h)) in
+let call_instrs h r0 rargs tmp0 tmp1 tmp2 tmp3 tmp4 =
+  let len_act = Z.of_nat (length (activation_record h tmp0)) in
+  let len_args = Z.of_nat (length rargs) in
   let offset_ret_val =
     Z.add
-      (Z.add
-        (Z.add (Z.of_nat (length (activation_record h)))
-          Big_int_Z.unit_big_int) (Z.of_nat (length push_env_instrs)))
-      (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)
+      (Z.add (Z.add (Z.add len_args len_act) Big_int_Z.unit_big_int)
+        (Z.of_nat (length push_env_instrs))) (Big_int_Z.mult_int_big_int 2
+      Big_int_Z.unit_big_int)
   in
-  app (call_instrs_prologue h rargs)
-    (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))), (Inr
-      r_stk))) :: ((Lea ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))), (Inl
-      (Z.opp offset_ret_val)))) :: ((GetA ((R (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int)))))))))))))))))))))))))))))), (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))) :: ((GetA ((R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))), (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))) :: ((Add ((R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))), (Inr (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))), (Inl
-      Big_int_Z.unit_big_int))) :: ((Subseg ((R (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))), (Inr (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int))))))))))))))))))))))))))))))), (Inr (R
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-      Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))))) :: []))))))
-      (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))), (Inr
-        r_stk))) :: ((PromoteU (R (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int))))))))))))))))))))))))))))))) :: ((Lea ((R
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))), (Inl
-        (Z.opp len_act)))) :: ((Restrict ((R (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))))))))))))))))))))))))))))), (Inl
-        (h.encodePermPair (E, Directed))))) :: []))))
-        (app ((GetA ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))),
-          r_stk)) :: ((GetE ((R (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int))))))))))))))))))))))))))))))),
-          r_stk)) :: ((Subseg (r_stk, (Inr (R (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))), (Inr (R
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))))) :: [])))
-          (app
-            (push_instrs ((Inr (R (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              Big_int_Z.zero_big_int))))))))))))))))))))))))))))))) :: []))
-            (app
-              (push_instrs ((Inr (R (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                (Big_int_Z.succ_big_int
-                Big_int_Z.zero_big_int)))))))))))))))))))))))))))))) :: []))
-              (app (push_instrs (map (fun x -> Inr x) rargs))
-                (app
-                  (rclear_instrs
-                    (list_difference reg_eq_dec all_registers
-                      (PC :: (r0 :: (r_stk :: [])))))
-                  (app ((Jmp r0) :: []) pop_env_instrs))))))))
+  app (call_instrs_prologue h rargs tmp0)
+    (app (push_instrs (map (fun x -> Inr x) rargs))
+      (app ((Mov (tmp4, (Inr r_stk))) :: ((GetA (tmp1, tmp4)) :: ((Sub (tmp1,
+        (Inr tmp1), (Inl (Z.of_nat (length rargs))))) :: ((GetA (tmp2,
+        tmp4)) :: ((Subseg (tmp4, (Inr tmp1), (Inr tmp2))) :: [])))))
+        (app ((Mov (tmp0, (Inr r_stk))) :: ((Lea (tmp0, (Inl
+          (Z.opp offset_ret_val)))) :: ((GetA (tmp1, tmp0)) :: ((GetA (tmp2,
+          tmp0)) :: ((Add (tmp2, (Inr tmp2), (Inl
+          Big_int_Z.unit_big_int))) :: ((Subseg (tmp0, (Inr tmp1), (Inr
+          tmp2))) :: []))))))
+          (app ((Mov (tmp1, (Inr r_stk))) :: ((PromoteU tmp1) :: ((Lea (tmp1,
+            (Inl (Z.opp (Z.add len_act len_args))))) :: ((Restrict (tmp1,
+            (Inl (h.encodePermPair (E, Directed))))) :: []))))
+            (app ((GetA (tmp3, r_stk)) :: ((GetE (tmp2, r_stk)) :: ((Subseg
+              (r_stk, (Inr tmp3), (Inr tmp2))) :: [])))
+              (app (push_instrs ((Inr tmp1) :: []))
+                (app (push_instrs ((Inr tmp0) :: []))
+                  (app (push_instrs ((Inr tmp4) :: []))
+                    (app
+                      (rclear_instrs
+                        (list_difference reg_eq_dec all_registers
+                          (PC :: (r0 :: (r_stk :: [])))))
+                      (app ((Jmp r0) :: []) pop_env_instrs))))))))))
 
 (** val reqloc_instrs :
     regName -> Big_int_Z.big_int -> regName -> regName -> cerise_instruction
@@ -3562,6 +3263,130 @@ let reqloc_instrs r0 z0 rtmp1 rtmp2 =
     rtmp2) :: (Fail :: ((Mov (rtmp1, (Inl Big_int_Z.zero_big_int))) :: ((Mov
     (rtmp2, (Inl Big_int_Z.zero_big_int))) :: [])))))))))))))))
 
+(** val malloc_subroutine_instrs' :
+    Big_int_Z.big_int -> cerise_instruction list **)
+
+let malloc_subroutine_instrs' offset0 =
+  (Lt0 ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))), (Inl
+    Big_int_Z.zero_big_int), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Mov ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inr PC))) :: ((Lea
+    ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (Inl (Big_int_Z.mult_int_big_int 2
+    (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))) :: ((Jnz ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))) :: (Fail :: ((Mov ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (Inr PC))) :: ((Lea ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (Inl offset0))) :: ((Load ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((GetA ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((Lea ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((GetA ((R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)), (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((Mov ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))), (Inr (R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))) :: ((Subseg ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))), (Inr (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Sub ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Lea ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))), (Inr (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))))) :: ((Mov ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))) :: ((Sub ((R
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inl
+    Big_int_Z.zero_big_int), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Lea ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((GetB ((R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)), (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))) :: ((Lea ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Store ((R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))) :: ((Mov ((R
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr (R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))) :: ((Mov ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))), (Inl Big_int_Z.zero_big_int))) :: ((Mov ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))), (Inl Big_int_Z.zero_big_int))) :: ((Mov ((R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))), (Inl
+    Big_int_Z.zero_big_int))) :: ((Jmp (R
+    Big_int_Z.zero_big_int)) :: [])))))))))))))))))))))))))
+
+(** val malloc_subroutine_instrs : cerise_instruction list **)
+
+let malloc_subroutine_instrs =
+  malloc_subroutine_instrs'
+    (Z.sub
+      (Z.of_nat (length (malloc_subroutine_instrs' Big_int_Z.zero_big_int)))
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))
+
+(** val malloc_instrs :
+    regName -> regName -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> cerise_instruction list **)
+
+let malloc_instrs r_malloc0 r_size tmp_res tmp_r0 tmp_r1 tmp_r2 tmp_r3 tmp_r4 =
+  app ((Mov ((R tmp_r0), (Inr (R Big_int_Z.zero_big_int)))) :: ((Mov ((R
+    tmp_r1), (Inr (R (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))) :: ((Mov ((R tmp_r2), (Inr (R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))) :: ((Mov ((R tmp_r3), (Inr (R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))))) :: ((Mov ((R tmp_r4), (Inr (R
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))) :: [])))))
+    (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr
+      r_size))) :: ((Mov ((R Big_int_Z.zero_big_int), (Inr PC))) :: ((Lea ((R
+      Big_int_Z.zero_big_int), (Inl
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      Big_int_Z.unit_big_int)))) :: ((Jmp r_malloc0) :: ((Mov ((R tmp_res),
+      (Inr (R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: [])))))
+      ((Mov ((R Big_int_Z.zero_big_int), (Inr (R tmp_r0)))) :: ((Mov ((R
+      (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr (R
+      tmp_r1)))) :: ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+      Big_int_Z.zero_big_int))), (Inr (R tmp_r2)))) :: ((Mov ((R
+      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+      Big_int_Z.zero_big_int)))), (Inr (R tmp_r3)))) :: ((Mov ((R
+      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+      (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))), (Inr (R
+      tmp_r4)))) :: ((Mov ((R tmp_r0), (Inl
+      Big_int_Z.zero_big_int))) :: ((Mov ((R tmp_r1), (Inl
+      Big_int_Z.zero_big_int))) :: ((Mov ((R tmp_r2), (Inl
+      Big_int_Z.zero_big_int))) :: ((Mov ((R tmp_r3), (Inl
+      Big_int_Z.zero_big_int))) :: ((Mov ((R tmp_r4), (Inl
+      Big_int_Z.zero_big_int))) :: [])))))))))))
+
 (** val r_stk0 : regName **)
 
 let r_stk0 =
@@ -3582,11 +3407,17 @@ let r_mem =
 let r_glob =
   R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
 
+(** val r_malloc : regName **)
+
+let r_malloc =
+  R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))
+
 (** val base_reg : Big_int_Z.big_int **)
 
 let base_reg =
   Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
 
 (** val compile_value : value -> (Big_int_Z.big_int, regName) sum option **)
 
@@ -3594,16 +3425,16 @@ let compile_value = function
 | Val_int n0 -> Some (Inl (Z.of_nat n0))
 | Val_handle _ -> None
 
-type compilation_state = { reg : Big_int_Z.big_int;
-                           lbl : Big_int_Z.big_int list;
+type label = Big_int_Z.big_int list
+
+type compilation_state = { reg : Big_int_Z.big_int; lbl : label;
                            depth : Big_int_Z.big_int }
 
 (** val new_state :
-    Big_int_Z.big_int -> Big_int_Z.big_int list -> Big_int_Z.big_int ->
-    compilation_state **)
+    Big_int_Z.big_int -> label -> Big_int_Z.big_int -> compilation_state **)
 
-let new_state reg0 lbl0 depth0 =
-  { reg = reg0; lbl = lbl0; depth = depth0 }
+let new_state reg1 lbl0 depth0 =
+  { reg = reg1; lbl = lbl0; depth = depth0 }
 
 (** val add_reg :
     compilation_state -> Big_int_Z.big_int -> compilation_state **)
@@ -3620,12 +3451,12 @@ let sub_reg s n0 =
 (** val new_lbl : compilation_state -> compilation_state **)
 
 let new_lbl s =
-  let label = s.lbl in
+  let label0 = s.lbl in
   let new_label =
-    if Coq_Nat.eqb s.depth (length label)
-    then (add (hd Big_int_Z.zero_big_int label) (Big_int_Z.succ_big_int
-           Big_int_Z.zero_big_int)) :: (tl label)
-    else (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) :: label
+    if Coq_Nat.eqb s.depth (length label0)
+    then (add (hd Big_int_Z.zero_big_int label0) (Big_int_Z.succ_big_int
+           Big_int_Z.zero_big_int)) :: (tl label0)
+    else (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) :: label0
   in
   new_state s.reg new_label s.depth
 
@@ -3645,34 +3476,33 @@ type cfg = labeled_instr list * compilation_state
 
 (** val dyn_typecheck :
     machineParameters -> value_type -> Big_int_Z.big_int -> Big_int_Z.big_int
-    -> labeled_instr list **)
+    -> cerise_instruction list **)
 
 let dyn_typecheck h vtype reg_idx tmp_reg =
   let tmp_jmp = R
     (add tmp_reg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
   in
   let tmp_reg0 = R tmp_reg in
-  instrs
-    (match vtype with
-     | T_int ->
-       (IsPtr (tmp_reg0, (R reg_idx))) :: ((Mov (tmp_jmp, (Inr PC))) :: ((Lea
-         (tmp_jmp, (Inl
-         ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-         ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-         Big_int_Z.unit_big_int))))) :: ((Jnz (tmp_jmp, tmp_reg0)) :: ((Mov
-         (tmp_jmp, (Inr PC))) :: ((Lea (tmp_jmp, (Inl
-         (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
-         Big_int_Z.unit_big_int))))) :: ((Jmp tmp_jmp) :: (Fail :: [])))))))
-     | T_handle ->
-       app ((IsPtr (tmp_reg0, (R reg_idx))) :: ((Mov (tmp_jmp, (Inr
-         PC))) :: ((Lea (tmp_jmp, (Inl (Big_int_Z.mult_int_big_int 2
-         (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))) :: ((Jnz
-         (tmp_jmp, tmp_reg0)) :: (Fail :: [])))))
-         (reqloc_instrs (R reg_idx) (h.encodeLoc Global) tmp_reg0 tmp_jmp))
+  (match vtype with
+   | T_int ->
+     (IsPtr (tmp_reg0, (R reg_idx))) :: ((Mov (tmp_jmp, (Inr PC))) :: ((Lea
+       (tmp_jmp, (Inl
+       ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+       ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+       Big_int_Z.unit_big_int))))) :: ((Jnz (tmp_jmp, tmp_reg0)) :: ((Mov
+       (tmp_jmp, (Inr PC))) :: ((Lea (tmp_jmp, (Inl
+       (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
+       Big_int_Z.unit_big_int))))) :: ((Jmp tmp_jmp) :: (Fail :: [])))))))
+   | T_handle ->
+     app ((IsPtr (tmp_reg0, (R reg_idx))) :: ((Mov (tmp_jmp, (Inr
+       PC))) :: ((Lea (tmp_jmp, (Inl (Big_int_Z.mult_int_big_int 2
+       (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))) :: ((Jnz
+       (tmp_jmp, tmp_reg0)) :: (Fail :: [])))))
+       (reqloc_instrs (R reg_idx) (h.encodeLoc Global) tmp_reg0 tmp_jmp))
 
 (** val dyn_typecheck_stack :
     machineParameters -> bool -> value_type list -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> labeled_instr list option **)
+    Big_int_Z.big_int -> cerise_instruction list option **)
 
 let rec dyn_typecheck_stack h full_stack type0 reg_idx tmp_reg =
   let reg_idx_fix = sub reg_idx base_reg in
@@ -3681,12 +3511,12 @@ let rec dyn_typecheck_stack h full_stack type0 reg_idx tmp_reg =
      ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
   else fS (Big_int_Z.pred_big_int n))
         (fun _ -> Some [])
-        (fun _ -> None)
+        (fun _ -> if full_stack then None else Some [])
         reg_idx_fix)
    | t0 :: type' ->
      ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
   else fS (Big_int_Z.pred_big_int n))
-        (fun _ -> if full_stack then None else Some [])
+        (fun _ -> None)
         (fun _ ->
         mbind (Obj.magic (fun _ _ -> option_bind)) (fun next -> Some
           (app
@@ -3700,14 +3530,14 @@ let rec dyn_typecheck_stack h full_stack type0 reg_idx tmp_reg =
 
 (** val dyn_typecheck_stack_return :
     machineParameters -> value_type list -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> labeled_instr list option **)
+    Big_int_Z.big_int -> cerise_instruction list option **)
 
 let dyn_typecheck_stack_return h =
   dyn_typecheck_stack h true
 
 (** val dyn_typecheck_stack_args :
     machineParameters -> value_type list -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> labeled_instr list option **)
+    Big_int_Z.big_int -> cerise_instruction list option **)
 
 let dyn_typecheck_stack_args h =
   dyn_typecheck_stack h false
@@ -3720,7 +3550,7 @@ let local_offset =
 (** val prologue_return :
     machineParameters -> function_type -> Big_int_Z.big_int ->
     Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    labeled_instr list option **)
+    cerise_instruction list option **)
 
 let prologue_return h f_type nreg ret off tmp2 =
   let ret_type = let Tf (_, r0) = f_type in r0 in
@@ -3731,13 +3561,12 @@ let prologue_return h f_type nreg ret off tmp2 =
       (match l with
        | [] ->
          Some
-           (app t_check
-             (instrs ((GetB ((R tmp2), r_stk0)) :: ((GetA ((R off),
-               r_stk0)) :: ((Sub ((R off), (r tmp2), (r off))) :: ((Add ((R
-               off), (r off), (Inl
-               (Z.sub local_offset Big_int_Z.unit_big_int)))) :: ((LoadU ((R
-               tmp2), r_stk0, (r off))) :: ((StoreU ((R tmp2), (Inl
-               Big_int_Z.zero_big_int), (r ret))) :: []))))))))
+           (app t_check ((GetB ((R tmp2), r_stk0)) :: ((GetA ((R off),
+             r_stk0)) :: ((Sub ((R off), (r tmp2), (r off))) :: ((Add ((R
+             off), (r off), (Inl
+             (Z.sub local_offset Big_int_Z.unit_big_int)))) :: ((LoadU ((R
+             tmp2), r_stk0, (r off))) :: ((StoreU ((R tmp2), (Inl
+             Big_int_Z.zero_big_int), (r ret))) :: [])))))))
        | _ :: _ -> None)) (dyn_typecheck_stack_return h ret_type nreg nreg)
 
 (** val compile_basic_instr :
@@ -3790,8 +3619,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
        let jaddr = add nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
        mbind (Obj.magic (fun _ _ -> option_bind))
          (fun prepare_return_instrs -> Some
-         ((app prepare_return_instrs
-            (instrs
+         ((instrs
+            (app prepare_return_instrs
               (app ((GetB ((R nreg), r_stk0)) :: ((GetA ((R tmp2),
                 r_stk0)) :: ((Sub ((R nreg), (r nreg), (r tmp2))) :: ((LoadU
                 ((R jaddr), r_stk0, (r nreg))) :: []))))
@@ -3809,7 +3638,22 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
            map (fun x -> R x) (seq (sub nreg len_arg_type) len_arg_type)
          in
          mbind (Obj.magic (fun _ _ -> option_bind)) (fun prologue ->
-           let call = instrs (call_instrs h (R nreg) args) in
+           let call =
+             instrs
+               (call_instrs h (R nreg) args (R
+                 (add nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+                 (R
+                 (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   Big_int_Z.zero_big_int)))) (R
+                 (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) (R
+                 (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   Big_int_Z.zero_big_int)))))) (R
+                 (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))))
+           in
            let epilogue1 = (BInstr (Lea (r_stk0, (Inl
              (Big_int_Z.minus_big_int Big_int_Z.unit_big_int))))) :: []
            in
@@ -3835,11 +3679,11 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
                          Big_int_Z.unit_big_int)))) :: ((Lea (r_stk0, (Inl
                          (Big_int_Z.minus_big_int
                          Big_int_Z.unit_big_int)))) :: [])))
-                       (dyn_typecheck h ret_type0 res nreg))
+                       (instrs (dyn_typecheck h ret_type0 res nreg)))
                  | _ :: _ -> None)))
            (mbind (Obj.magic (fun _ _ -> option_bind)) (fun tcheck -> Some
-             (Obj.magic app tcheck
-               (instrs ((Lea (r_fun, (Inl (Z.of_nat i0)))) :: ((Load ((R
+             (Obj.magic instrs
+               (app tcheck ((Lea (r_fun, (Inl (Z.of_nat i0)))) :: ((Load ((R
                  nreg), r_fun)) :: [])))))
              (Obj.magic dyn_typecheck_stack_args h arg_type nreg
                (add nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
@@ -3942,6 +3786,25 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
           ((R res), (r h0))) :: []))))))),
        (sub_reg s (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
          Big_int_Z.zero_big_int))))
+     | I_segalloc ->
+       let size = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
+       let res = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
+       Some
+       ((instrs
+          (app
+            (malloc_instrs r_malloc (R size) nreg
+              (add nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+              (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                Big_int_Z.zero_big_int)))
+              (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))
+              (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                Big_int_Z.zero_big_int)))))
+              (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))) ((Mov
+            ((R res), (r nreg))) :: []))), s)
      | I_handleadd ->
        let h0 =
          sub nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -3979,9 +3842,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
 
 (** val labeled_compile_expr :
     machineParameters -> ws_module -> typeidx -> value_type list ->
-    ws_basic_instruction list -> Big_int_Z.big_int -> Big_int_Z.big_int list
-    -> Big_int_Z.big_int -> (labeled_instr list * Big_int_Z.big_int list)
-    option **)
+    ws_basic_instruction list -> Big_int_Z.big_int -> label ->
+    Big_int_Z.big_int -> (labeled_instr list * label) option **)
 
 let rec labeled_compile_expr h module0 f_typeidx f_locals il nreg nlbl ndepth =
   match il with
@@ -4095,33 +3957,32 @@ let compile h m f_typeidx f_locals il =
       min_depth)
 
 (** val compile_import_desc :
-    'a1 -> import_desc -> addr -> (addr, 'a1) gmap **)
+    symbols -> import_desc -> addr -> (addr, symbols) gmap **)
 
 let compile_import_desc s _ a =
   singletonM0
     (map_singleton (gmap_partial_alter Coq0_Nat.eq_dec nat_countable)
       (gmap_empty Coq0_Nat.eq_dec nat_countable)) a s
 
-(** val compile_import :
-    (name -> name -> 'a1) -> module_import -> addr -> (addr, 'a1) gmap **)
+(** val compile_import : module_import -> addr -> (addr, symbols) gmap **)
 
-let compile_import symbols_encode0 imp a =
-  let symbol = symbols_encode0 imp.imp_module imp.imp_name in
+let compile_import imp a =
+  let symbol = symbols_encode imp.imp_module imp.imp_name in
   compile_import_desc symbol imp.imp_desc a
 
 (** val compile_imports' :
-    (name -> name -> 'a1) -> module_import list -> addr -> (addr, 'a1) gmap **)
+    module_import list -> addr -> (addr, symbols) gmap **)
 
-let rec compile_imports' symbols_encode0 imps a =
+let rec compile_imports' imps a =
   match imps with
   | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
   | imp :: imps' ->
-    merge_mem (compile_import symbols_encode0 imp a)
-      (compile_imports' symbols_encode0 imps'
+    merge_mem (compile_import imp a)
+      (compile_imports' imps'
         (add a (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
 
 (** val compile_imports :
-    (name -> name -> 'a1) -> module_import list -> addr -> (addr, 'a1) gmap **)
+    module_import list -> addr -> (addr, symbols) gmap **)
 
 let compile_imports =
   compile_imports'
@@ -4132,15 +3993,14 @@ let compile_exp_desc desc =
   desc
 
 (** val compile_exports :
-    ('a1, 'a1) relDecision -> 'a1 countable -> (name -> name -> 'a1) ->
     module_export list -> name -> Big_int_Z.big_int -> (addr, word) gmap ->
-    ('a1, word) gmap **)
+    (symbols, word) gmap **)
 
-let rec compile_exports symbols_eq_dec symbols_countable symbols_encode0 exps module_name offset0 segment0 =
+let rec compile_exports exps module_name offset0 segment0 =
   match exps with
-  | [] -> gmap_empty symbols_eq_dec symbols_countable
+  | [] -> gmap_empty string_eq_dec string_countable
   | exp :: exps' ->
-    let s = symbols_encode0 module_name exp.modexp_name in
+    let s = symbols_encode module_name exp.modexp_name in
     let nid = compile_exp_desc exp.modexp_desc in
     let w =
       match lookup0 (gmap_lookup Coq0_Nat.eq_dec nat_countable)
@@ -4148,30 +4008,65 @@ let rec compile_exports symbols_eq_dec symbols_countable symbols_encode0 exps mo
       | Some w -> w
       | None -> Inl Big_int_Z.zero_big_int
     in
-    insert0
-      (map_insert (gmap_partial_alter symbols_eq_dec symbols_countable)) s w
-      (compile_exports symbols_eq_dec symbols_countable symbols_encode0 exps'
-        module_name offset0 segment0)
+    insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
+      s w (compile_exports exps' module_name offset0 segment0)
 
-(** val prologue_function : regName -> labeled_instr list **)
+(** val load_args :
+    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> result_type -> cerise_instruction list **)
 
-let prologue_function tmp =
-  instrs ((Mov (tmp, (Inr PC))) :: ((Lea (tmp, (Inl (Big_int_Z.minus_big_int
-    Big_int_Z.unit_big_int)))) :: ((Load (tmp, tmp)) :: ((Load (r_fun,
-    tmp)) :: ((Lea (tmp, (Inl Big_int_Z.unit_big_int))) :: ((Load (r_mem,
-    tmp)) :: ((Lea (tmp, (Inl Big_int_Z.unit_big_int))) :: ((Load (r_glob,
-    tmp)) :: []))))))))
+let rec load_args h arg tmp2 tmp3 tf =
+  let rarg = R arg in
+  let rtmp2 = R tmp2 in
+  (match tf with
+   | [] -> []
+   | t0 :: tf' ->
+     app ((LoadU (rtmp2, rarg, (Inl (Big_int_Z.minus_big_int
+       Big_int_Z.unit_big_int)))) :: ((Lea (rarg, (Inl
+       (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: []))
+       (app (dyn_typecheck h t0 tmp2 tmp3)
+         (app ((StoreU (r_stk0, (Inl Big_int_Z.zero_big_int), (Inr
+           rtmp2))) :: []) (load_args h arg tmp2 tmp3 tf'))))
+
+(** val prologue_function :
+    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> function_type -> labeled_instr list **)
+
+let prologue_function h tmp tmp2 tmp3 tf =
+  let rtmp = R tmp in
+  let Tf (rt, _) = tf in
+  instrs
+    (app ((Mov (rtmp, (Inr PC))) :: ((Lea (rtmp, (Inl
+      (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: ((Load (rtmp,
+      rtmp)) :: ((Load (r_fun, rtmp)) :: ((Lea (rtmp, (Inl
+      Big_int_Z.unit_big_int))) :: ((Load (r_mem, rtmp)) :: ((Lea (rtmp, (Inl
+      Big_int_Z.unit_big_int))) :: ((Load (r_glob, rtmp)) :: ((Lea (rtmp,
+      (Inl Big_int_Z.unit_big_int))) :: ((Load (r_malloc,
+      rtmp)) :: []))))))))))
+      (app
+        (match rt with
+         | [] -> []
+         | _ :: _ ->
+           (LoadU (rtmp, r_stk0, (Inl (Big_int_Z.minus_big_int
+             Big_int_Z.unit_big_int)))) :: ((Lea (r_stk0, (Inl
+             (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: []))
+        (load_args h tmp tmp2 tmp3 rt)))
 
 (** val compile_expr_mod :
     machineParameters -> ws_module -> typeidx -> value_type list ->
-    ws_basic_instruction list -> Big_int_Z.big_int -> Big_int_Z.big_int list
-    -> Big_int_Z.big_int -> (labeled_instr list * Big_int_Z.big_int list)
-    option **)
+    ws_basic_instruction list -> Big_int_Z.big_int -> label ->
+    Big_int_Z.big_int -> (labeled_instr list * label) option **)
 
 let compile_expr_mod h module0 f_typeidx f_locals il nreg nlbl ndepth =
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
     let (body, state) = pat in
-    Some ((app (prologue_function (R nreg)) body), state))
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun f_type -> Some
+      ((app
+         (prologue_function h nreg
+           (add nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+           (add nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+             Big_int_Z.zero_big_int))) f_type) body), state))
+      (Obj.magic get_type module0 f_typeidx))
     (labeled_compile_expr h module0 f_typeidx f_locals il nreg nlbl ndepth)
 
 (** val compile_expr :
@@ -4179,15 +4074,12 @@ let compile_expr_mod h module0 f_typeidx f_locals il nreg nlbl ndepth =
     ws_basic_instruction list -> cerise_instruction list option **)
 
 let compile_expr h m f_typeidx f_locals f_body =
-  let min_reg = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-  in
   let min_lbl = [] in
   let min_depth = Big_int_Z.zero_big_int in
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
     let (labeled_instrs, _) = pat in branch_labels labeled_instrs)
-    (Obj.magic compile_expr_mod h m f_typeidx f_locals f_body min_reg min_lbl
-      min_depth)
+    (Obj.magic compile_expr_mod h m f_typeidx f_locals f_body base_reg
+      min_lbl min_depth)
 
 (** val compile_func :
     machineParameters -> ws_module -> module_func -> word list option **)
@@ -4229,9 +4121,9 @@ let rec compile_funcs' h m funcs offset0 =
 let compile_funcs h m offset_start =
   let offset_local_fun = length m.mod_funcs in
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
-    let (caps, mem) = pat in
+    let (caps, mem0) = pat in
     Some
-    (list_to_addr_gmap (app (map (fun c -> Inr c) caps) mem) offset_start))
+    (list_to_addr_gmap (app (map (fun c -> Inr c) caps) mem0) offset_start))
     (Obj.magic compile_funcs' h m m.mod_funcs
       (add offset_start offset_local_fun))
 
@@ -4239,43 +4131,332 @@ let compile_funcs h m offset_start =
     Big_int_Z.big_int -> Big_int_Z.big_int -> (addr, word) gmap **)
 
 let frame_segment addr_fun len_fun =
-  let placeholder = Inl Big_int_Z.zero_big_int in
+  let placeholder = Inr ((((O, Global), Big_int_Z.zero_big_int),
+    Big_int_Z.zero_big_int), Big_int_Z.zero_big_int)
+  in
   let cap_fun = Inr ((((RO, Global), addr_fun), (add addr_fun len_fun)),
     addr_fun)
   in
-  list_to_addr_gmap (cap_fun :: (placeholder :: (placeholder :: [])))
+  list_to_addr_gmap
+    (cap_fun :: (placeholder :: (placeholder :: (placeholder :: []))))
     Big_int_Z.zero_big_int
 
-(** val compile_module :
-    machineParameters -> ('a1, 'a1) relDecision -> 'a1 countable -> (name ->
-    name -> 'a1) -> ws_module -> name -> 'a1 cerise_component option **)
+(** val get_start :
+    ws_module -> (addr, word) gmap -> Big_int_Z.big_int -> word option option **)
 
-let compile_module h symbols_eq_dec symbols_countable symbols_encode0 m module_name =
+let get_start m segment0 offset0 =
+  match m.mod_start with
+  | Some mstart ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun w -> Some (Some w))
+      (lookup0 (Obj.magic gmap_lookup Coq0_Nat.eq_dec nat_countable)
+        (add offset0 (modstart_func mstart)) segment0)
+  | None -> Some None
+
+(** val compile_module :
+    machineParameters -> ws_module -> name -> cerise_component option **)
+
+let compile_module h m module_name =
   let offset_imports = length m.mod_imports in
-  let offset_frame = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-  in
-  let offset_local_funs = add offset_imports offset_frame in
-  let compiled_imports =
-    compile_imports symbols_encode0 m.mod_imports offset_frame
-  in
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_segment -> Some
-    { segment =
-    (merge_mem (frame_segment offset_frame (length m.mod_funcs))
-      compiled_segment); imports = compiled_imports; exports =
-    (compile_exports symbols_eq_dec symbols_countable symbols_encode0
-      m.mod_exports module_name offset_local_funs compiled_segment) })
+  let offset_local_funs = add offset_imports base_reg in
+  let compiled_imports = compile_imports m.mod_imports base_reg in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_segment ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun start_word ->
+      let final_segment =
+        merge_mem (frame_segment base_reg (length m.mod_funcs))
+          compiled_segment
+      in
+      let size_component0 =
+        add
+          (length (gmap_to_list Coq0_Nat.eq_dec nat_countable final_segment))
+          (length
+            (gmap_to_list Coq0_Nat.eq_dec nat_countable compiled_imports))
+      in
+      Some { segment = final_segment; imports = compiled_imports; exports =
+      (compile_exports m.mod_exports module_name offset_local_funs
+        compiled_segment); submodules = ((Big_int_Z.zero_big_int,
+      size_component0) :: []); main = start_word })
+      (Obj.magic get_start m compiled_segment offset_local_funs))
     (Obj.magic compile_funcs h m offset_local_funs)
 
-(** val bank_example_call : ws_basic_instruction list **)
+(** val map_compose :
+    'a4 fMap -> (__ -> ('a1, __, 'a4) lookup) -> (__ -> 'a4 empty) -> (__ ->
+    ('a1, __, 'a4) partialAlter) -> 'a4 oMap -> 'a4 merge -> (__ -> ('a1, __,
+    'a4) finMapToList) -> ('a1, 'a1) relDecision -> 'a5 fMap -> (__ -> ('a2,
+    __, 'a5) lookup) -> (__ -> 'a5 empty) -> (__ -> ('a2, __, 'a5)
+    partialAlter) -> 'a5 oMap -> 'a5 merge -> (__ -> ('a2, __, 'a5)
+    finMapToList) -> ('a2, 'a2) relDecision -> 'a5 -> 'a4 -> 'a4 **)
 
-let bank_example_call =
+let map_compose _ _ _ _ h4 _ _ _ _ h8 _ _ _ _ _ _ m n0 =
+  omap h4 (fun i -> lookup0 (h8 __) i m) n0
+
+(** val resolve_imports :
+    (addr, symbols) gmap -> (symbols, word) gmap -> (addr, word) gmap ->
+    (addr, word) gmap **)
+
+let resolve_imports imp exp ms =
+  union0
+    (map_union
+      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+    (map_compose
+      (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ -> gmap_lookup Coq0_Nat.eq_dec nat_countable))
+      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+      (Obj.magic (fun _ -> gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ _ -> gmap_omap Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable))
+      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+      Coq0_Nat.eq_dec
+      (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+      (Obj.magic (fun _ -> gmap_lookup string_eq_dec string_countable))
+      (fun _ -> gmap_empty string_eq_dec string_countable)
+      (Obj.magic (fun _ -> gmap_partial_alter string_eq_dec string_countable))
+      (Obj.magic (fun _ _ -> gmap_omap string_eq_dec string_countable))
+      (Obj.magic (fun _ _ _ -> gmap_merge string_eq_dec string_countable))
+      (Obj.magic (fun _ -> gmap_to_list string_eq_dec string_countable))
+      string_eq_dec exp (Obj.magic imp)) ms
+
+(** val size_component : cerise_component -> Big_int_Z.big_int **)
+
+let size_component comp =
+  add (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.segment))
+    (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.imports))
+
+(** val shift_cap : cap -> Big_int_Z.big_int -> cap **)
+
+let shift_cap c n0 =
+  let (p0, a) = c in
+  let (p1, e) = p0 in
+  let (p2, b) = p1 in (((p2, (add b n0)), (add e n0)), (add a n0))
+
+(** val shift_segment :
+    (addr, word) gmap -> Big_int_Z.big_int -> (addr, word) gmap **)
+
+let shift_segment m n0 =
+  let shift_addr =
+    kmap (fun _ ->
+      map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+      (fun a -> add a n0) m
+  in
+  fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
+    (fun w ->
+    match w with
+    | Inl _ -> w
+    | Inr y ->
+      let (y0, a) = y in
+      let (y1, e) = y0 in
+      let (y2, b) = y1 in
+      let (p, g) = y2 in Inr ((((p, g), (add b n0)), (add e n0)), (add a n0)))
+    (Obj.magic shift_addr)
+
+(** val shift_component :
+    cerise_component -> Big_int_Z.big_int -> cerise_component **)
+
+let shift_component comp n0 =
+  let main_word =
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
+      (match main_word with
+       | Inl z0 -> Inl z0
+       | Inr c -> Inr (shift_cap c n0))) comp.main
+  in
+  { segment = (shift_segment comp.segment n0); imports =
+  (kmap (fun _ ->
+    map_insert (Obj.magic gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+    (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
+    (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
+    (fun a -> add a n0) comp.imports); exports =
+  (fmap (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+    (fun w ->
+    match w with
+    | Inl _ -> w
+    | Inr y ->
+      let (y0, a) = y in
+      let (y1, e) = y0 in
+      let (y2, b) = y1 in
+      let (p, g) = y2 in Inr ((((p, g), (add b n0)), (add e n0)), (add a n0)))
+    comp.exports); submodules =
+  (map (fun a -> ((add (fst a) n0), (add (snd a) n0))) comp.submodules);
+  main = main_word }
+
+(** val resolve_main :
+    cerise_component -> cerise_component -> word option option **)
+
+let resolve_main comp_l comp_r =
+  match comp_l.main with
+  | Some m -> (match comp_r.main with
+               | Some _ -> None
+               | None -> Some (Some m))
+  | None -> Some comp_r.main
+
+(** val link :
+    cerise_component -> cerise_component -> cerise_component option **)
+
+let link comp_l comp_r =
+  let comp_r0 = shift_component comp_r (size_component comp_l) in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
+    { segment =
+    (union0
+      (map_union
+        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+      (resolve_imports comp_l.imports comp_r0.exports comp_l.segment)
+      (resolve_imports comp_r0.imports comp_l.exports comp_r0.segment));
+    imports =
+    (filter0 (fun _ ->
+      map_filter (gmap_to_list Coq0_Nat.eq_dec nat_countable)
+        (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+        (gmap_empty Coq0_Nat.eq_dec nat_countable))
+      (uncurry_dec (fun _ y ->
+        option_eq_None_dec
+          (lookup0 (gmap_lookup string_eq_dec string_countable) y
+            (union0
+              (map_union
+                (Obj.magic (fun _ _ _ ->
+                  gmap_merge string_eq_dec string_countable))) comp_l.exports
+              comp_r0.exports))))
+      (union0
+        (map_union
+          (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+        comp_l.imports comp_r0.imports)); exports =
+    (union0
+      (map_union
+        (Obj.magic (fun _ _ _ -> gmap_merge string_eq_dec string_countable)))
+      comp_l.exports comp_r0.exports); submodules =
+    (app comp_l.submodules comp_r0.submodules); main = main_word })
+    (Obj.magic resolve_main comp_l comp_r0)
+
+type reg0 = (regName, word) gmap
+
+type mem = (addr, word) gmap
+
+(** val reg_insert : (regName, word, (regName, word) gmap empty) insert **)
+
+let reg_insert =
+  map_insert (gmap_partial_alter reg_eq_dec reg_countable)
+
+(** val load :
+    machineParameters -> cerise_component -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> reg0 * mem **)
+
+let load h prog size_safe_mem size_lin_mem size_globals start_stack end_stack =
+  let allocate_mem = fun n0 -> repeat (Inl Big_int_Z.zero_big_int) n0 in
+  let size_prog = size_component prog in
+  let safe_mem =
+    let bm = add (length malloc_subroutine_instrs) size_prog in
+    let em = add bm size_safe_mem in
+    let am = add bm (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
+    let malloc_cap = ((((RW, Global), bm), em), am) in
+    app (encodeInstrsW h malloc_subroutine_instrs)
+      (app ((Inr malloc_cap) :: []) (allocate_mem size_safe_mem))
+  in
+  let cap_safe_mem = Inr ((((E, Global), size_prog),
+    (add size_prog (length safe_mem))), size_prog)
+  in
+  let lin_mem = allocate_mem size_lin_mem in
+  let globals = allocate_mem size_globals in
+  let allocated_datas =
+    concat (map (fun _ -> app lin_mem globals) prog.submodules)
+  in
+  let (updated_caps, _) =
+    foldl (fun acc a ->
+      let (mem_map, n0) = acc in
+      let (a0, _) = a in
+      let a_malloc =
+        add a0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+      in
+      ((insert0
+         (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
+         a_malloc cap_safe_mem mem_map),
+      (add n0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))
+      (prog.segment, Big_int_Z.zero_big_int) prog.submodules
+  in
+  let boot_code =
+    encodeInstrsW h ((StoreU (STK, (Inl Big_int_Z.zero_big_int), (Inr (R
+      (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((Lea ((R
+      (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inl
+      Big_int_Z.unit_big_int))) :: ((StoreU (STK, (Inl
+      Big_int_Z.zero_big_int), (Inr STK))) :: ((Jmp (R
+      Big_int_Z.zero_big_int)) :: []))))
+  in
+  let len_boot = length boot_code in
+  let end_code = encodeInstrsW h (Halt :: []) in
+  let heap =
+    union0
+      (map_union
+        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
+      (list_to_addr_gmap boot_code Big_int_Z.zero_big_int)
+      (shift_segment
+        (union0
+          (map_union
+            (Obj.magic (fun _ _ _ ->
+              gmap_merge Coq0_Nat.eq_dec nat_countable)))
+          (list_to_addr_gmap (app safe_mem (app allocated_datas end_code))
+            size_prog) updated_caps) len_boot)
+  in
+  let len_heap = length (gmap_to_list Coq0_Nat.eq_dec nat_countable heap) in
+  let main_cap =
+    match prog.main with
+    | Some w ->
+      (match w with
+       | Inl z0 -> Inl z0
+       | Inr c -> Inr (shift_cap c len_boot))
+    | None -> Inl Big_int_Z.zero_big_int
+  in
+  let end_cap = Inr ((((RX, Global),
+    (sub len_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))),
+    len_heap), (sub len_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+  in
+  let pc_cap = Inr ((((RX, Global), Big_int_Z.zero_big_int), len_boot),
+    Big_int_Z.zero_big_int)
+  in
+  let stk_cap = Inr ((((URWLX, Directed), start_stack), end_stack),
+    start_stack)
+  in
+  let regfile =
+    insert0 reg_insert (R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+      end_cap
+      (insert0 reg_insert (R Big_int_Z.zero_big_int) main_cap
+        (insert0 reg_insert STK stk_cap
+          (insert0 reg_insert PC pc_cap (gmap_empty reg_eq_dec reg_countable))))
+  in
+  (regfile, heap)
+
+(** val pp_segment : cerise_component option -> (addr * word) list option **)
+
+let pp_segment = function
+| Some p0 ->
+  Some (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.segment))
+| None -> None
+
+(** val pp_imports :
+    cerise_component option -> (addr * symbols) list option **)
+
+let pp_imports = function
+| Some p0 -> Some (gmap_to_list Coq0_Nat.eq_dec nat_countable p0.imports)
+| None -> None
+
+(** val pp_exports :
+    cerise_component option -> (symbols * word) list option **)
+
+let pp_exports = function
+| Some p0 -> Some (gmap_to_list string_eq_dec string_countable p0.exports)
+| None -> None
+
+(** val bank_prog : ws_basic_instruction list **)
+
+let bank_prog =
   let account_ptr = Big_int_Z.zero_big_int in
   let account_id = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
   let account_balance = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int)
   in
-  (I_get_local account_ptr) :: ((I_const (Val_int
+  (I_const (Val_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+  Big_int_Z.zero_big_int)))))))))) :: (I_segalloc :: ((I_set_local
+  account_ptr) :: ((I_get_local account_ptr) :: ((I_const (Val_int
   Big_int_Z.zero_big_int)) :: ((I_const (Val_int (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   Big_int_Z.zero_big_int)))))) :: (I_slice :: ((I_set_local
@@ -4291,21 +4472,31 @@ let bank_example_call =
   Big_int_Z.zero_big_int)) :: ((I_segstore T_int) :: ((I_get_local
   account_id) :: ((I_call Big_int_Z.zero_big_int) :: (I_drop :: ((I_get_local
   account_balance) :: ((I_segload
-  T_int) :: (I_return :: []))))))))))))))))))))))
+  T_int) :: (I_return :: [])))))))))))))))))))))))))
 
-(** val bank_example_call_module : ws_module **)
+(** val bank_tf : function_type **)
 
-let bank_example_call_module =
-  { mod_types = ((Tf ((T_handle :: []), (T_int :: []))) :: ((Tf
-    ((T_int :: []), (T_int :: []))) :: [])); mod_funcs = ({ modfunc_type =
-    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int); modfunc_locals = [];
-    modfunc_body = bank_example_call } :: []); mod_imports = ({ imp_module =
-    ('E'::('n'::('v'::[]))); imp_name = ('a'::('d'::('v'::[]))); imp_desc =
-    Big_int_Z.zero_big_int } :: []); mod_exports = [] }
+let bank_tf =
+  Tf ([], (T_int :: []))
 
-(** val env_adv : ws_basic_instruction list **)
+(** val adv_tf : function_type **)
 
-let env_adv =
+let adv_tf =
+  Tf ((T_handle :: []), (T_int :: []))
+
+(** val bank_module : ws_module **)
+
+let bank_module =
+  { mod_types = (bank_tf :: (adv_tf :: [])); mod_funcs = ({ modfunc_type =
+    Big_int_Z.zero_big_int; modfunc_locals = []; modfunc_body =
+    bank_prog } :: []); mod_start = (Some Big_int_Z.zero_big_int);
+    mod_imports = ({ imp_module = ('E'::('n'::('v'::[]))); imp_name =
+    ('a'::('d'::('v'::[]))); imp_desc = (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int) } :: []); mod_exports = [] }
+
+(** val env_adv_prog : ws_basic_instruction list **)
+
+let env_adv_prog =
   (I_get_local Big_int_Z.zero_big_int) :: (I_drop :: ((I_const (Val_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -4316,179 +4507,86 @@ let env_adv =
 (** val env_module : ws_module **)
 
 let env_module =
-  { mod_types = ((Tf ((T_handle :: []), (T_int :: []))) :: []); mod_funcs =
-    ({ modfunc_type = Big_int_Z.zero_big_int; modfunc_locals = [];
-    modfunc_body = env_adv } :: []); mod_imports = []; mod_exports =
+  { mod_types = (adv_tf :: []); mod_funcs = ({ modfunc_type =
+    Big_int_Z.zero_big_int; modfunc_locals = []; modfunc_body =
+    env_adv_prog } :: []); mod_start = None; mod_imports = []; mod_exports =
     ({ modexp_name = ('a'::('d'::('v'::[]))); modexp_desc =
     Big_int_Z.zero_big_int } :: []) }
 
-(** val map_compose :
-    'a4 fMap -> (__ -> ('a1, __, 'a4) lookup) -> (__ -> 'a4 empty) -> (__ ->
-    ('a1, __, 'a4) partialAlter) -> 'a4 oMap -> 'a4 merge -> (__ -> ('a1, __,
-    'a4) finMapToList) -> ('a1, 'a1) relDecision -> 'a5 fMap -> (__ -> ('a2,
-    __, 'a5) lookup) -> (__ -> 'a5 empty) -> (__ -> ('a2, __, 'a5)
-    partialAlter) -> 'a5 oMap -> 'a5 merge -> (__ -> ('a2, __, 'a5)
-    finMapToList) -> ('a2, 'a2) relDecision -> 'a5 -> 'a4 -> 'a4 **)
-
-let map_compose _ _ _ _ h4 _ _ _ _ h8 _ _ _ _ _ _ m n0 =
-  omap h4 (fun i -> lookup0 (h8 __) i m) n0
-
-(** val resolve_imports :
-    ('a1, 'a1) relDecision -> 'a1 countable -> (addr, 'a1) gmap -> ('a1,
-    word) gmap -> (addr, word) gmap -> (addr, word) gmap **)
-
-let resolve_imports symbols_eq_dec symbols_countable imp exp ms =
-  union0
-    (map_union
-      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-    (map_compose
-      (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
-      (Obj.magic (fun _ -> gmap_lookup Coq0_Nat.eq_dec nat_countable))
-      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
-      (Obj.magic (fun _ -> gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-      (Obj.magic (fun _ _ -> gmap_omap Coq0_Nat.eq_dec nat_countable))
-      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable))
-      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
-      Coq0_Nat.eq_dec
-      (Obj.magic (fun _ _ -> gmap_fmap symbols_eq_dec symbols_countable))
-      (Obj.magic (fun _ -> gmap_lookup symbols_eq_dec symbols_countable))
-      (fun _ -> gmap_empty symbols_eq_dec symbols_countable)
-      (Obj.magic (fun _ ->
-        gmap_partial_alter symbols_eq_dec symbols_countable))
-      (Obj.magic (fun _ _ -> gmap_omap symbols_eq_dec symbols_countable))
-      (Obj.magic (fun _ _ _ -> gmap_merge symbols_eq_dec symbols_countable))
-      (Obj.magic (fun _ -> gmap_to_list symbols_eq_dec symbols_countable))
-      symbols_eq_dec exp (Obj.magic imp)) ms
-
-(** val size_component :
-    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component ->
-    Big_int_Z.big_int **)
-
-let size_component _ _ comp =
-  add (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.segment))
-    (length (gmap_to_list Coq0_Nat.eq_dec nat_countable comp.imports))
-
-(** val link :
-    ('a1, 'a1) relDecision -> 'a1 countable -> 'a1 cerise_component -> 'a1
-    cerise_component -> 'a1 cerise_component **)
-
-let link symbols_eq_dec symbols_countable comp_l comp_r =
-  let comp_r0 =
-    let n0 = size_component symbols_eq_dec symbols_countable comp_l in
-    { segment = (shift_mem comp_r.segment n0); imports =
-    (kmap (fun _ ->
-      map_insert (Obj.magic gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-      (fun _ -> gmap_empty Coq0_Nat.eq_dec nat_countable)
-      (Obj.magic (fun _ -> gmap_to_list Coq0_Nat.eq_dec nat_countable))
-      (fun a -> add a n0) comp_r.imports); exports =
-    (fmap (Obj.magic (fun _ _ -> gmap_fmap symbols_eq_dec symbols_countable))
-      (fun w ->
-      match w with
-      | Inl _ -> w
-      | Inr y ->
-        let (y0, a) = y in
-        let (y1, e) = y0 in
-        let (y2, b) = y1 in
-        let (p, g) = y2 in
-        Inr ((((p, g), (add b n0)), (add e n0)), (add a n0))) comp_r.exports) }
-  in
-  { segment =
-  (union0
-    (map_union
-      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-    (resolve_imports symbols_eq_dec symbols_countable comp_l.imports
-      comp_r0.exports comp_l.segment)
-    (resolve_imports symbols_eq_dec symbols_countable comp_r0.imports
-      comp_l.exports comp_r0.segment)); imports =
-  (filter0 (fun _ ->
-    map_filter (gmap_to_list Coq0_Nat.eq_dec nat_countable)
-      (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-      (gmap_empty Coq0_Nat.eq_dec nat_countable))
-    (uncurry_dec (fun _ y ->
-      option_eq_None_dec
-        (lookup0 (gmap_lookup symbols_eq_dec symbols_countable) y
-          (union0
-            (map_union
-              (Obj.magic (fun _ _ _ ->
-                gmap_merge symbols_eq_dec symbols_countable))) comp_l.exports
-            comp_r0.exports))))
-    (union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      comp_l.imports comp_r0.imports)); exports =
-  (union0
-    (map_union
-      (Obj.magic (fun _ _ _ -> gmap_merge symbols_eq_dec symbols_countable)))
-    comp_l.exports comp_r0.exports) }
-
-type symbols = name
-
-(** val symbols_encode : name -> name -> symbols **)
-
-let symbols_encode mod_name imp_name0 =
-  append (append mod_name ('.'::[])) imp_name0
-
-(** val bank_component :
-    machineParameters -> symbols cerise_component option **)
+(** val bank_component : machineParameters -> cerise_component option **)
 
 let bank_component h =
-  compile_module h string_eq_dec string_countable symbols_encode
-    bank_example_call_module ('B'::('a'::('n'::('k'::[]))))
+  compile_module h bank_module ('B'::('a'::('n'::('k'::[]))))
 
-(** val env_component :
-    machineParameters -> symbols cerise_component option **)
+(** val env_component : machineParameters -> cerise_component option **)
 
 let env_component h =
-  compile_module h string_eq_dec string_countable symbols_encode env_module
-    ('E'::('n'::('v'::[])))
+  compile_module h env_module ('E'::('n'::('v'::[])))
 
-(** val linked_bank : machineParameters -> symbols cerise_component option **)
+(** val linked_bank : machineParameters -> cerise_component option **)
 
 let linked_bank h =
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun bank ->
-    mbind (Obj.magic (fun _ _ -> option_bind)) (fun env -> Some
-      (link string_eq_dec string_countable bank env)) (env_component h))
-    (bank_component h)
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun env -> link bank env)
+      (env_component h)) (bank_component h)
 
 (** val bank_example :
     ((ws_module * typeidx) * value_type list) * ws_basic_instruction list **)
 
 let bank_example =
-  (((bank_example_call_module, (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)), []), bank_example_call)
+  (((bank_module, (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), []),
+    bank_prog)
 
 (** val adv_example :
     ((ws_module * typeidx) * value_type list) * ws_basic_instruction list **)
 
 let adv_example =
-  (((env_module, Big_int_Z.zero_big_int), []), env_adv)
+  (((env_module, Big_int_Z.zero_big_int), []), env_adv_prog)
 
-(** val linked_example : machineParameters -> (addr * word) list **)
+(** val linked_bank_example : machineParameters -> (addr * word) list **)
 
-let linked_example h =
+let linked_bank_example h =
   match linked_bank h with
   | Some p ->
     sort
       (gmap_to_list Coq0_Nat.eq_dec nat_countable
-        (shift_mem p.segment (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (shift_segment p.segment (Big_int_Z.succ_big_int
           (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
           (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))))
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)))))))))
   | None ->
     gmap_to_list Coq0_Nat.eq_dec nat_countable
       (gmap_empty Coq0_Nat.eq_dec nat_countable)
 
-(** val linked_example_bank : machineParameters -> (addr * word) list **)
+(** val loaded_bank_example :
+    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    (regName * word) list * (addr * word) list **)
 
-let linked_example_bank h =
-  match bank_component h with
+let loaded_bank_example h start_stack end_stack =
+  match linked_bank h with
   | Some p ->
-    sort
-      (gmap_to_list Coq0_Nat.eq_dec nat_countable
-        (shift_mem p.segment (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))))
-  | None ->
-    gmap_to_list Coq0_Nat.eq_dec nat_countable
-      (gmap_empty Coq0_Nat.eq_dec nat_countable)
+    let (regs, mem0) =
+      load h p (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) start_stack end_stack
+    in
+    ((gmap_to_list reg_eq_dec reg_countable regs),
+    (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0)))
+  | None -> ([], [])
