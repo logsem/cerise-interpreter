@@ -3,7 +3,8 @@
 cp ../../cerise-compilation/extract.ml ./lib/extract.ml
 make no-warning
 ./compile
-./interactive --regfile asm-toys/bank_loaded.reg asm-toys/bank_loaded.s
+# ./interactive --regfile asm-toys/bank_loaded.reg asm-toys/bank_loaded.s
+./interactive --regfile asm-toys/stack_loaded.reg asm-toys/stack_loaded.s
 # ./compile > l.s
 # ./interactive --regfile tests/test_files/l.reg l.s
 # ./compile_bank > asm-toys/bank_mod.s

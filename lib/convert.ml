@@ -48,6 +48,12 @@ let translate_instr (i : cerise_instruction) : Ast.machine_op =
   | Sub (r, c1, c2) -> Ast.Sub (translate_regname r,
                                 translate_sum c1,
                                 translate_sum c2)
+  | Mul (r, c1, c2) -> Ast.Mul (translate_regname r,
+                                translate_sum c1,
+                                translate_sum c2)
+  | Rem (r, c1, c2) -> Ast.Rem (translate_regname r,
+                                translate_sum c1,
+                                translate_sum c2)
   | Lt0 (r, c1, c2) -> Ast.Lt (translate_regname r,
                               translate_sum c1,
                               translate_sum c2)
@@ -99,6 +105,8 @@ let tr_machine_op (s : Ast.machine_op) : cerise_instruction =
   | Ast.Store (r, c) -> Store (tr_reg r, tr_sum c)
   | Ast.Add (r, c1, c2) -> Add (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Sub (r, c1, c2) -> Sub (tr_reg r, tr_sum c1, tr_sum c2)
+  | Ast.Mul (r, c1, c2) -> Mul (tr_reg r, tr_sum c1, tr_sum c2)
+  | Ast.Rem (r, c1, c2) -> Rem (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Lt (r, c1, c2) -> Lt0 (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Lea (r, c) -> Lea (tr_reg r, tr_sum c)
   | Ast.Restrict (r, c) -> Restrict (tr_reg r, tr_sum c)

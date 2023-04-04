@@ -228,6 +228,16 @@ let encode_machine_op (s : machine_op): Z.t =
   (* TODO I would prefer to have Nop encoded as 0 *)
   | Nop -> ~$0x48
 
+  | Mul (r, c1, c2) -> begin (* 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51 *)
+      let (opc, c_enc) = two_const_convert ~$0x49 c1 c2 in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+  | Rem (r, c1, c2) -> begin (* 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a *)
+      let (opc, c_enc) = two_const_convert ~$0x52 c1 c2 in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+
+
 let decode_machine_op (i : Z.t) : machine_op =
   let dec_perm =
     fun c_enc -> let (p,g) = (decode_perm_pair c_enc) in Perm (p,g)
@@ -638,4 +648,88 @@ let decode_machine_op (i : Z.t) : machine_op =
   (* Nop *)
   if opc = ~$0x48
   then Nop
+  else
+
+  (* Mul *)
+  if ~$0x48 < opc && opc < ~$0x4c
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = Register (decode_reg c1_enc) in
+    let c2 = begin
+      if opc = ~$0x49 then Register (decode_reg c2_enc) else
+      if opc = ~$0x4a then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Mul (r, c1, c2)
+  end else
+  if ~$0x4b < opc && opc < ~$0x4f
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (Const c1_enc) in
+    let c2 = begin
+      if opc = ~$0x4c then Register (decode_reg c2_enc) else
+      if opc = ~$0x4d then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Mul (r, c1, c2)
+  end else
+  if ~$0x4e < opc && opc < ~$0x52
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (dec_perm c1_enc) in
+    let c2 = begin
+      if opc = ~$0x4f then Register (decode_reg c2_enc) else
+      if opc = ~$0x50 then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Mul (r, c1, c2)
+  end else
+
+  (* Rem *)
+  if ~$0x51 < opc && opc < ~$0x55
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = Register (decode_reg c1_enc) in
+    let c2 = begin
+      if opc = ~$0x52 then Register (decode_reg c2_enc) else
+      if opc = ~$0x53 then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end else
+  if ~$0x54 < opc && opc < ~$0x58
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (Const c1_enc) in
+    let c2 = begin
+      if opc = ~$0x55 then Register (decode_reg c2_enc) else
+      if opc = ~$0x56 then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end else
+  if ~$0x57 < opc && opc < ~$0x5b
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (dec_perm c1_enc) in
+    let c2 = begin
+      if opc = ~$0x58 then Register (decode_reg c2_enc) else
+      if opc = ~$0x59 then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end
+
   else raise @@ DecodeException "Error decoding instruction: unrecognized opcode"
