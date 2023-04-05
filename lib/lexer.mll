@@ -32,7 +32,6 @@ rule token = parse
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
 (* machine_op *)
-| "nop" { NOP }
 | "jmp" { JMP }
 | "jnz" { JNZ }
 | "mov" { MOVE }
@@ -42,6 +41,7 @@ rule token = parse
 | "sub" { SUB }
 | "mul" { MUL }
 | "rem" { REM }
+| "div" { DIV }
 | "lt" { LT }
 | "lea" { LEA }
 | "restrict" { RESTRICT }

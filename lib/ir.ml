@@ -18,7 +18,6 @@ exception WordException of word
 
 type machine_op
   =
-  | Nop
   | Jmp of regname
   | Jnz of regname * regname
   | Move of regname * reg_or_const
@@ -28,6 +27,7 @@ type machine_op
   | Sub of regname * reg_or_const * reg_or_const
   | Mul of regname * reg_or_const * reg_or_const
   | Rem of regname * reg_or_const * reg_or_const
+  | Div of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
@@ -138,6 +138,9 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | Rem (r, c1, c2) -> Ast.Rem (translate_regname r,
                                 translate_reg_or_const envr c1,
                                 translate_reg_or_const envr c2)
+  | Div (r, c1, c2) -> Ast.Div (translate_regname r,
+                                translate_reg_or_const envr c1,
+                                translate_reg_or_const envr c2)
   | Lt (r, c1, c2) -> Ast.Lt (translate_regname r,
                               translate_reg_or_const envr c1,
                               translate_reg_or_const envr c2)
@@ -162,7 +165,6 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | PromoteU r -> Ast.PromoteU (translate_regname r)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
-  | Nop -> Ast.Nop
   | Word w -> raise (WordException w)
   | Lbl s -> raise (UnknownLabelException s)
 

@@ -54,7 +54,10 @@ let translate_instr (i : cerise_instruction) : Ast.machine_op =
   | Rem (r, c1, c2) -> Ast.Rem (translate_regname r,
                                 translate_sum c1,
                                 translate_sum c2)
-  | Lt0 (r, c1, c2) -> Ast.Lt (translate_regname r,
+  | Div (r, c1, c2) -> Ast.Div (translate_regname r,
+                                translate_sum c1,
+                                translate_sum c2)
+  | Lt (r, c1, c2) -> Ast.Lt (translate_regname r,
                               translate_sum c1,
                               translate_sum c2)
   | Lea (r, c) -> Ast.Lea (translate_regname r, translate_sum c)
@@ -78,7 +81,6 @@ let translate_instr (i : cerise_instruction) : Ast.machine_op =
   | PromoteU r -> Ast.PromoteU (translate_regname r)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
-  | Nop -> Ast.Nop
 
 let tr_reg (r : Ast.regname) : regName =
   match r with
@@ -107,7 +109,8 @@ let tr_machine_op (s : Ast.machine_op) : cerise_instruction =
   | Ast.Sub (r, c1, c2) -> Sub (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Mul (r, c1, c2) -> Mul (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Rem (r, c1, c2) -> Rem (tr_reg r, tr_sum c1, tr_sum c2)
-  | Ast.Lt (r, c1, c2) -> Lt0 (tr_reg r, tr_sum c1, tr_sum c2)
+  | Ast.Div (r, c1, c2) -> Div (tr_reg r, tr_sum c1, tr_sum c2)
+  | Ast.Lt (r, c1, c2) -> Lt (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Lea (r, c) -> Lea (tr_reg r, tr_sum c)
   | Ast.Restrict (r, c) -> Restrict (tr_reg r, tr_sum c)
   | Ast.SubSeg (r, c1, c2) -> Subseg (tr_reg r, tr_sum c1, tr_sum c2)
@@ -122,7 +125,6 @@ let tr_machine_op (s : Ast.machine_op) : cerise_instruction =
   | Ast.PromoteU r -> PromoteU (tr_reg r)
   | Ast.Fail -> Fail
   | Ast.Halt -> Halt
-  | Ast.Nop -> Nop
 
 let tr_perm (p : Ast.perm) : perm =
   match p with

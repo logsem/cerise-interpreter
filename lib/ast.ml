@@ -7,7 +7,6 @@ type reg_or_const = Register of regname | CP of const_perm (* TODO: separate int
 type word = I of Z.t | Cap of perm * locality * Z.t * Z.t * Z.t
 type machine_op
   =
-  | Nop
   | Jmp of regname
   | Jnz of regname * regname
   | Move of regname * reg_or_const
@@ -17,6 +16,7 @@ type machine_op
   | Sub of regname * reg_or_const * reg_or_const
   | Mul of regname * reg_or_const * reg_or_const
   | Rem of regname * reg_or_const * reg_or_const
+  | Div of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
