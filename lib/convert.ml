@@ -147,6 +147,68 @@ let tr_loc (g : Ast.locality) : locality =
   | Ast.Global -> Global
   | Ast.Directed -> Directed
 
+let encode_label_name (l : Big_int_Z.big_int list) : Big_int_Z.big_int =
+  let rec encode_label_name' (l : Big_int_Z.big_int list)
+    : Big_int_Z.big_int =
+    match l with
+    | [] -> Big_int_Z.big_int_of_int (-1)
+    | n::l'-> Encode.encode_int_int n (encode_label_name' l')
+    in
+    encode_label_name' l
+
+let encode_labeled_instr (i : labeled_instr) : Big_int_Z.big_int =
+  let (^!) (opcode : Big_int_Z.big_int) (args : Big_int_Z.big_int) =
+    Big_int_Z.add_big_int opcode (Big_int_Z.shift_left_big_int args 8)
+  in
+  match i with
+  | BInstr i' ->
+    (Big_int_Z.big_int_of_int (0x1)) ^! Encode.encode_machine_op (translate_instr i')
+  | Label n -> (Big_int_Z.big_int_of_int (0x2)) ^! (encode_label_name n)
+  | Br_Jmp (n,r) -> (Big_int_Z.big_int_of_int (0x3))
+                    ^! ( Encode.encode_int_int (encode_label_name n) r)
+  | Br_Jnz (n,r) -> (Big_int_Z.big_int_of_int (0x4))
+                    ^! ( Encode.encode_int_int (encode_label_name n) r)
+
+let decode_label_name (l : Big_int_Z.big_int) : Big_int_Z.big_int list =
+  let rec decode_label_name' (l : Big_int_Z.big_int)
+    : Big_int_Z.big_int list =
+    if (Big_int_Z.eq_big_int l (Big_int_Z.big_int_of_int (-1)))
+    then []
+    else
+      let (n, l') = Encode.decode_int l in
+      n::(decode_label_name' l')
+  in
+  decode_label_name' l
+
+let decode_labeled_instr (z : Big_int_Z.big_int) : labeled_instr =
+    let opc = Big_int_Z.extract_big_int z 0 8 in
+    let payload = Big_int_Z.shift_right_big_int z 8 in
+    (* Label *)
+    if opc = (Big_int_Z.big_int_of_int 0x1)
+    then
+      match (Encode.decode_machine_op payload) with
+    | i -> BInstr (tr_machine_op i)
+    | exception Encode.DecodeException s ->
+      raise @@ Encode.DecodeException (s ^ " Error decoding labeled instruction: unrecognized BInstr")
+    else
+
+    if opc = (Big_int_Z.big_int_of_int 0x2)
+    then Label (decode_label_name payload)
+    else
+
+    if opc = (Big_int_Z.big_int_of_int 0x3)
+    then
+    let (l_enc, r) = Encode.decode_int payload in
+      Br_Jmp (decode_label_name l_enc, r)
+    else
+
+    if opc = (Big_int_Z.big_int_of_int 0x4)
+    then
+      let (l_enc, r) = Encode.decode_int payload in
+      Br_Jnz (decode_label_name l_enc, r)
+    else
+      raise @@ Encode.DecodeException "Error decoding labeled instruction: unrecognized opcode"
+
 let driver = {
   decodeInstr = (function z -> tr_machine_op (Encode.decode_machine_op z));
   encodeInstr = (function i -> Encode.encode_machine_op (translate_instr i));
@@ -157,9 +219,8 @@ let driver = {
       (tr_perm p, tr_loc g));
   encodePermPair = (function p ->
     let (p,g) = p in Encode.encode_perm_pair (translate_perm p) (translate_locality g));
-  (* Dummy encoding *)
-  l_decodeInstr = (function z -> BInstr Fail);
-  l_encodeInstr = (function i -> Encode.encode_machine_op Fail);
+  l_decodeInstr = decode_labeled_instr;
+  l_encodeInstr = encode_labeled_instr;
 }
 
 

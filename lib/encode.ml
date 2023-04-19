@@ -772,4 +772,7 @@ let decode_machine_op (i : Z.t) : machine_op =
   (* Halt *)
   if opc = ~$0x62
   then Halt
-  else raise @@ DecodeException "Error decoding instruction: unrecognized opcode"
+  else raise @@
+    DecodeException
+      (Printf.sprintf "Error decoding instruction: unrecognized opcode %0x"
+         (Z.to_int opc))
