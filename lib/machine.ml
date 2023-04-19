@@ -435,6 +435,14 @@ let step (m: mchn): mchn option =
   | Running, conf -> Some (exec_single conf)
   | (Failed | Halted), _ -> None
 
+let rec step_n (m: mchn) n : mchn option =
+  if n > 0 then
+  (match (step m) with
+  | Some m' -> step_n m' (n-1)
+  | None -> None)
+  else Some m
+
+
 let rec run (m : mchn) : mchn =
   match step m with
   | Some m' -> run m'

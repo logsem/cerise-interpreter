@@ -411,6 +411,12 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
               | Some m' -> loop show_stack m' (m::history)
               | None -> (* XX *) loop show_stack m history
             end
+          | `Key (`ASCII 'n', _) ->
+            begin match Machine.step_n m 10 with
+              | Some m' -> loop show_stack m' (m::history)
+              | None -> (* XX *) loop show_stack m history
+            end
+
           | `Key (`Backspace, _) ->
             (match history with
             | [] -> loop show_stack m history
