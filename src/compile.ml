@@ -35,16 +35,12 @@ let pp_regname (r : Extract.regName) =
   | STK -> "stk"
   | R n -> Printf.sprintf "r%s" (Big_int_Z.string_of_big_int n)
 
-let () =
 
-  let regfile_output_name = "asm-toys/stack_loaded.reg" in
-  let asm_output_name = "asm-toys/stack_loaded.s" in
-
+let full_compile regfile_output_name asm_output_name program =
   let addr_max = (Int32.to_int Int32.max_int)/4096 in
   let start_stack = Big_int_Z.big_int_of_int (addr_max/2) in
   let end_stack = Big_int_Z.big_int_of_int addr_max in
-  let (regs, compiled_prog) = Extract.loaded_stack_example Convert.driver
-      start_stack end_stack in
+  let (regs, compiled_prog) = program Convert.driver start_stack end_stack in
   let prog =
     List.map
       (fun w -> (fst w, Convert.translate_word (snd w)))
@@ -56,4 +52,15 @@ let () =
   close_out oc;
   let oc = open_out asm_output_name in
   List.iter (fun w -> Printf.fprintf oc "%s\n" (pp_w (snd w) "#(%s, %s, %s, %s, %s)")) prog;
-  close_out oc;
+  close_out oc
+
+
+let () =
+  full_compile
+    "asm-toys/stack_loaded.reg"
+    "asm-toys/stack_loaded.s"
+    Extract.loaded_stack_example;
+  full_compile
+    "asm-toys/bank_loaded.reg"
+    "asm-toys/bank_loaded.s"
+    Extract.loaded_bank_example
