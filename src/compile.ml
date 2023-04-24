@@ -10,7 +10,7 @@ let rec pp_of_instrs l =
 let pp_w (w : Ast.word) format
   = match w with
   | I z -> (Pretty_printer.string_of_machine_op
-                (Convert.translate_instr (Convert.driver.decodeInstr z)))
+                (Convert.translate_instr (Convert.machine_param.decodeInstr z)))
   | Cap (p, g, b, e, a) ->
     Printf.sprintf format (Pretty_printer.string_of_perm p)
       (Pretty_printer.string_of_locality g)
@@ -29,6 +29,7 @@ let pp_w2 (w : Ast.word) format
       (Big_int_Z.string_of_big_int b)
       (Big_int_Z.string_of_big_int e)
       (Big_int_Z.string_of_big_int a)
+
 let pp_regname (r : Extract.regName) =
   match r with
   | PC -> "PC"
@@ -40,7 +41,7 @@ let full_compile regfile_output_name asm_output_name program =
   let addr_max = (Int32.to_int Int32.max_int)/4096 in
   let start_stack = Big_int_Z.big_int_of_int (addr_max/2) in
   let end_stack = Big_int_Z.big_int_of_int addr_max in
-  let (regs, compiled_prog) = program Convert.driver start_stack end_stack in
+  let (regs, compiled_prog) = program Convert.machine_param Convert.lmachine_param start_stack end_stack in
   let prog =
     List.map
       (fun w -> (fst w, Convert.translate_word (snd w)))

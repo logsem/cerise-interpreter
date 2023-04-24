@@ -209,7 +209,7 @@ let decode_labeled_instr (z : Big_int_Z.big_int) : labeled_instr =
     else
       raise @@ Encode.DecodeException "Error decoding labeled instruction: unrecognized opcode"
 
-let driver = {
+let machine_param = {
   decodeInstr = (function z -> tr_machine_op (Encode.decode_machine_op z));
   encodeInstr = (function i -> Encode.encode_machine_op (translate_instr i));
   encodePerm = (function p -> Encode.encode_perm (translate_perm p));
@@ -218,11 +218,13 @@ let driver = {
       let (p,g) = Encode.decode_perm_pair z in
       (tr_perm p, tr_loc g));
   encodePermPair = (function p ->
-    let (p,g) = p in Encode.encode_perm_pair (translate_perm p) (translate_locality g));
-  l_decodeInstr = decode_labeled_instr;
-  l_encodeInstr = encode_labeled_instr;
+    let (p,g) = p in Encode.encode_perm_pair (translate_perm p) (translate_locality g))
 }
 
+let lmachine_param = {
+  l_decodeInstr = decode_labeled_instr;
+  l_encodeInstr = encode_labeled_instr
+}
 
 let translate_word (w : (Big_int_Z.big_int, (((Extract.perm * Extract.locality) * Big_int_Z.big_int) * Big_int_Z.big_int
                     ) * Big_int_Z.big_int) Extract.sum)
