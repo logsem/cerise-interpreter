@@ -10,7 +10,8 @@ let rec pp_of_instrs l =
 let pp_w (w : Ast.word) format
   = match w with
   | I z -> (Pretty_printer.string_of_machine_op
-                (Convert.translate_instr (Convert.machine_param.decodeInstr z)))
+              (* (Encode.decode_machine_op z)) *)
+            (Convert.translate_instr (Convert.machine_param.decodeInstr z)))
   | Cap (p, g, b, e, a) ->
     Printf.sprintf format (Pretty_printer.string_of_perm p)
       (Pretty_printer.string_of_locality g)
@@ -41,7 +42,7 @@ let full_compile regfile_output_name asm_output_name program =
   let addr_max = (Int32.to_int Int32.max_int)/4096 in
   let start_stack = Big_int_Z.big_int_of_int (addr_max/2) in
   let end_stack = Big_int_Z.big_int_of_int addr_max in
-  let (regs, compiled_prog) = program Convert.machine_param Convert.lmachine_param start_stack end_stack in
+  let (regs, compiled_prog) = program Convert.machine_param start_stack end_stack in
   let prog =
     List.map
       (fun w -> (fst w, Convert.translate_word (snd w)))
@@ -64,4 +65,8 @@ let () =
   full_compile
     "asm-toys/bank_loaded.reg"
     "asm-toys/bank_loaded.s"
-    Extract.loaded_bank_example
+    Extract.loaded_bank_example;
+  full_compile
+    "asm-toys/dummy_loaded.reg"
+    "asm-toys/dummy_loaded.s"
+    Extract.loaded_dummy_example

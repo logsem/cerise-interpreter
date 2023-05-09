@@ -221,11 +221,6 @@ let machine_param = {
     let (p,g) = p in Encode.encode_perm_pair (translate_perm p) (translate_locality g))
 }
 
-let lmachine_param = {
-  l_decodeInstr = decode_labeled_instr;
-  l_encodeInstr = encode_labeled_instr
-}
-
 let translate_word (w : (Big_int_Z.big_int, (((Extract.perm * Extract.locality) * Big_int_Z.big_int) * Big_int_Z.big_int
                     ) * Big_int_Z.big_int) Extract.sum)
   = match w with
