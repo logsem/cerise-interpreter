@@ -18,3 +18,6 @@ Executable: `./_build/default/src/interactive <file>`
 Assembly examples in `./tests` (for the syntax)
 
 Press `SPACE` to take a step, and `ESC` to exit.
+
+## Compiler branch
+This branch is used for experimental purposes.
