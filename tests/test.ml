@@ -5,7 +5,11 @@ open Libinterp.Ast
 let statement_eq (a : statement) (b : statement) = (a = b)
 let pprint_statement = Fmt.of_to_string string_of_statement
 
+let machine_op_eq (a : machine_op) (b : machine_op) = (a = b)
+let pprint_machine_op = Fmt.of_to_string string_of_machine_op
+
 let statement_tst = Alcotest.testable pprint_statement statement_eq
+let machine_op_tst = Alcotest.testable pprint_machine_op machine_op_eq
 
 module To_test = struct
   let lex_parse = fun x ->
@@ -14,7 +18,7 @@ module To_test = struct
   let enc_int a b = Encode.encode_int_int a b
   let enc_split = Encode.split_int
   let enc_dec_int a b = Encode.decode_int @@ Encode.encode_int_int a b
-  let enc_dec_stm s = Encode.decode_statement @@ Encode.encode_statement s
+  let enc_dec_op s = Encode.decode_machine_op @@ Encode.encode_machine_op s
 end
 
 let make_op_test ((input, expect) : string * statement) =
@@ -25,25 +29,25 @@ let make_op_test ((input, expect) : string * statement) =
       (To_test.lex_parse input))
 
 let instr_tests = [
-  ("jmp pc", Jmp PC);
-  ("jmp r21", Jmp (Reg 21));
-  ("jnz r11 r9", Jnz (Reg 11, Reg 9));
-  ("mov pc -25", Move (PC, CP (Const (-25))));
-  ("load r0 r1", Load (Reg 0, Reg 1));
-  ("store r2 r3", Store (Reg 2, Register (Reg 3)));
-  ("add r4 (10-15) (-37)", Add (Reg 4, CP (Const (-5)), CP (Const (-37))));
-  ("sub r5 6 28", Sub (Reg 5, CP (Const 6), CP (Const 28)));
-  ("lt r6 496 8128 ; perfect numbers are cool!", Lt (Reg 6, CP (Const 496), CP (Const 8128)));
-  ("lea r7 r8", Lea (Reg 7, Register (Reg 8)));
-  ("restrict r9 RX", Restrict (Reg 9, CP (Perm RX)));
-  ("subseg r10 pc r11", SubSeg (Reg 10, Register PC, Register (Reg 11)));
-  ("isptr r12 r13", IsPtr (Reg 12, Reg 13));
-  ("getp r14 r15", GetP (Reg 14, Reg 15));
-  ("getb r16 r17", GetB (Reg 16, Reg 17));
-  ("gete r18 r19", GetE (Reg 18, Reg 19));
-  ("geta r20 r21", GetA (Reg 20, Reg 21));
-  ("fail", Fail);
-  ("halt", Halt);
+  ("jmp pc", Op (Jmp PC));
+  ("jmp r21", Op (Jmp (Reg 21)));
+  ("jnz r11 r9", Op (Jnz (Reg 11, Reg 9)));
+  ("mov pc -25", Op (Move (PC, const (-25))));
+  ("load r0 r1", Op (Load (Reg 0, Reg 1)));
+  ("store r2 r3", Op (Store (Reg 2, Register (Reg 3))));
+  ("add r4 (10-15) (-37)", Op (Add (Reg 4, const (-5), const (-37))));
+  ("sub r5 6 28", Op (Sub (Reg 5, const 6, const 28)));
+  ("lt r6 496 8128 ; perfect numbers are cool!", Op (Lt (Reg 6, const 496, const 8128)));
+  ("lea r7 r8", Op (Lea (Reg 7, Register (Reg 8))));
+  ("restrict r9 RX", Op (Restrict (Reg 9, CP (Perm RX))));
+  ("subseg r10 pc r11", Op (SubSeg (Reg 10, Register PC, Register (Reg 11))));
+  ("isptr r12 r13", Op (IsPtr (Reg 12, Reg 13)));
+  ("getp r14 r15", Op (GetP (Reg 14, Reg 15)));
+  ("getb r16 r17", Op (GetB (Reg 16, Reg 17)));
+  ("gete r18 r19", Op (GetE (Reg 18, Reg 19)));
+  ("geta r20 r21", Op (GetA (Reg 20, Reg 21)));
+  ("fail", Op (Fail));
+  ("halt", Op (Halt));
 ]
 
 let z_tst =
@@ -117,63 +121,63 @@ let make_enc_dec_stm_tests (stm, test_name) =
     test_name
     `Quick
     (fun _ ->
-       Alcotest.(check statement_tst)
+       Alcotest.(check machine_op_tst)
          "same statement"
          stm
-         (To_test.enc_dec_stm stm))
+         (To_test.enc_dec_op stm))
 
 let test_enc_dec_stm_list = [
   (Jmp PC, "encode-decode Jmp PC");
   (Jmp (Reg 28), "encode-decode Jmp R28");
   (Jnz (Reg 6, Reg 28), "encode-decode Jnz R6 R28");
   (Move (PC, Register (Reg 7)), "encode-decode Move PC R7");
-  (Move (PC, CP (Const (-35))), "encode-decode Move PC (-35)");
+  (Move (PC, const (-35)), "encode-decode Move PC (-35)");
   (Move (PC, CP (Perm E)), "encode-decode Move PC E");
   (Load (Reg 9, PC), "encode-decode Load R9 PC");
   (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
-  (Store (PC, CP (Const (-35))), "encode-decode Store PC (-35)");
+  (Store (PC, const (-35)), "encode-decode Store PC (-35)");
   (Store (PC, CP (Perm E)), "encode-decode Store PC E");
   (Add (Reg 5, Register (Reg 6), Register PC), "encode-decode Add R5 R6 PC");
-  (Add (Reg 5, Register (Reg 6), CP (Const 8128)), "encode-decode Add R5 R6 8128");
+  (Add (Reg 5, Register (Reg 6), const 8128), "encode-decode Add R5 R6 8128");
   (Add (Reg 5, Register (Reg 6), CP (Perm RO)), "encode-decode Add R5 R6 RO");
-  (Add (Reg 5, CP (Const (-549)), Register PC), "encode-decode Add R5 (-549) PC");
-  (Add (Reg 5, CP (Const (102)), CP (Const 8128)), "encode-decode Add R5 102 8128");
-  (Add (Reg 5, CP (Const (83)), CP (Perm RO)), "encode-decode Add R5 83 RO");
+  (Add (Reg 5, const (-549), Register PC), "encode-decode Add R5 (-549) PC");
+  (Add (Reg 5, const (102), const 8128), "encode-decode Add R5 102 8128");
+  (Add (Reg 5, const (83), CP (Perm RO)), "encode-decode Add R5 83 RO");
   (Add (Reg 5, CP (Perm E), Register PC), "encode-decode Add R5 E PC");
-  (Add (Reg 5, CP (Perm O), CP (Const 8128)), "encode-decode Add R5 O 8128");
+  (Add (Reg 5, CP (Perm O), const 8128), "encode-decode Add R5 O 8128");
   (Add (Reg 5, CP (Perm RWX), CP (Perm RO)), "encode-decode Add R5 RWX RO");
   (Sub (Reg 5, Register (Reg 6), Register PC), "encode-decode Sub R5 R6 PC");
-  (Sub (Reg 5, Register (Reg 6), CP (Const 8128)), "encode-decode Sub R5 R6 8128");
+  (Sub (Reg 5, Register (Reg 6), const 8128), "encode-decode Sub R5 R6 8128");
   (Sub (Reg 5, Register (Reg 6), CP (Perm RO)), "encode-decode Sub R5 R6 RO");
-  (Sub (Reg 5, CP (Const (-549)), Register PC), "encode-decode Sub R5 (-549) PC");
-  (Sub (Reg 5, CP (Const (102)), CP (Const 8128)), "encode-decode Sub R5 102 8128");
-  (Sub (Reg 5, CP (Const (83)), CP (Perm RO)), "encode-decode Sub R5 83 RO");
+  (Sub (Reg 5, const (-549), Register PC), "encode-decode Sub R5 (-549) PC");
+  (Sub (Reg 5, const (102), const 8128), "encode-decode Sub R5 102 8128");
+  (Sub (Reg 5, const (83), CP (Perm RO)), "encode-decode Sub R5 83 RO");
   (Sub (Reg 5, CP (Perm E), Register PC), "encode-decode Sub R5 E PC");
-  (Sub (Reg 5, CP (Perm O), CP (Const 8128)), "encode-decode Sub R5 O 8128");
+  (Sub (Reg 5, CP (Perm O), const 8128), "encode-decode Sub R5 O 8128");
   (Sub (Reg 5, CP (Perm RWX), CP (Perm RO)), "encode-decode Sub R5 RWX RO");
   (Lt (Reg 5, Register (Reg 6), Register PC), "encode-decode Lt R5 R6 PC");
-  (Lt (Reg 5, Register (Reg 6), CP (Const 8128)), "encode-decode Lt R5 R6 8128");
+  (Lt (Reg 5, Register (Reg 6), const 8128), "encode-decode Lt R5 R6 8128");
   (Lt (Reg 5, Register (Reg 6), CP (Perm RO)), "encode-decode Lt R5 R6 RO");
-  (Lt (Reg 5, CP (Const (-549)), Register PC), "encode-decode Lt R5 (-549) PC");
-  (Lt (Reg 5, CP (Const (102)), CP (Const 8128)), "encode-decode Lt R5 102 8128");
-  (Lt (Reg 5, CP (Const (83)), CP (Perm RO)), "encode-decode Lt R5 83 RO");
+  (Lt (Reg 5, const (-549), Register PC), "encode-decode Lt R5 (-549) PC");
+  (Lt (Reg 5, const (102), const 8128), "encode-decode Lt R5 102 8128");
+  (Lt (Reg 5, const (83), CP (Perm RO)), "encode-decode Lt R5 83 RO");
   (Lt (Reg 5, CP (Perm E), Register PC), "encode-decode Lt R5 E PC");
-  (Lt (Reg 5, CP (Perm O), CP (Const 8128)), "encode-decode Lt R5 O 8128");
+  (Lt (Reg 5, CP (Perm O), const 8128), "encode-decode Lt R5 O 8128");
   (Lt (Reg 5, CP (Perm RWX), CP (Perm RO)), "encode-decode Lt R5 RWX RO");
   (Lea (PC, Register (Reg 7)), "encode-decode Lea PC R7");
-  (Lea (PC, CP (Const (-35))), "encode-decode Lea PC (-35)");
+  (Lea (PC, const (-35)), "encode-decode Lea PC (-35)");
   (Lea (PC, CP (Perm E)), "encode-decode Lea PC E");
   (Restrict (PC, Register (Reg 7)), "encode-decode Restrict PC R7");
-  (Restrict (PC, CP (Const (-35))), "encode-decode Restrict PC (-35)");
+  (Restrict (PC, const (-35)), "encode-decode Restrict PC (-35)");
   (Restrict (PC, CP (Perm E)), "encode-decode Restrict PC E");
   (SubSeg (Reg 5, Register (Reg 6), Register PC), "encode-decode SubSeg R5 R6 PC");
-  (SubSeg (Reg 5, Register (Reg 6), CP (Const 8128)), "encode-decode SubSeg R5 R6 8128");
+  (SubSeg (Reg 5, Register (Reg 6), const 8128), "encode-decode SubSeg R5 R6 8128");
   (SubSeg (Reg 5, Register (Reg 6), CP (Perm RO)), "encode-decode SubSeg R5 R6 RO");
-  (SubSeg (Reg 5, CP (Const (-549)), Register PC), "encode-decode SubSeg R5 (-549) PC");
-  (SubSeg (Reg 5, CP (Const (102)), CP (Const 8128)), "encode-decode SubSeg R5 102 8128");
-  (SubSeg (Reg 5, CP (Const (83)), CP (Perm RO)), "encode-decode SubSeg R5 83 RO");
+  (SubSeg (Reg 5, const (-549), Register PC), "encode-decode SubSeg R5 (-549) PC");
+  (SubSeg (Reg 5, const (102), const 8128), "encode-decode SubSeg R5 102 8128");
+  (SubSeg (Reg 5, const (83), CP (Perm RO)), "encode-decode SubSeg R5 83 RO");
   (SubSeg (Reg 5, CP (Perm E), Register PC), "encode-decode SubSeg R5 E PC");
-  (SubSeg (Reg 5, CP (Perm O), CP (Const 8128)), "encode-decode SubSeg R5 O 8128");
+  (SubSeg (Reg 5, CP (Perm O), const 8128), "encode-decode SubSeg R5 O 8128");
   (SubSeg (Reg 5, CP (Perm RWX), CP (Perm RO)), "encode-decode SubSeg R5 RWX RO");
   (IsPtr (Reg 6, Reg 28), "encode-decode IsPtr R6 R28");
   (GetP (Reg 6, Reg 28), "encode-decode GetP R6 R28");

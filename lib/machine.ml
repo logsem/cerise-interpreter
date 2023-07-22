@@ -16,13 +16,6 @@ type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
 
-(* let init_reg_state (addr_max : int) : reg_state = *)
-(*   let l = List.init 32 (fun i -> Reg i, I Z.zero) in *)
-(*   (\* The PC register starts with full permission over the entire memory *\) *)
-(*   let pc_init = (PC, Cap (RWX, 0, addr_max, 0)) in *)
-(*   let seq = List.to_seq (pc_init :: l) in *)
-(*   RegMap.of_seq seq *)
-
 let init_reg_state (addr_max : int) : reg_state =
   let start_heap_addr = 0 in
   let max_heap_addr = addr_max/2 in
@@ -40,24 +33,6 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
-(* let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state = *)
-(*   let zeroed_mem = *)
-(*     (\* NB: addr_max is not addressable *\) *)
-(*     let rec loop i m = *)
-(*       if i >= addr_max then m else loop (i+1) (MemMap.add i (I Z.zero) m) in *)
-(*     loop 0 MemMap.empty *)
-(*   in *)
-(*   let enc_prog = *)
-(*     List.to_seq @@ List.mapi *)
-(*       (fun i x -> i+addr_start, *)
-(*                   match x with *)
-(*                   | Op op -> I (Encode.encode_statement op) *)
-(*                   | Word (Ast.I z) -> I z *)
-(*                   | Word (Ast.Cap (p,b,e,a)) -> Cap (p, Z.to_int b, Z.to_int e, Z.to_int a)) *)
-(*       prog in *)
-(*   MemMap.add_seq enc_prog zeroed_mem *)
-
-
 let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
@@ -66,7 +41,13 @@ let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
     loop 0 MemMap.empty
   in
   let enc_prog =
-    List.to_seq @@ List.mapi (fun i x -> (i+addr_start), I (Encode.encode_statement x)) prog in
+    List.to_seq @@ List.mapi
+      (fun i x -> i+addr_start,
+                  match x with
+                  | Op op -> I (Encode.encode_machine_op op)
+                  | Word (Ast.I z) -> I z
+                  | Word (Ast.Cap (p,b,e,a)) -> Cap (p, Z.to_int b, Z.to_int e, Z.to_int a))
+      prog in
   MemMap.add_seq enc_prog zeroed_mem
 
 let get_mem (addr : int) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
@@ -82,7 +63,7 @@ let init
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with
   | Register r -> get_reg r conf
-  | CP (Const i) -> I Z.(of_int i)
+  | CP (Const i) -> I i
   | CP (Perm p) -> I (Encode.encode_perm p) (* A permission is just an integer in the model *)
 
 let upd_pc (conf : exec_conf) : mchn =
@@ -96,13 +77,13 @@ let upd_pc_perm (w : word) =
   | Cap (E, b, e, a) -> Cap (RX, b, e, a)
   | _ -> w
 
-let fetch_decode (conf : exec_conf) : statement option =
+let fetch_decode (conf : exec_conf) : machine_op option =
   match PC @! conf with
   | I _ -> None
   | Cap (_, _, _, addr) ->
     match get_mem addr conf with
     | Some (I enc) ->
-      (try Some (Encode.decode_statement enc)
+      (try Some (Encode.decode_machine_op enc)
         with Encode.DecodeException _ -> None)
     | _ -> None
 
@@ -115,13 +96,39 @@ let is_pc_valid (conf : exec_conf) : bool =
     end
   | _ -> false
 
-(* Might change this later since it is a bit too dependent
-   on the encode implementation *)
-let flowsto (p1 : perm) (p2 : perm) : bool =
-  let open Encode in
-  let enc1 = encode_perm p1 in
-  let enc2 = encode_perm p2 in
-  Z.(equal (enc1 lor enc2) enc2)
+let perm_flowsto (p1 : perm) (p2 : perm) : bool =
+  match p1 with
+  | O -> true
+  | E ->
+    (match p2 with
+    | E | RX | RWX -> true
+    | _ -> false)
+  | RX ->
+    (match p2 with
+    | RX | RWX -> true
+    | _ -> false)
+  | RWX ->
+    (match p2 with
+    | RWX -> true
+    | _ -> false)
+  | RO ->
+    (match p2 with
+    | E | O -> false
+    | _ -> true)
+  | RW ->
+    (match p2 with
+    | RW | RWX -> true
+    | _ -> false)
+
+let can_write (p : perm) : bool =
+  match p with
+  | RW | RWX -> true
+  | _ -> false
+
+let can_read (p : perm) : bool =
+  match p with
+  | RO| RX| RW| RWX -> true
+  | _ -> false
 
 let exec_single (conf : exec_conf) : mchn =
   let fail_state = (Failed, conf) in
@@ -138,19 +145,21 @@ let exec_single (conf : exec_conf) : mchn =
           end
         | Load (r1, r2) -> begin
             match r2 @! conf with
-            | Cap ((RO|RX|RW|RWX), b, e, a) -> begin
+            | Cap (p, b, e, a) ->
+              if can_read p then
                 match a @? conf with
                 | Some w when (b <= a && a < e) -> !> (upd_reg r1 w conf)
                 | _ -> fail_state
-              end
+              else fail_state
             | _ -> fail_state
           end
         | Store (r, c) -> begin
+            let w = get_word conf c in
             match r @! conf with
-            | Cap ((RW|RWX), b, e, a) when (b <= a && a < e) -> begin
-                let w = get_word conf c in
-                !> (upd_mem a w conf)
-              end
+            | Cap (p, b, e, a) when (b <= a && a < e) ->
+              if can_write p
+              then !> (upd_mem a w conf)
+              else fail_state
             | _ -> fail_state
           end
         | Jmp r -> begin
@@ -171,7 +180,7 @@ let exec_single (conf : exec_conf) : mchn =
                 match get_word conf c with
                 | I i -> begin
                     let p' = Encode.decode_perm i in
-                    if flowsto p' p
+                    if perm_flowsto p' p
                     then !> (upd_reg r (Cap (p', b, e, a)) conf)
                     else fail_state
                   end

@@ -1,8 +1,9 @@
 (* Type definitions for the syntax AST *)
 type regname = PC | Reg of int
 type perm = O | E | RO | RX | RW | RWX
-type const_perm = Const of int | Perm of perm
+type const_perm = Const of Z.t | Perm of perm
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
+type word = I of Z.t | Cap of perm * Z.t * Z.t * Z.t
 type machine_op
   = Jmp of regname
   | Jnz of regname * regname
@@ -22,8 +23,8 @@ type machine_op
   | GetA of regname * regname
   | Fail
   | Halt
-type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 
+type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
 
 let compare_regname (r1 : regname) (r2: regname) : int =
@@ -32,3 +33,5 @@ let compare_regname (r1 : regname) (r2: regname) : int =
   | PC, Reg _ -> -1
   | Reg _, PC -> 1
   | Reg i, Reg j -> Int.compare i j
+
+let const n = CP (Const (Z.of_int n))

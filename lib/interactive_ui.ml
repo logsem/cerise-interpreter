@@ -10,7 +10,6 @@ module type MachineConfig = sig val addr_max : int end
 module type Ui =
 sig
   val render_loop :
-    (* int ref -> *)
     int ref ->
     Machine.mchn ->
     unit
@@ -140,7 +139,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
   module Instr = struct
     let ui (i: Ast.machine_op) =
-      I.string A.(fg green) (Pretty_printer.string_of_statement i)
+      I.string A.(fg green) (Pretty_printer.string_of_machine_op i)
   end
 
   module Program_panel = struct
@@ -167,7 +166,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let img_instr in_range a w =
       (match w with
        | Machine.I z when in_range a <> `No ->
-         begin match Encode.decode_statement z with
+         begin match Encode.decode_machine_op z with
            | i -> Instr.ui i
            | exception Encode.DecodeException _ -> I.string A.(fg green) "???"
          end
@@ -219,8 +218,6 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let previous_addr (_ : Machine.word) (_:int) start_addr (_:int) =
       let new_addr = start_addr - 1 in
       if new_addr < 0 then 0 else new_addr
-    (* let id (_ : Machine.word) (_:int) start_addr (_:int) = start_addr *)
-
 
     let ui
         ?(upd_prog = follow_addr)
@@ -289,41 +286,27 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           | `End | `Key (`Escape, _) | `Key (`ASCII 'q', _) -> Term.release term
           (* Heap *)
           | `Key (`ASCII 'k', _) ->
-            loop ~update_prog:(Program_panel.previous_addr)
-              m history
+            loop ~update_prog:(Program_panel.previous_addr) m history
           | `Key (`ASCII 'j', _) ->
-            loop ~update_prog:(Program_panel.next_addr)
-              m history
+            loop ~update_prog:(Program_panel.next_addr) m history
           | `Key (`ASCII 'h', _) ->
-            loop ~update_prog:(Program_panel.previous_page 1)
-              m history
+            loop ~update_prog:(Program_panel.previous_page 1) m history
           | `Key (`ASCII 'H', _) ->
-            loop ~update_prog:(Program_panel.previous_page 10)
-              m history
+            loop ~update_prog:(Program_panel.previous_page 10) m history
           | `Key (`ASCII 'l', _) ->
-            loop ~update_prog:(Program_panel.next_page 1)
-              m history
+            loop ~update_prog:(Program_panel.next_page 1) m history
           | `Key (`ASCII 'L', _) ->
-            loop ~update_prog:(Program_panel.next_page 10)
-              m history
+            loop ~update_prog:(Program_panel.next_page 10) m history
 
-          (* Stack *)
-          (* | `Key (`Arrow `Up, _) -> *)
-          (*   loop ~update_stk:(Program_panel.previous_addr) *)
-          (*     show_stack m history *)
-          (* | `Key (`Arrow `Down, _) -> *)
-          (*   loop ~update_stk:(Program_panel.next_addr) *)
-          (*     show_stack m history *)
-          (* | `Key (`Arrow `Left, _) -> *)
-          (*   loop ~update_stk:(Program_panel.previous_page 1) *)
-          (*     show_stack m history *)
-          (* | `Key (`Arrow `Right, _) -> *)
-          (*   loop ~update_stk:(Program_panel.next_page 1) *)
-          (*     show_stack m history *)
-
-          (* | `Key (`ASCII 's', _) -> *)
-          (*   loop ~update_prog:Program_panel.id *)
-          (*     (toggle_show_stack show_stack) m history *)
+          (* With arrows *)
+          | `Key (`Arrow `Up, _) ->
+            loop ~update_prog:(Program_panel.previous_addr) m history
+          | `Key (`Arrow `Down, _) ->
+            loop ~update_prog:(Program_panel.next_addr) show_stack m history
+          | `Key (`Arrow `Left, _) ->
+            loop ~update_prog:(Program_panel.previous_page 1) show_stack m history
+          | `Key (`Arrow `Right, _) ->
+            loop ~update_prog:(Program_panel.next_page 1) show_stack m history
 
           | `Key (`ASCII ' ', _) ->
             begin match Machine.step m with
@@ -340,6 +323,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             (match history with
             | [] -> loop m history
             | m'::h' -> loop m' h')
+
           | `Resize (_, _) -> loop m history
           | _ -> process_events ()
         in

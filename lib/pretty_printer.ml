@@ -20,10 +20,10 @@ let string_of_perm (p: perm): string =
 let string_of_reg_or_const (c: reg_or_const) : string =
   match c with
   | Register r -> string_of_regname r
-  | CP (Const c) -> string_of_int c
+  | CP (Const c) -> (Z.to_string c)
   | CP (Perm p) -> string_of_perm p
 
-let string_of_statement (s: statement): string =
+let string_of_machine_op (s: machine_op): string =
   let string_of_rr r1 r2 =
     string_of_regname r1 ^- string_of_regname r2
   and string_of_rc r c =
@@ -54,6 +54,18 @@ let string_of_word (w : word) : string =
   match w with
   | Cap (p, b, e, a) -> Printf.sprintf "Cap (%s, %d, %d, %d)" (string_of_perm p) b e a
   | I z -> Z.to_string z
+
+let string_of_ast_word (w : Ast.word) : string =
+  match w with
+  | Ast.Cap (p, b, e, a) ->
+    Printf.sprintf "Cap (%s,  %s, %s, %s)"
+    (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+  | Ast.I z -> Z.to_string z
+
+let string_of_statement (s : statement) : string =
+  match s with
+  | Op op -> string_of_machine_op op
+  | Ast.Word w -> string_of_ast_word w
 
 let string_of_reg_word (r : regname) (w : word) : string =
   Printf.sprintf "| %s : %s |" (string_of_regname r) (string_of_word w)

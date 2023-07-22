@@ -6,7 +6,6 @@
 %token LPAREN RPAREN
 %token PLUS MINUS AFFECT COMMA
 %token O E RO RX RW RWX
-%token LOCAL GLOBAL DIRECTED
 
 %left PLUS MINUS EXPR
 %left UMINUS
@@ -36,12 +35,6 @@ word:
 addr:
   | e = expr %prec EXPR { Addr (e) }
 (* TODO support hexa addresses *)
-
-
-locality:
-  | LOCAL; { Local }
-  | GLOBAL; { Global }
-  | DIRECTED; { Directed }
 
 perm:
   | O; { O }

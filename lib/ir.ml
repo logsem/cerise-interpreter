@@ -12,6 +12,9 @@ type expr
 type perm = O | E | RO | RX | RW | RWX
 type const_perm = Const of expr | Perm of perm
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
+type word = I of expr | Cap of perm * expr * expr * expr
+exception WordException of word
+
 type machine_op
   = Jmp of regname
   | Jnz of regname * regname
@@ -32,6 +35,7 @@ type machine_op
   | Fail
   | Halt
   | Lbl of string
+  | Word of word
 type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 
 type t = statement list
@@ -43,16 +47,16 @@ let rec compute_env (i : int) (prog : t) (envr : env) : env =
   | (Lbl s) :: p -> compute_env (i+1) p ((s, i - (List.length envr)) :: envr)
   | _ :: p -> compute_env (i+1) p envr
 
-let rec eval_expr (envr : env) (e : expr) : int =
+let rec eval_expr (envr : env) (e : expr) : Z.t =
   match e with
-  | IntLit i -> i
+  | IntLit i -> (Z.of_int i)
   | Label s -> begin
       match List.find_opt (fun p -> (fst p) = s) envr with
-      | Some (_,i) -> i
+      | Some (_,i) -> (Z.of_int i)
       | None -> raise (UnknownLabelException s)
     end
-  | AddOp (e1, e2) -> (eval_expr envr e1) + (eval_expr envr e2)
-  | SubOp (e1, e2) -> (eval_expr envr e1) - (eval_expr envr e2)
+  | AddOp (e1, e2) -> Z.((eval_expr envr e1) + (eval_expr envr e2))
+  | SubOp (e1, e2) -> Z.((eval_expr envr e1) - (eval_expr envr e2))
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -77,6 +81,17 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | CP cp -> Ast.CP (translate_const_perm envr cp)
+
+let translate_word (envr : env) (w : word) : Ast.statement =
+  match w with
+  | I e -> Ast.Word (Ast.I (eval_expr envr e))
+  | Cap (p,b,e,a) ->
+    Ast.Word (Ast.Cap
+                ((translate_perm p),
+                 (eval_expr envr b),
+                 (eval_expr envr e),
+                 (eval_expr envr a)
+                ))
 
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with
@@ -110,13 +125,15 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
+  | Word w -> raise (WordException w)
   | Lbl s -> raise (UnknownLabelException s)
 
 let rec translate_prog_aux (envr : env) (prog : t) : Ast.t =
   match prog with
   | [] -> []
   | (Lbl _) :: p -> translate_prog_aux envr p
-  | instr :: p -> (translate_instr envr instr) :: (translate_prog_aux envr p)
+  | (Word w) :: p -> translate_word envr w :: (translate_prog_aux envr p)
+  | instr :: p -> (Op (translate_instr envr instr)) :: (translate_prog_aux envr p)
 
 let translate_prog (prog : t) : Ast.t =
   let envr = compute_env 0 prog [] in
