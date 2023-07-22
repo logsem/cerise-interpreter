@@ -8,7 +8,8 @@ S_FILE = ./asm-toys/$(EXEC).s
 all: release
 
 release:
-	dune build
+	# dune build
+	dune build --profile release
 
 get-extract:
 	cp $(EXTRACT_SRC) $(EXTRACT_TARGET)
@@ -33,4 +34,5 @@ clean:
 	dune clean
 
 test:
-	dune test
+	# dune test
+	dune test --profile release

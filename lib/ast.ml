@@ -32,8 +32,8 @@ type machine_op
   | PromoteU of regname
   | Fail
   | Halt
-type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 
+type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
 
 let compare_regname (r1 : regname) (r2: regname) : int =

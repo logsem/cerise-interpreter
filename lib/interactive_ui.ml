@@ -275,7 +275,6 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       if new_addr < 0 then 0 else new_addr
     let id (_ : Machine.word) (_:int) start_addr (_:int) = start_addr
 
-
     let ui
         ?(upd_prog = follow_addr)
         ?(upd_stk = follow_addr)

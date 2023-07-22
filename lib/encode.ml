@@ -241,13 +241,12 @@ let encode_machine_op (s : machine_op): Z.t =
   | Halt -> ~$0x62
 
 
-
 let decode_machine_op (i : Z.t) : machine_op =
   let dec_perm =
     fun c_enc -> let (p,g) = (decode_perm_pair c_enc) in Perm (p,g)
   in
   let opc = Z.extract i 0 8 in
-  let payload = Z.(i asr 8) in 
+  let payload = Z.(i asr 8) in
   (* Jmp *)
   if opc = ~$0x00
   then Jmp (decode_reg payload)
@@ -517,7 +516,7 @@ let decode_machine_op (i : Z.t) : machine_op =
   end
   else
 
-  (* Lt *)
+ (* Lt *)
   if ~$0x35 < opc && opc < ~$0x39
   then begin
     let (r_enc, payload') = decode_int payload in
@@ -537,7 +536,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (Const c1_enc) in
-    let c2 = begin 
+    let c2 = begin
       if opc = ~$0x39 then Register (decode_reg c2_enc) else
       if opc = ~$0x3a then CP (Const c2_enc) else
       CP (dec_perm c2_enc)
@@ -689,7 +688,6 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r2 = decode_reg r2_enc in
     GetA (r1, r2)
   end else
-
 
   (* LoadU *)
   if opc = ~$0x54 (* register register register *)

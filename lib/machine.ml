@@ -43,7 +43,6 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
-
 let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
@@ -441,7 +440,6 @@ let rec step_n (m: mchn) n : mchn option =
   | Some m' -> step_n m' (n-1)
   | None -> None)
   else Some m
-
 
 let rec run (m : mchn) : mchn =
   match step m with
