@@ -192,48 +192,60 @@ let encode_machine_op (s : machine_op): Z.t =
       let (opc, c_enc) = two_const_convert ~$0x12 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | Lt (r, c1, c2) -> begin (* 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23 *)
+
+  | Mul (r, c1, c2) -> begin (* 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23 *)
       let (opc, c_enc) = two_const_convert ~$0x1b c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | Lea (r, c) -> begin (* 0x24, 0x25, 0x26 *)
-      let (opc, c_enc) = const_convert ~$0x24 c in
+  | Rem (r, c1, c2) -> begin (* 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c *)
+      let (opc, c_enc) = two_const_convert ~$0x24 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | Restrict (r, c) -> begin (* 0x27, 0x28, 0x29 *)
-      let (opc, c_enc) = const_convert ~$0x27 c in
+  | Div (r, c1, c2) -> begin (* 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35 *)
+      let (opc, c_enc) = two_const_convert ~$0x2d c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | SubSeg (r, c1, c2) -> begin (* 0x2a to 0x32 *)
-      let (opc, c_enc) = two_const_convert ~$0x2a c1 c2 in
+
+  | Lt (r, c1, c2) -> begin (* 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e *)
+      let (opc, c_enc) = two_const_convert ~$0x36 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | IsPtr (r1, r2) -> ~$0x33 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetL (r1, r2) -> ~$0x34 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetP (r1, r2) -> ~$0x35 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetB (r1, r2) -> ~$0x36 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetE (r1, r2) -> ~$0x37 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetA (r1, r2) -> ~$0x38 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | LoadU (r1, r2, c) -> begin (* 0x39, 0x3a, 0x3b *)
-      let (opc, c_enc) = const_convert ~$0x39 c in
+  | Lea (r, c) -> begin (* 0x3f, 0x40, 0x41 *)
+      let (opc, c_enc) = const_convert ~$0x3f c in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+  | Restrict (r, c) -> begin (* 0x42, 0x43, 0x44 *)
+      let (opc, c_enc) = const_convert ~$0x42 c in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+  | SubSeg (r, c1, c2) -> begin (* 0x45 to 0x4d *)
+      let (opc, c_enc) = two_const_convert ~$0x45 c1 c2 in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+  | IsPtr (r1, r2) -> ~$0x4e ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetL (r1, r2) -> ~$0x4f ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetP (r1, r2) -> ~$0x50 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetB (r1, r2) -> ~$0x51 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetE (r1, r2) -> ~$0x52 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetA (r1, r2) -> ~$0x53 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | LoadU (r1, r2, c) -> begin (* 0x54, 0x55, 0x56 *)
+      let (opc, c_enc) = const_convert ~$0x54 c in
       opc ^! (encode_int_int (encode_int_int (encode_reg r1) (encode_reg r2)) c_enc)
     end
-  | StoreU (r, c1, c2) -> begin (* 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44 *)
-      let (opc, c_enc) = two_const_convert ~$0x3c c1 c2 in
+  | StoreU (r, c1, c2) -> begin (* 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f *)
+      let (opc, c_enc) = two_const_convert ~$0x57 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | PromoteU r -> ~$0x45 ^! (encode_reg r)
-  | Fail -> ~$0x46
-  | Halt -> ~$0x47
-  (* TODO I would prefer to have Nop encoded as 0 *)
-  | Nop -> ~$0x48
+  | PromoteU r -> ~$0x60 ^! (encode_reg r)
+  | Fail -> ~$0x61
+  | Halt -> ~$0x62
 
 let decode_machine_op (i : Z.t) : machine_op =
   let dec_perm =
     fun c_enc -> let (p,g) = (decode_perm_pair c_enc) in Perm (p,g)
   in
   let opc = Z.extract i 0 8 in
-  let payload = Z.(i asr 8) in 
+  let payload = Z.(i asr 8) in
   (* Jmp *)
   if opc = ~$0x00
   then Jmp (decode_reg payload)
@@ -378,7 +390,8 @@ let decode_machine_op (i : Z.t) : machine_op =
     end in
     Sub (r, c1, c2)
   end else
-  (* Lt *)
+
+  (* Mul *)
   if ~$0x1a < opc && opc < ~$0x1e
   then begin
     let (r_enc, payload') = decode_int payload in
@@ -388,22 +401,22 @@ let decode_machine_op (i : Z.t) : machine_op =
     let c2 = begin
       if opc = ~$0x1b then Register (decode_reg c2_enc) else
       if opc = ~$0x1c then CP (Const c2_enc) else
-      CP (dec_perm c2_enc)
+        CP (dec_perm c2_enc)
     end in
-    Lt (r, c1, c2)
+    Mul (r, c1, c2)
   end else
-  if ~$0x1c < opc && opc < ~$0x21
+  if ~$0x1d < opc && opc < ~$0x21
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (Const c1_enc) in
-    let c2 = begin 
+    let c2 = begin
       if opc = ~$0x1e then Register (decode_reg c2_enc) else
       if opc = ~$0x1f then CP (Const c2_enc) else
-      CP (dec_perm c2_enc)
+        CP (dec_perm c2_enc)
     end in
-    Lt (r, c1, c2)
+    Mul (r, c1, c2)
   end else
   if ~$0x20 < opc && opc < ~$0x24
   then begin
@@ -416,24 +429,148 @@ let decode_machine_op (i : Z.t) : machine_op =
       if opc = ~$0x22 then CP (Const c2_enc) else
       CP (dec_perm c2_enc)
     end in
+    Mul (r, c1, c2)
+  end else
+
+  (* Rem *)
+  if ~$0x23 < opc && opc < ~$0x27
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = Register (decode_reg c1_enc) in
+    let c2 = begin
+      if opc = ~$0x24 then Register (decode_reg c2_enc) else
+      if opc = ~$0x25 then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end else
+  if ~$0x26 < opc && opc < ~$0x2a
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (Const c1_enc) in
+    let c2 = begin
+      if opc = ~$0x27 then Register (decode_reg c2_enc) else
+      if opc = ~$0x28 then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end else
+  if ~$0x29 < opc && opc < ~$0x2d
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (dec_perm c1_enc) in
+    let c2 = begin
+      if opc = ~$0x2a then Register (decode_reg c2_enc) else
+      if opc = ~$0x2b then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Rem (r, c1, c2)
+  end
+  else
+  (* Div *)
+  if ~$0x2c < opc && opc < ~$0x30
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = Register (decode_reg c1_enc) in
+    let c2 = begin
+      if opc = ~$0x2d then Register (decode_reg c2_enc) else
+      if opc = ~$0x2e then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Div (r, c1, c2)
+  end else
+  if ~$0x2f < opc && opc < ~$0x33
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (Const c1_enc) in
+    let c2 = begin
+      if opc = ~$0x30 then Register (decode_reg c2_enc) else
+      if opc = ~$0x31 then CP (Const c2_enc) else
+        CP (dec_perm c2_enc)
+    end in
+    Div (r, c1, c2)
+  end else
+  if ~$0x32 < opc && opc < ~$0x36
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (dec_perm c1_enc) in
+    let c2 = begin
+      if opc = ~$0x33 then Register (decode_reg c2_enc) else
+      if opc = ~$0x34 then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Div (r, c1, c2)
+  end
+  else
+
+ (* Lt *)
+  if ~$0x35 < opc && opc < ~$0x39
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = Register (decode_reg c1_enc) in
+    let c2 = begin
+      if opc = ~$0x36 then Register (decode_reg c2_enc) else
+      if opc = ~$0x37 then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Lt (r, c1, c2)
+  end else
+  if ~$0x37 < opc && opc < ~$0x3c
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (Const c1_enc) in
+    let c2 = begin
+      if opc = ~$0x39 then Register (decode_reg c2_enc) else
+      if opc = ~$0x3a then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
+    Lt (r, c1, c2)
+  end else
+  if ~$0x3b < opc && opc < ~$0x3f
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = CP (dec_perm c1_enc) in
+    let c2 = begin
+      if opc = ~$0x3c then Register (decode_reg c2_enc) else
+      if opc = ~$0x3d then CP (Const c2_enc) else
+      CP (dec_perm c2_enc)
+    end in
     Lt (r, c1, c2)
   end else
   (* Lea *)
-  if opc = ~$0x24 (* register register *)
+  if opc = ~$0x3f (* register register *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Lea (r1, r2)
   end else
-  if opc = ~$0x25 (* register const *)
+  if opc = ~$0x40 (* register const *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Lea (r, CP c)
   end else
-  if opc = ~$0x26 (* register perm *)
+  if opc = ~$0x41 (* register perm *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r = decode_reg r_enc in
@@ -441,21 +578,21 @@ let decode_machine_op (i : Z.t) : machine_op =
     Lea (r, CP p)
   end else
   (* Restrict *)
-  if opc = ~$0x27 (* register register *)
+  if opc = ~$0x42 (* register register *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Restrict (r1, r2)
   end else
-  if opc = ~$0x28 (* register const *)
+  if opc = ~$0x43 (* register const *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Restrict (r, CP c)
   end else
-  if opc = ~$0x29 (* register perm *)
+  if opc = ~$0x44 (* register perm *)
   then begin
     let (r_enc, c_enc) = decode_int payload in
     let r = decode_reg r_enc in
@@ -463,55 +600,54 @@ let decode_machine_op (i : Z.t) : machine_op =
     Restrict (r, CP p)
   end else
   (* SubSeg *)
-  if ~$0x29 < opc && opc < ~$0x2d
+  if ~$0x44 < opc && opc < ~$0x48
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = Register (decode_reg c1_enc) in
     let c2 = begin
-      if opc = ~$0x2a then Register (decode_reg c2_enc) else
-      if opc = ~$0x2b then CP (Const c2_enc) else
+      if opc = ~$0x45 then Register (decode_reg c2_enc) else
+      if opc = ~$0x46 then CP (Const c2_enc) else
         CP (dec_perm c2_enc)
     end in
     SubSeg (r, c1, c2)
   end else
-  if ~$0x2c < opc && opc < ~$0x30
+  if ~$0x47 < opc && opc < ~$0x4b
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (Const c1_enc) in
     let c2 = begin
-      if opc = ~$0x2d then Register (decode_reg c2_enc) else
-      if opc = ~$0x2e then CP (Const c2_enc) else
+      if opc = ~$0x48 then Register (decode_reg c2_enc) else
+      if opc = ~$0x49 then CP (Const c2_enc) else
         CP (dec_perm c2_enc)
     end in
     SubSeg (r, c1, c2)
   end else
-  if ~$0x2f < opc && opc < ~$0x33
+  if ~$0x4a < opc && opc < ~$0x4e
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (dec_perm c1_enc) in
     let c2 = begin
-      if opc = ~$0x30 then Register (decode_reg c2_enc) else
-      if opc = ~$0x31 then CP (Const c2_enc) else
+      if opc = ~$0x4b then Register (decode_reg c2_enc) else
+      if opc = ~$0x4c then CP (Const c2_enc) else
         CP (dec_perm c2_enc)
     end in
     SubSeg (r, c1, c2)
-  end else
-  (* IsPtr *)
-  if opc = ~$0x33
+  end else  (* IsPtr *)
+  if opc = ~$0x4e
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     IsPtr (r1, r2)
   end else
-  (* GetL *)
-  if opc = ~$0x34
+(* GetL *)
+  if opc = ~$0x4f
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -519,7 +655,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetL (r1, r2)
   end else
   (* GetP *)
-  if opc = ~$0x35
+  if opc = ~$0x50
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -527,7 +663,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetP (r1, r2)
   end else
   (* GetB *)
-  if opc = ~$0x36
+  if opc = ~$0x51
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -535,7 +671,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetB (r1, r2)
   end else
   (* GetE *)
-  if opc = ~$0x37
+  if opc = ~$0x52
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -543,7 +679,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetE (r1, r2)
   end else
   (* GetA *)
-  if opc = ~$0x38
+  if opc = ~$0x53
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -551,9 +687,8 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetA (r1, r2)
   end else
 
-
-  (* LoadU *)
-  if opc = ~$0x39 (* register register register *)
+(* LoadU *)
+  if opc = ~$0x54 (* register register register *)
   then begin
     let (payload', c_enc) = decode_int payload in
     let (r1_enc, r2_enc) = decode_int payload' in
@@ -562,7 +697,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let c = Register (decode_reg c_enc) in
     LoadU (r1, r2, c)
   end else
-  if opc = ~$0x3a (* register register const *)
+  if opc = ~$0x55 (* register register const *)
   then begin
     let (payload', c_enc) = decode_int payload in
     let (r1_enc, r2_enc) = decode_int payload' in
@@ -571,7 +706,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let c = Const c_enc in
     LoadU (r1, r2, CP c)
   end else
-  if opc = ~$0x3b (* register register perm *)
+  if opc = ~$0x56 (* register register perm *)
   then begin
     let (payload', c_enc) = decode_int payload in
     let (r1_enc, r2_enc) = decode_int payload' in
@@ -582,60 +717,58 @@ let decode_machine_op (i : Z.t) : machine_op =
   end else
 
   (* StoreU *)
-  if ~$0x3b < opc && opc < ~$0x3f
+  if ~$0x56 < opc && opc < ~$0x5a
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = Register (decode_reg c1_enc) in
     let c2 = begin
-      if opc = ~$0x3c then Register (decode_reg c2_enc) else
-      if opc = ~$0x3d then CP (Const c2_enc) else
+      if opc = ~$0x57 then Register (decode_reg c2_enc) else
+      if opc = ~$0x58 then CP (Const c2_enc) else
         CP (dec_perm c2_enc)
     end in
     StoreU (r, c1, c2)
   end else
-  if ~$0x3e < opc && opc < ~$0x42
+  if ~$0x59 < opc && opc < ~$0x5d
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (Const c1_enc) in
     let c2 = begin
-      if opc = ~$0x3f then Register (decode_reg c2_enc) else
-      if opc = ~$0x40 then CP (Const c2_enc) else
+      if opc = ~$0x5a then Register (decode_reg c2_enc) else
+      if opc = ~$0x5b then CP (Const c2_enc) else
       CP (dec_perm c2_enc)
     end in
     StoreU (r, c1, c2)
   end else
-  if ~$0x41 < opc && opc < ~$0x45
+  if ~$0x5c < opc && opc < ~$0x60
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
     let r = decode_reg r_enc in
     let c1 = CP (dec_perm c1_enc) in
     let c2 = begin
-      if opc = ~$0x42 then Register (decode_reg c2_enc) else
-      if opc = ~$0x43 then CP (Const c2_enc) else
+      if opc = ~$0x5d then Register (decode_reg c2_enc) else
+      if opc = ~$0x5e then CP (Const c2_enc) else
         CP (dec_perm c2_enc)
     end in
     StoreU (r, c1, c2)
   end else
 
   (* PromoteU *)
-  if opc = ~$0x45
+  if opc = ~$0x60
   then PromoteU (decode_reg payload)
   else
   (* Fail *)
-  if opc = ~$0x46
+  if opc = ~$0x61
   then Fail
   else
   (* Halt *)
-  if opc = ~$0x47
+  if opc = ~$0x62
   then Halt
-  else
-  (* TODO I would prefer to have Nop encoded as 0 *)
-  (* Nop *)
-  if opc = ~$0x48
-  then Nop
-  else raise @@ DecodeException "Error decoding instruction: unrecognized opcode"
+  else raise @@
+    DecodeException
+      (Printf.sprintf "Error decoding instruction: unrecognized opcode %0x"
+         (Z.to_int opc))

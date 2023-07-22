@@ -31,7 +31,7 @@ let run_prog (filename : string) : mchn  =
   let stk_locality = Ast.Directed in
   let addr_max = 10000 in
   let init_regs = Machine.init_reg_state addr_max true stk_locality in
-  let init_mems = Machine.init_mem_state addr_max parse_res in
+  let init_mems = Machine.init_mem_state 0 addr_max parse_res in
   let m = Machine.init init_regs init_mems in
 
   run m
@@ -165,18 +165,10 @@ let test_directed_store =
       `Quick (test_state Halted (fst m));
   ]
 
-let test_nop =
-  let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/test_nop.s" in [
-    test_case
-      "test_nop.s should end in halted state"
-      `Quick (test_state Halted (fst m));
-  ]
-
 let () =
   let open Alcotest in
   run "Run" [
     "Pos", test_mov_test @ test_jmper @ test_promote @ test_ucaps
-           @ test_locality_flow @ test_directed_store @ test_nop;
+           @ test_locality_flow @ test_directed_store;
     "Neg", test_negatives;
   ]

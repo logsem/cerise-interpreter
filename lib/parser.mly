@@ -6,11 +6,10 @@
 %token <string> LABEL
 %token LPAREN RPAREN
 %token PLUS MINUS COMMA SHARP
-%token NOP JMP JNZ MOVE LOAD STORE ADD SUB LT LEA RESTRICT SUBSEG ISPTR
-%token GETL GETP GETB GETE GETA FAIL HALT LOADU STOREU PROMOTEU
+%token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
+%token ISPTR GETL GETP GETB GETE GETA FAIL HALT LOADU STOREU PROMOTEU
 %token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
 %token LOCAL GLOBAL DIRECTED
-
 %left PLUS MINUS EXPR
 %left UMINUS
 
@@ -21,7 +20,6 @@
 
 main:
   | EOF; { ([]: Ir.t) }
-  | NOP; p = main; { Nop :: p }
   | JMP; r = reg; p = main; { Jmp r :: p }
   | JNZ; r1 = reg; r2 = reg; p = main; { Jnz (r1, r2) :: p }
   | MOVE; r = reg; c = reg_const; p = main; { Move (r, c) :: p }
@@ -29,6 +27,9 @@ main:
   | STORE; r = reg; c = reg_const; p = main; { Store (r, c) :: p }
   | ADD; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Add (r, c1, c2) :: p }
   | SUB; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Sub (r, c1, c2) :: p }
+  | MUL; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Mul (r, c1, c2) :: p }
+  | REM; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Rem (r, c1, c2) :: p }
+  | DIV; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Div (r, c1, c2) :: p }
   | LT; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Lt (r, c1, c2) :: p }
   | LEA; r = reg; c = reg_const; p = main; { Lea (r, c) :: p }
   | RESTRICT; r = reg; c = reg_const; p = main; { Restrict (r, c) :: p }
@@ -49,7 +50,8 @@ main:
   | SHARP ; z = expr; p = main; { Word (I z) :: p }
 
 cap_def:
-  | LPAREN; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN; { Cap (p, g, b, e, a) }
+  | LPAREN; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
+    { Cap (p, g, b, e, a) }
 
 reg:
   | PC; { PC }

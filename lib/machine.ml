@@ -17,10 +17,12 @@ type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have 
 type mchn = exec_state * exec_conf
 
 let init_reg_state (addr_max : int) (stack_opt : bool) (stk_locality : locality) : reg_state =
+  let start_heap_addr = 0 in
   let max_heap_addr = addr_max/2 in
+
   let l = List.init 32 (fun i -> Reg i, I Z.zero) in
   (* The PC register starts with full permission over the entire "heap" segment *)
-  let pc_init = (PC, Cap (RWX, Global, 0, max_heap_addr, 0)) in
+  let pc_init = (PC, Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr)) in
   (* The stk register starts with full permission over the entire "stack" segment *)
   let stk_init =
     if stack_opt
@@ -36,8 +38,7 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
-
-let init_mem_state (addr_max : int) (prog : t) : mem_state =
+let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
     let rec loop i m =
@@ -46,7 +47,7 @@ let init_mem_state (addr_max : int) (prog : t) : mem_state =
   in
   let enc_prog =
     List.to_seq @@ List.mapi
-      (fun i x -> i,
+      (fun i x -> i+addr_start,
                   match x with
                   | Op op -> I (Encode.encode_machine_op op)
                   | Word (Ast.I z) -> I z
@@ -204,7 +205,6 @@ let exec_single (conf : exec_conf) : mchn =
         match instr with
         | Fail -> (Failed, conf)
         | Halt -> (Halted, conf)
-        | Nop -> begin !> conf end
         | Move (r, c) -> begin
             let w = get_word conf c in
             !> (upd_reg r w conf)
@@ -305,6 +305,28 @@ let exec_single (conf : exec_conf) : mchn =
             | I z1, I z2 -> !> (upd_reg r (I Z.(z1 - z2)) conf)
             | _ -> fail_state
           end
+        | Mul (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 -> !> (upd_reg r (I Z.(z1 * z2)) conf)
+            | _ -> fail_state
+          end
+        | Rem (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 when z2 != Z.zero -> !> (upd_reg r (I Z.(z1 mod z2)) conf)
+            | _ -> fail_state
+          end
+        | Div (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 when z2 != Z.zero -> !> (upd_reg r (I Z.(z1 / z2)) conf)
+            | _ -> fail_state
+          end
+
         | Lt (r, c1, c2) -> begin
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
@@ -406,6 +428,13 @@ let step (m: mchn): mchn option =
   match m with
   | Running, conf -> Some (exec_single conf)
   | (Failed | Halted), _ -> None
+
+let rec step_n (m: mchn) n : mchn option =
+  if n > 0 then
+  (match (step m) with
+  | Some m' -> step_n m' (n-1)
+  | None -> None)
+  else Some m
 
 let rec run (m : mchn) : mchn =
   match step m with

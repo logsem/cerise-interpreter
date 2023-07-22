@@ -7,7 +7,6 @@ type reg_or_const = Register of regname | CP of const_perm (* TODO: separate int
 type word = I of Z.t | Cap of perm * locality * Z.t * Z.t * Z.t
 type machine_op
   =
-  | Nop
   | Jmp of regname
   | Jnz of regname * regname
   | Move of regname * reg_or_const
@@ -15,6 +14,9 @@ type machine_op
   | Store of regname * reg_or_const
   | Add of regname * reg_or_const * reg_or_const
   | Sub of regname * reg_or_const * reg_or_const
+  | Mul of regname * reg_or_const * reg_or_const
+  | Rem of regname * reg_or_const * reg_or_const
+  | Div of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
@@ -30,8 +32,8 @@ type machine_op
   | PromoteU of regname
   | Fail
   | Halt
-type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 
+type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
 
 let compare_regname (r1 : regname) (r2: regname) : int =

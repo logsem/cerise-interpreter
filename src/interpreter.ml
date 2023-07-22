@@ -31,8 +31,6 @@ let () =
 
   let stk_opt = true in
   let stk_locality = Ast.Local in
-
-
   let init_regfile = Machine.init_reg_state addr_max stk_opt stk_locality in
 
   let m_init = Program.init_machine prog (Some addr_max) init_regfile in

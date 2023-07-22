@@ -27,6 +27,6 @@ let init_machine
     match addr_max with
     | Some a_max -> a_max
     | None -> List.length prog in
-  (* let init_regs = Machine.init_reg_state addr_max stack_opt stk_locality in *)
-  let init_mems = Machine.init_mem_state addr_max prog in
+  let addr_start = 0 in (* TODO lookup the PC *)
+  let init_mems = Machine.init_mem_state addr_start addr_max prog in
   Machine.init init_regs init_mems

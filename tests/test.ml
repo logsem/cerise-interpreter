@@ -28,6 +28,7 @@ let make_op_test ((input, expect) : string * statement) =
       expect
       (To_test.lex_parse input))
 
+(* TODO add test cases for mul/rem/div *)
 let instr_tests = [
   ("jmp pc", Op (Jmp PC));
   ("jmp r21", Op (Jmp (Reg 21)));
@@ -55,7 +56,6 @@ let instr_tests = [
   ("promoteu r29", Op (PromoteU (Reg 29)));
   ("fail", Op (Fail));
   ("halt", Op (Halt));
-  ("nop", Op (Nop));
 ]
 
 let z_tst =
@@ -134,6 +134,7 @@ let make_enc_dec_stm_tests (stm, test_name) =
          stm
          (To_test.enc_dec_op stm))
 
+(* TODO add test cases for mul/rem/div *)
 let test_enc_dec_stm_list = [
   (Jmp PC, "encode-decode Jmp PC");
   (Jmp (Reg 28), "encode-decode Jmp R28");
@@ -215,7 +216,6 @@ let test_enc_dec_stm_list = [
   (PromoteU STK, "encore-decode PromoteU STK");
   (Fail, "encode-decode Fail");
   (Halt, "encode-decode Halt");
-  (Nop, "encode-decode Nop");
 ]
 
 let () =
