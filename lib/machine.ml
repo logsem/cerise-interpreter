@@ -16,10 +16,21 @@ type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
 
+(* let init_reg_state (addr_max : int) : reg_state = *)
+(*   let l = List.init 32 (fun i -> Reg i, I Z.zero) in *)
+(*   (\* The PC register starts with full permission over the entire memory *\) *)
+(*   let pc_init = (PC, Cap (RWX, 0, addr_max, 0)) in *)
+(*   let seq = List.to_seq (pc_init :: l) in *)
+(*   RegMap.of_seq seq *)
+
 let init_reg_state (addr_max : int) : reg_state =
+  let start_heap_addr = 0 in
+  let max_heap_addr = addr_max/2 in
+
   let l = List.init 32 (fun i -> Reg i, I Z.zero) in
-  (* The PC register starts with full permission over the entire memory *)
-  let pc_init = (PC, Cap (RWX, 0, addr_max, 0)) in
+
+  (* The PC register starts with full permission over the entire "heap" segment *)
+  let pc_init = (PC, Cap (RWX, start_heap_addr, max_heap_addr, start_heap_addr)) in
   let seq = List.to_seq (pc_init :: l) in
   RegMap.of_seq seq
 
@@ -29,8 +40,25 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
+(* let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state = *)
+(*   let zeroed_mem = *)
+(*     (\* NB: addr_max is not addressable *\) *)
+(*     let rec loop i m = *)
+(*       if i >= addr_max then m else loop (i+1) (MemMap.add i (I Z.zero) m) in *)
+(*     loop 0 MemMap.empty *)
+(*   in *)
+(*   let enc_prog = *)
+(*     List.to_seq @@ List.mapi *)
+(*       (fun i x -> i+addr_start, *)
+(*                   match x with *)
+(*                   | Op op -> I (Encode.encode_statement op) *)
+(*                   | Word (Ast.I z) -> I z *)
+(*                   | Word (Ast.Cap (p,b,e,a)) -> Cap (p, Z.to_int b, Z.to_int e, Z.to_int a)) *)
+(*       prog in *)
+(*   MemMap.add_seq enc_prog zeroed_mem *)
 
-let init_mem_state (addr_max : int) (prog : t) : mem_state =
+
+let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
     let rec loop i m =
@@ -38,7 +66,7 @@ let init_mem_state (addr_max : int) (prog : t) : mem_state =
     loop 0 MemMap.empty
   in
   let enc_prog =
-    List.to_seq @@ List.mapi (fun i x -> i, I (Encode.encode_statement x)) prog in
+    List.to_seq @@ List.mapi (fun i x -> (i+addr_start), I (Encode.encode_statement x)) prog in
   MemMap.add_seq enc_prog zeroed_mem
 
 let get_mem (addr : int) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
@@ -46,10 +74,10 @@ let (@?) x y = get_mem x y
 
 let upd_mem (addr : int) (w : word) ({reg ; mem} : exec_conf) : exec_conf = {reg ; mem = MemMap.add addr w mem}
 
-let init (addr_max : int) (prog : t) : mchn =
-  let regs = init_reg_state addr_max in
-  let mems = init_mem_state addr_max prog in
-  (Running, {reg = regs; mem = mems})
+let init
+    (initial_regs : word RegMap.t)
+    (initial_mems : word MemMap.t) =
+  (Running, {reg = initial_regs; mem = initial_mems})
 
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with
@@ -233,6 +261,13 @@ let step (m: mchn): mchn option =
   match m with
   | Running, conf -> Some (exec_single conf)
   | (Failed | Halted), _ -> None
+
+let rec step_n (m: mchn) n : mchn option =
+  if n > 0 then
+  (match (step m) with
+  | Some m' -> step_n m' (n-1)
+  | None -> None)
+  else Some m
 
 let rec run (m : mchn) : mchn =
   match step m with
