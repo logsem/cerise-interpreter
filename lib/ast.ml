@@ -12,6 +12,9 @@ type machine_op
   | Store of regname * reg_or_const
   | Add of regname * reg_or_const * reg_or_const
   | Sub of regname * reg_or_const * reg_or_const
+  | Mul of regname * reg_or_const * reg_or_const
+  | Rem of regname * reg_or_const * reg_or_const
+  | Div of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const

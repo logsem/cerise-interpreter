@@ -38,6 +38,9 @@ let string_of_machine_op (s: machine_op): string =
   | Store (r, c) -> "store" ^- string_of_rc r c
   | Add (r, c1, c2) -> "add" ^- string_of_rcc r c1 c2
   | Sub (r, c1, c2) -> "sub" ^- string_of_rcc r c1 c2
+  | Mul (r, c1, c2) -> "mul" ^- string_of_rcc r c1 c2
+  | Rem (r, c1, c2) -> "rem" ^- string_of_rcc r c1 c2
+  | Div (r, c1, c2) -> "div" ^- string_of_rcc r c1 c2
   | Lt (r, c1, c2) -> "lt" ^- string_of_rcc r c1 c2
   | Lea (r, c) -> "lea" ^- string_of_rc r c
   | Restrict (r, c) -> "restrict" ^- string_of_rc r c

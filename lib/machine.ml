@@ -230,6 +230,28 @@ let exec_single (conf : exec_conf) : mchn =
             | I z1, I z2 -> !> (upd_reg r (I Z.(z1 - z2)) conf)
             | _ -> fail_state
           end
+        | Mul (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 -> !> (upd_reg r (I Z.(z1 * z2)) conf)
+            | _ -> fail_state
+          end
+        | Rem (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 when z2 != Z.zero -> !> (upd_reg r (I Z.(z1 mod z2)) conf)
+            | _ -> fail_state
+          end
+        | Div (r, c1, c2) -> begin
+            let w1 = get_word conf c1 in
+            let w2 = get_word conf c2 in
+            match w1, w2 with
+            | I z1, I z2 when z2 != Z.zero -> !> (upd_reg r (I Z.(z1 / z2)) conf)
+            | _ -> fail_state
+          end
+
         | Lt (r, c1, c2) -> begin
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in

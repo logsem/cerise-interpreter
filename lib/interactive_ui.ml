@@ -302,11 +302,11 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           | `Key (`Arrow `Up, _) ->
             loop ~update_prog:(Program_panel.previous_addr) m history
           | `Key (`Arrow `Down, _) ->
-            loop ~update_prog:(Program_panel.next_addr) show_stack m history
+            loop ~update_prog:(Program_panel.next_addr) m history
           | `Key (`Arrow `Left, _) ->
-            loop ~update_prog:(Program_panel.previous_page 1) show_stack m history
+            loop ~update_prog:(Program_panel.previous_page 1) m history
           | `Key (`Arrow `Right, _) ->
-            loop ~update_prog:(Program_panel.next_page 1) show_stack m history
+            loop ~update_prog:(Program_panel.next_page 1) m history
 
           | `Key (`ASCII ' ', _) ->
             begin match Machine.step m with
@@ -323,7 +323,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             (match history with
             | [] -> loop m history
             | m'::h' -> loop m' h')
-
+    
           | `Resize (_, _) -> loop m history
           | _ -> process_events ()
         in

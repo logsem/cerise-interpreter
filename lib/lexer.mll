@@ -37,6 +37,9 @@ rule token = parse
 | "store" { STORE }
 | "add" { ADD }
 | "sub" { SUB }
+| "mul" { MUL }
+| "rem" { REM }
+| "div" { DIV }
 | "lt" { LT }
 | "lea" { LEA }
 | "restrict" { RESTRICT }
