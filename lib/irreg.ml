@@ -20,13 +20,13 @@ type word = WI of expr | WCap of perm * locality * addr * addr * addr
 type t = (regname * word) list
 
 
-let rec eval_expr  (e : expr) (max_addr : int) (stk_addr : int) : int =
+let rec eval_expr  (e : expr) (max_addr : Z.t) (stk_addr : Z.t) : Z.t =
   match e with
-  | IntLit i -> i
+  | IntLit i -> Z.(~$i)
   | MaxAddr -> max_addr
   | StkAddr -> stk_addr
-  | AddOp (e1, e2) -> (eval_expr e1 max_addr stk_addr) + (eval_expr e2 max_addr stk_addr)
-  | SubOp (e1, e2) -> (eval_expr e1 max_addr stk_addr) - (eval_expr e2 max_addr stk_addr)
+  | AddOp (e1, e2) -> Z.((eval_expr e1 max_addr stk_addr) + (eval_expr e2 max_addr stk_addr))
+  | SubOp (e1, e2) -> Z.((eval_expr e1 max_addr stk_addr) + (eval_expr e2 max_addr stk_addr))
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -55,14 +55,14 @@ let translate_regname (r : regname) : Ast.regname =
   | STK -> Ast.STK
   | Reg i -> Ast.Reg i
 
-let translate_addr (a : addr) (max_addr : int) (stk_addr : int): int =
+let translate_addr (a : addr) (max_addr : Z.t) (stk_addr : Z.t): Z.t =
   match a with
   | Addr e -> (eval_expr e max_addr stk_addr)
 
 
-let translate_word (w : word) (max_addr : int) (stk_addr : int): Machine.word =
+let translate_word (w : word) (max_addr : Z.t) (stk_addr : Z.t): Machine.word =
   match w with
-  | WI e -> Machine.I (Z.of_int (eval_expr e max_addr stk_addr))
+  | WI e -> Machine.I (eval_expr e max_addr stk_addr)
   | WCap (p,g,b,e,a) ->
     let p = translate_perm p in
     let g = translate_locality g in
@@ -71,7 +71,7 @@ let translate_word (w : word) (max_addr : int) (stk_addr : int): Machine.word =
     let a = translate_addr a max_addr stk_addr in
     Machine.Cap (p,g,b,e,a)
 
-let rec translate_regfile (regfile : t) (max_addr : int) (stk_addr : int):
+let rec translate_regfile (regfile : t) (max_addr : Z.t) (stk_addr : Z.t):
   (Machine.word Machine.RegMap.t) =
   let init_regfile =
     Machine.RegMap.empty in

@@ -27,7 +27,7 @@ let () =
       Printf.eprintf "Parse error: %s\n" msg;
       exit 1
   in
-  let addr_max = (Int32.to_int Int32.max_int)/4096 in
+  let addr_max = Z.of_int ((Int32.to_int Int32.max_int)/4096) in
 
   let stk_opt = true in
   let stk_locality = Ast.Local in

@@ -6,7 +6,7 @@ let parse_prog (filename: string): (Ast.t, string) Result.t =
     close_in input; Result.Ok parse_res
   with Failure _ -> close_in input; Result.Error "Parsing Failed"
 
-let parse_regfile (filename: string) (max_addr : int) (stk_addr : int)
+let parse_regfile (filename: string) (max_addr : Z.t) (stk_addr : Z.t)
   : (Machine.word Machine.RegMap.t, string) Result.t =
   let input = open_in filename in
   try
@@ -20,13 +20,13 @@ let parse_regfile (filename: string) (max_addr : int) (stk_addr : int)
 
 let init_machine
     (prog : Ast.t)
-    (addr_max : int option)
+    (addr_max : Z.t option)
     (init_regs : Machine.word Machine.RegMap.t)
   : Machine.mchn =
   let addr_max =
     match addr_max with
     | Some a_max -> a_max
-    | None -> List.length prog in
-  let addr_start = 0 in (* TODO lookup the PC *)
+    | None -> Z.of_int (List.length prog) in
+  let addr_start = Z.(~$0) in (* TODO lookup the PC *)
   let init_mems = Machine.init_mem_state addr_start addr_max prog in
   Machine.init init_regs init_mems
