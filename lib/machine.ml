@@ -21,14 +21,17 @@ type mchn = exec_state * exec_conf
 let init_reg_state (addr_max : Z.t) (stack_opt : bool) (stk_locality : locality) : reg_state =
   let start_heap_addr = ~$0 in
   let max_heap_addr = Z.(addr_max / ~$2) in
+  let start_stk_addr =  max_heap_addr in
+  let max_stk_addr = addr_max in
 
   let l = List.init 32 (fun i -> Reg i, I Z.zero) in
+
   (* The PC register starts with full permission over the entire "heap" segment *)
   let pc_init = (PC, Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr)) in
   (* The stk register starts with full permission over the entire "stack" segment *)
   let stk_init =
     if stack_opt
-    then (STK, Cap (URWLX, stk_locality, max_heap_addr, addr_max, max_heap_addr))
+    then (STK, Cap (URWLX, stk_locality, start_stk_addr, max_stk_addr, start_stk_addr))
     else (STK, I Z.zero)
   in
   let seq = List.to_seq (pc_init :: stk_init :: l) in
