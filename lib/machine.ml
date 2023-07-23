@@ -31,7 +31,6 @@ let init_reg_state (addr_max : Z.t) (stack_opt : bool) (stk_locality : locality)
   (* The stk register starts with full permission over the entire "stack" segment *)
   let stk_init =
     if stack_opt
-    (* then (STK, Cap (URWLX, stk_locality, max_heap_addr, addr_max, max_heap_addr)) *)
     then (STK, Cap (URWLX, stk_locality, start_stk_addr, max_stk_addr, start_stk_addr))
     else (STK, I Z.zero)
   in
