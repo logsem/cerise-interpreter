@@ -28,9 +28,9 @@ let run_prog (filename : string) : mchn  =
   let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
   let _ = close_in input in
 
-  let addr_max = 10000 in
+  let addr_max = Z.(~$10000) in
   let init_regs = Machine.init_reg_state addr_max in
-  let init_mems = Machine.init_mem_state 0 addr_max parse_res in
+  let init_mems = Machine.init_mem_state Z.(~$0) addr_max parse_res in
   let m = Machine.init init_regs init_mems in
 
   run m
@@ -70,7 +70,7 @@ let test_mov_test =
   let pc_a = begin
     match get_reg PC @@ snd m with
     | Cap (_, _, _, a) -> a
-    | _ -> -1
+    | _ -> Z.(~$(-1))
   end in
   let r2_res = begin
     match Reg 2 @! snd m with
@@ -88,7 +88,7 @@ let test_mov_test =
       `Quick (test_state Halted (fst m));
     test_case
       "mov_test.s PC should point to address 2"
-      `Quick (fun _ -> check int "Ints match" 2 pc_a);
+      `Quick (fun _ -> check int "Ints match" 2 (Z.to_int pc_a));
     test_case
       "mov_test.s R2 should contain 28"
       `Quick (test_const_word Z.(~$28) r2_res);

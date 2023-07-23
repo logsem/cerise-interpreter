@@ -55,7 +55,8 @@ let string_of_machine_op (s: machine_op): string =
 
 let string_of_word (w : word) : string =
   match w with
-  | Cap (p, b, e, a) -> Printf.sprintf "Cap (%s, %d, %d, %d)" (string_of_perm p) b e a
+  | Cap (p, b, e, a) ->
+    Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | I z -> Z.to_string z
 
 let string_of_ast_word (w : Ast.word) : string =

@@ -33,17 +33,18 @@ let () =
       exit 1
   in
 
-  let size_mem =
-    let s = !mem_size_option in
-    if s < 0
-    then (Printf.eprintf "Size of memory must be positive (%d)" s; exit 1)
-    else s
+  let size_mem : Z.t =
+    Z.(
+    let s = ~$ !mem_size_option in
+    if s < ~$0
+    then (Printf.eprintf "Size of memory must be positive (%s)" (Z.to_string s); exit 1)
+    else s)
   in
 
-  let module Cfg = struct let addr_max = size_mem end in
+  let module Cfg = struct let addr_max : Z.t = size_mem end in
   let module Ui = Interactive_ui.MkUi (Cfg) in
 
-  let prog_panel_start = ref 0 in
+  let prog_panel_start = ref Z.zero in
 
   let regfile =
     let init_regfile =

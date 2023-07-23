@@ -1,8 +1,10 @@
 open Ast
+let (~$) = Z.(~$)
+
 
 exception NotYetImplemented
 
-module MemMap = Map.Make(Int)
+module MemMap = Map.Make(Z)
 module RegMap =
   Map.Make(struct
     type t = regname
@@ -10,15 +12,15 @@ module RegMap =
   end)
     
 type exec_state = Running | Halted | Failed
-type word = I of Z.t | Cap of perm * int * int * int
+type word = I of Z.t | Cap of perm * Z.t * Z.t * Z.t
 type reg_state = word RegMap.t
 type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
 
-let init_reg_state (addr_max : int) : reg_state =
-  let start_heap_addr = 0 in
-  let max_heap_addr = addr_max/2 in
+let init_reg_state (addr_max : Z.t) : reg_state =
+  let start_heap_addr = ~$0 in
+  let max_heap_addr = Z.(addr_max / ~$2) in
 
   let l = List.init 32 (fun i -> Reg i, I Z.zero) in
 
@@ -33,27 +35,29 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
-let init_mem_state (addr_start: int) (addr_max : int) (prog : t) : mem_state =
+let init_mem_state (addr_start: Z.t) (addr_max : Z.t) (prog : t) : mem_state =
   let zeroed_mem =
     (* NB: addr_max is not addressable *)
-    let rec loop i m =
-      if i >= addr_max then m else loop (i+1) (MemMap.add i (I Z.zero) m) in
-    loop 0 MemMap.empty
+    let rec loop (i : Z.t) m =
+      if i >= addr_max then m else loop Z.(i+ ~$1) (MemMap.add i (I ~$0) m) in
+    loop Z.zero MemMap.empty
   in
   let enc_prog =
     List.to_seq @@ List.mapi
-      (fun i x -> i+addr_start,
+      (fun i x ->
+        let i = ~$i in
+        Z.(i+addr_start),
                   match x with
                   | Op op -> I (Encode.encode_machine_op op)
                   | Word (Ast.I z) -> I z
-                  | Word (Ast.Cap (p,b,e,a)) -> Cap (p, Z.to_int b, Z.to_int e, Z.to_int a))
+                  | Word (Ast.Cap (p,b,e,a)) -> Cap (p, b, e, a))
       prog in
   MemMap.add_seq enc_prog zeroed_mem
 
-let get_mem (addr : int) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
+let get_mem (addr : Z.t) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
 let (@?) x y = get_mem x y
 
-let upd_mem (addr : int) (w : word) ({reg ; mem} : exec_conf) : exec_conf = {reg ; mem = MemMap.add addr w mem}
+let upd_mem (addr : Z.t) (w : word) ({reg ; mem} : exec_conf) : exec_conf = {reg ; mem = MemMap.add addr w mem}
 
 let init
     (initial_regs : word RegMap.t)
@@ -68,7 +72,7 @@ let get_word (conf : exec_conf) (roc : reg_or_const) : word =
 
 let upd_pc (conf : exec_conf) : mchn =
   match PC @! conf with
-  | Cap (p, b, e, a) -> (Running, upd_reg PC (Cap (p, b, e, a+1)) conf)
+  | Cap (p, b, e, a) -> (Running, upd_reg PC (Cap (p, b, e, Z.(a + ~$1))) conf)
   | _ -> (Failed, conf)
 let (!>) conf = upd_pc conf
 
@@ -194,10 +198,8 @@ let exec_single (conf : exec_conf) : mchn =
                 let w1 = get_word conf c1 in
                 let w2 = get_word conf c2 in
                 match w1, w2 with
-                | I i1, I i2 ->
-                  let z1 = Z.to_int i1 in
-                  let z2 = Z.to_int i2 in
-                  if b <= z1 && 0 <= z2 && z2 <= e && p <> E
+                | I z1, I z2 ->
+                  if b <= z1 && Z.(~$0 <= z2) && Z.(~$0 <= e) && p <> E
                   then
                     let w = Cap (p, z1, z2, a) in
                     !> (upd_reg r w conf)
@@ -211,7 +213,7 @@ let exec_single (conf : exec_conf) : mchn =
             | Cap (p, b, e, a) -> begin
                 let w = get_word conf c in
                 match w with
-                | I z when p <> E -> !> (upd_reg r (Cap (p, b, e, a + Z.(to_int z))) conf)
+                | I z when p <> E -> !> (upd_reg r (Cap (p, b, e, Z.(a + z))) conf)
                 | _ -> fail_state
               end
             | _ -> fail_state
@@ -267,23 +269,23 @@ let exec_single (conf : exec_conf) : mchn =
           end
         | GetB (r1, r2) -> begin
             match r2 @! conf with
-            | Cap (_, b, _, _) -> !> (upd_reg r1 (I Z.(~$b)) conf)
+            | Cap (_, b, _, _) -> !> (upd_reg r1 (I b) conf)
             | _ -> fail_state
           end
         | GetE (r1, r2) -> begin
             match r2 @! conf with
-            | Cap (_, _, e, _) -> !> (upd_reg r1 (I Z.(~$e)) conf)
+            | Cap (_, _, e, _) -> !> (upd_reg r1 (I e) conf)
             | _ -> fail_state
           end
         | GetA (r1, r2) -> begin
             match r2 @! conf with
-            | Cap (_, _, _, a) -> !> (upd_reg r1 (I Z.(~$a)) conf)
+            | Cap (_, _, _, a) -> !> (upd_reg r1 (I a) conf)
             | _ -> fail_state
           end
         | IsPtr (r1, r2) -> begin
             match r2 @! conf with
-            | Cap (_, _, _, _) -> !> (upd_reg r1 (I Z.one) conf)
-            | _ -> !> (upd_reg r1 (I Z.zero) conf)
+            | Cap (_, _, _, _) -> !> (upd_reg r1 (I ~$1) conf)
+            | _ -> !> (upd_reg r1 (I ~$0) conf)
           end    
       end
   else fail_state

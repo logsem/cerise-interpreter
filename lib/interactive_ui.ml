@@ -5,12 +5,12 @@ open Notty_unix
 
 (* ui components *)
 
-module type MachineConfig = sig val addr_max : int end
+module type MachineConfig = sig val addr_max : Z.t end
 
 module type Ui =
 sig
   val render_loop :
-    int ref ->
+    Z.t ref ->
     Machine.mchn ->
     unit
 end
@@ -26,13 +26,13 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
   module Addr = struct
     (* width of an address as a number of hex digits *)
     let width =
-      1 + int_of_float (floor @@ log (float Cfg.addr_max) /. log 16.)
+      1 + int_of_float (floor @@ log (float (Z.to_int Cfg.addr_max)) /. log 16.)
 
-    let to_hex (a: int): string =
+    let to_hex (a: Z.t): string =
       (* pad on the left with zeroes up to [width] chars *)
-      Printf.sprintf "%0*X" width a
+      Printf.sprintf "%0*X" width (Z.to_int a)
 
-    let ui ?(attr = A.empty) (a: int) =
+    let ui ?(attr = A.empty) (a: Z.t) =
       I.string attr (to_hex a)
   end
 
@@ -157,7 +157,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       | Cap (_, b, e, _) ->
         if a >= b && a < e then (
           if a = b then `AtStart
-          else if a = e-1 then `AtLast
+          else if a = Z.(e- ~$1) then `AtLast
           else `InRange
         ) else `No
 
@@ -195,42 +195,44 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       (List.fold_left (fun img (a, w) -> img <-> img_of_prog a w)
          I.empty data_range)
 
-    let follow_addr r height start_addr off=
+    let follow_addr r (height : int) start_addr (off : int)=
       match r with
       | Machine.I _ -> start_addr
       | Cap (_, _, _, r) ->
-        if r <= start_addr && start_addr > 0 then
-          r - off
-        else if r >= start_addr + height - 1 && start_addr + height < Cfg.addr_max then
-          r - off
+        Z.(
+        if r <= start_addr && start_addr > ~$0 then
+          r - ~$off
+        else if r >= start_addr + ~$height - ~$1 && start_addr + ~$height < Cfg.addr_max then
+          r - ~$off
         else
-          start_addr
-    let next_page n (_ : Machine.word) height start_addr off =
-      let new_addr = start_addr + (n * height) - off in
-      if new_addr > Cfg.addr_max then start_addr else new_addr
-    let previous_page n (_ : Machine.word) height start_addr off =
-      let new_addr = start_addr - (n * height) + off in
-      if new_addr < 0 then 0 else new_addr
+          start_addr)
+    let next_page n (_ : Machine.word) height start_addr off  =
+      Z.(let new_addr = start_addr + (~$n * ~$height) - ~$off in
+      if new_addr > Cfg.addr_max then start_addr else new_addr)
+    let previous_page n (_ : Machine.word) height start_addr off  =
+      Z.(let new_addr = start_addr - (~$n * ~$height) + ~$off in
+      if new_addr < ~$0 then ~$0 else new_addr)
     let next_addr (_ : Machine.word) (_:int) start_addr (_:int) =
-      let new_addr = start_addr + 1 in
+      Z.(let new_addr = start_addr + ~$1 in
       if new_addr > Cfg.addr_max
-      then start_addr else new_addr
+      then start_addr else new_addr)
     let previous_addr (_ : Machine.word) (_:int) start_addr (_:int) =
-      let new_addr = start_addr - 1 in
-      if new_addr < 0 then 0 else new_addr
+      Z.(let new_addr = start_addr - ~$1 in
+      if new_addr < ~$0 then ~$0 else new_addr)
 
     let ui
         ?(upd_prog = follow_addr)
         height width
         (mem: Machine.mem_state)
         (pc: Machine.word)
-        (start_prog: int)
+        (start_prog: Z.t)
       =
 
-      let addr_show start_addr =
-        CCList.(start_addr --^ (start_addr+height))
-        |> List.filter (fun a -> a >= 0 && a < Cfg.addr_max)
-        |> List.map (fun a -> a, Machine.MemMap.find a mem) in
+      let addr_show (start_addr : Z.t) =
+        let start_addr_int = Z.to_int start_addr in
+        CCList.((start_addr_int --^ (start_addr_int+height)))
+        |> List.filter (fun a -> a >= 0 && a < (Z.to_int Cfg.addr_max))
+        |> List.map (fun a -> Z.( ~$a, Machine.MemMap.find ~$a mem)) in
 
       let start_prog = upd_prog pc height start_prog 2 in
 
