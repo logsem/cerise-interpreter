@@ -30,7 +30,7 @@ word:
 ; b = addr ; COMMA
 ; e = addr ; COMMA
 ; a = addr
-; RPAREN  { WCap (p, b, e, a) }
+; RPAREN  { WSealable (WCap (p, b, e, a)) }
 
 addr:
   | e = expr %prec EXPR { Addr (e) }

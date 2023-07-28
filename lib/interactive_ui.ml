@@ -23,6 +23,13 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         (I.string attr (Pretty_printer.string_of_perm p))
   end
 
+  module SealPerm = struct
+    let width = 5
+    let ui ?(attr = A.empty) (p: Ast.seal_perm) =
+      I.hsnap ~align:`Left width
+        (I.string attr (Pretty_printer.string_of_sealperm p))
+  end
+
   module Addr = struct
     (* width of an address as a number of hex digits *)
     let width =
@@ -83,9 +90,38 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       ) else s
   end
 
+  module Sealable = struct
+    let width =
+      Perm.width + 1 (* space *) +
+      Addr_range.width + 1 (* space *) +
+      Addr.width
+
+    let ui ?(attr = A.empty) (sb: Ast.sealable) =
+      (* - <perm> <range> <addr> if it's a capability
+         (with padding after the range to right-align <addr>)
+         - <perm> <range> <otype> if it's a sealrange
+           (with padding after the range to right-align <addr>) *)
+      match sb with
+      | Cap (p, b, e, a) ->
+        (I.hsnap ~align:`Left width
+           (Perm.ui ~attr p
+            <|> I.string A.empty " "
+            <|> Addr_range.ui ~attr (b, e))
+         </>
+         I.hsnap ~align:`Right width (Addr.ui a))
+      | SealRange (p, b, e, a) ->
+        (I.hsnap ~align:`Left width
+           (SealPerm.ui ~attr p
+            <|> I.string A.empty " "
+            <|> Addr_range.ui ~attr (b, e))
+         </>
+         I.hsnap ~align:`Right width (Addr.ui a))
+  end
+
   module Word = struct
     (* a word is printed as:
-       - <perm> <range> <addr> if it's a capability
+       - <sealable> if it's a sealable
+       - {<otype>, <sealable>} if it's a sealed
          (with padding after the range to right-align <addr>)
        - <int> if it's an integer
     *)
@@ -97,13 +133,14 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let ui ?(attr = A.empty) (w: Machine.word) =
       match w with
       | I z -> I.hsnap ~align:`Right width (I.string attr (Int.ui width z))
-      | Cap (p, b, e, a) ->
-          (I.hsnap ~align:`Left width
-             (Perm.ui ~attr p
-              <|> I.string A.empty " "
-              <|> Addr_range.ui ~attr (b, e))
-           </>
-           I.hsnap ~align:`Right width (Addr.ui a))
+      | Sealable sb -> I.hsnap ~align:`Right width (Sealable.ui ~attr sb)
+      | Sealed (o,sb) ->
+        I.hsnap ~align:`Left width
+           (I.string A.empty "{"
+           <|> (I.string attr (Int.ui width o))
+           <|> I.string A.empty ","
+           <|> (I.hsnap ~align:`Right width (Sealable.ui ~attr sb))
+           <|> I.string A.empty "}")
   end
 
   module Regname = struct
@@ -153,15 +190,16 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
     let is_in_r_range r a =
       match r with
-      | Machine.I _ -> `No
-      | Cap (_, b, e, _) ->
-        if a >= b && a < e then (
-          if a = b then `AtStart
-          else if a = Z.(e- ~$1) then `AtLast
-          else `InRange
-        ) else `No
+      | Machine.Sealable (Cap (_, b, e, _)) ->
+         if a >= b && a < e then (
+           if a = b then `AtStart
+           else if a = Z.(e- ~$1) then `AtLast
+           else `InRange
+         ) else `No
+      | _ -> `No
 
-    let at_reg r a = match r with Machine.I _ -> false | Cap (_, _, _, r) -> a = r
+    let at_reg r a = match r with
+         Machine.Sealable (Cap (_, _, _, r)) -> a = r | _ -> false
 
     let img_instr in_range a w =
       (match w with
@@ -197,8 +235,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
     let follow_addr r (height : int) start_addr (off : int)=
       match r with
-      | Machine.I _ -> start_addr
-      | Cap (_, _, _, r) ->
+      | Machine.Sealable (Cap (_, _, _, r)) ->
         Z.(
         if r <= start_addr && start_addr > ~$0 then
           r - ~$off
@@ -206,6 +243,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           r - ~$off
         else
           start_addr)
+      | _ -> start_addr
     let next_page n (_ : Machine.word) height start_addr off  =
       Z.(let new_addr = start_addr + (~$n * ~$height) - ~$off in
       if new_addr > Cfg.addr_max then start_addr else new_addr)

@@ -4,11 +4,12 @@
 %token <int> INT
 %token <string> LABELDEF
 %token <string> LABEL
-%token LPAREN RPAREN
+%token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
-%token ISPTR GETP GETB GETE GETA FAIL HALT
+%token ISPTR GETP GETB GETE GETA SEAL UNSEAL FAIL HALT
 %token O E RO RX RW RWX
+%token S U SU
 
 %left PLUS MINUS EXPR
 %left UMINUS
@@ -39,15 +40,25 @@ main:
   | GETB; r1 = reg; r2 = reg; p = main; { GetB (r1, r2) :: p }
   | GETE; r1 = reg; r2 = reg; p = main; { GetE (r1, r2) :: p }
   | GETA; r1 = reg; r2 = reg; p = main; { GetA (r1, r2) :: p }
+  | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
+  | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }
   | lbl = LABELDEF; p = main; { Lbl lbl :: p }
-  | SHARP ; cap = cap_def; p = main; { Word cap :: p }
+  | SHARP ; cap = cap_def; p = main; { Word (Sealable cap) :: p }
+  | SHARP ; sealed = sealed_def; p = main; { Word sealed :: p }
+  | SHARP ; sealrange = sealrange_def; p = main; { Word (Sealable sealrange) :: p }
   | SHARP ; z = expr; p = main; { Word (I z) :: p }
 
 cap_def:
   | LPAREN; p = perm; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
     { Cap (p, b, e, a) }
+sealrange_def:
+  | LSBRK; p = seal_perm; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RSBRK;
+    { SealRange (p, b, e, a) }
+sealed_def:
+  | LCBRK; o = expr; COMMA; cap = cap_def ; RCBRK
+    { Sealed (o, cap) }
 
 reg:
   | PC; { PC }
@@ -57,6 +68,12 @@ reg_const:
   | r = reg; { Register r }
   | c = expr %prec EXPR { CP (Const (c)) }
   | p = perm; { CP (Perm p) }
+
+seal_perm:
+  | O; { (false, false) }
+  | S; { (true, false) }
+  | U; { (false, true) }
+  | SU; { (true, true) }
 
 perm:
   | O; { O }

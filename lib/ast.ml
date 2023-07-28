@@ -1,9 +1,12 @@
 (* Type definitions for the syntax AST *)
 type regname = PC | Reg of int
 type perm = O | E | RO | RX | RW | RWX
+type seal_perm = bool * bool
 type const_perm = Const of Z.t | Perm of perm
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
-type word = I of Z.t | Cap of perm * Z.t * Z.t * Z.t
+(* type otype = Z.t *)
+type sealable = Cap of perm * Z.t * Z.t * Z.t | SealRange of seal_perm * Z.t * Z.t * Z.t
+type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
 type machine_op
   = Jmp of regname
   | Jnz of regname * regname
@@ -24,6 +27,8 @@ type machine_op
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
+  | Seal of regname * regname * regname
+  | UnSeal of regname * regname * regname
   | Fail
   | Halt
 

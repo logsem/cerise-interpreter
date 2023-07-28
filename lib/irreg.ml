@@ -9,16 +9,18 @@ type expr
   | MaxAddr
 
 type perm = O | E | RO | RX | RW | RWX
+type seal_perm = O | S | U | SU
 
 (* TODO special addresses: min_addr, max_addr, stk_addr ... *)
 type addr = Addr of expr
 
-type word = WI of expr | WCap of perm * addr * addr * addr
+type sealable = WCap of perm * addr * addr * addr | WSealRange of seal_perm * addr * addr * addr
+type word = WI of expr | WSealable of sealable | WSealed of addr * sealable
 
 type t = (regname * word) list
 
 
-let rec eval_expr  (e : expr) (max_addr : Z.t) : Z.t =
+let rec eval_expr (e : expr) (max_addr : Z.t) : Z.t =
   match e with
   | IntLit i -> Z.(~$i)
   | MaxAddr -> max_addr
@@ -34,6 +36,13 @@ let translate_perm (p : perm) : Ast.perm =
   | RW -> Ast.RW
   | RWX -> Ast.RWX
 
+let translate_sealperm (p : seal_perm) : Ast.seal_perm =
+  match p with
+  | O -> (false, false)
+  | S -> (true, false)
+  | U -> (false, true)
+  | SU -> (true, true)
+
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
@@ -44,15 +53,27 @@ let translate_addr (a : addr) (max_addr : Z.t) : Z.t =
   | Addr e -> (eval_expr e max_addr)
 
 
-let translate_word (w : word) (max_addr : Z.t) : Machine.word =
-  match w with
-  | WI e -> Machine.I (eval_expr e max_addr)
+let translate_sealable (sb : sealable) (max_addr : Z.t) : Ast.sealable =
+  match sb with
   | WCap (p,b,e,a) ->
     let p = translate_perm p in
     let b = translate_addr b max_addr in
     let e = translate_addr e max_addr in
     let a = translate_addr a max_addr in
-    Machine.Cap (p,b,e,a)
+    Cap (p,b,e,a)
+  | WSealRange (p,b,e,a) ->
+    let p = translate_sealperm p in
+    let b = translate_addr b max_addr in
+    let e = translate_addr e max_addr in
+    let a = translate_addr a max_addr in
+    SealRange (p,b,e,a)
+
+
+let translate_word (w : word) (max_addr : Z.t) : Machine.word =
+  match w with
+  | WI e -> Machine.I (eval_expr e max_addr)
+  | WSealable sb -> Machine.Sealable (translate_sealable sb max_addr)
+  | WSealed (o,sb) -> Machine.Sealed (translate_addr o max_addr, translate_sealable sb max_addr)
 
 let rec translate_regfile (regfile : t) (max_addr : Z.t):
   (Machine.word Machine.RegMap.t) =

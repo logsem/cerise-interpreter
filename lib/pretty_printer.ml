@@ -26,6 +26,8 @@ let string_of_reg_or_const (c: reg_or_const) : string =
 let string_of_machine_op (s: machine_op): string =
   let string_of_rr r1 r2 =
     string_of_regname r1 ^- string_of_regname r2
+  and string_of_rrr r1 r2 r3 =
+    string_of_regname r1 ^- string_of_regname r2 ^- string_of_regname r3
   and string_of_rc r c =
     string_of_regname r ^- string_of_reg_or_const c
   and string_of_rcc r c1 c2  =
@@ -50,21 +52,45 @@ let string_of_machine_op (s: machine_op): string =
   | GetB (r1, r2) -> "getb" ^- string_of_rr r1 r2
   | GetE (r1, r2) -> "gete" ^- string_of_rr r1 r2
   | GetA (r1, r2) -> "geta" ^- string_of_rr r1 r2
+  | Seal (r1, r2, r3) -> "seal" ^- string_of_rrr r1 r2 r3
+  | UnSeal (r1, r2, r3) -> "unseal" ^- string_of_rrr r1 r2 r3
   | Fail -> "fail"
   | Halt -> "halt"
 
-let string_of_word (w : word) : string =
-  match w with
+(* TODO is there any better way to print it ? *)
+let string_of_sealperm (p : seal_perm) : string =
+    match p with
+    | (false, false) -> "_"
+    | (true, false) -> "S"
+    | (false, true) -> "U"
+    | (true, true) -> "SU"
+
+let string_of_sealable (sb : sealable) : string =
+  match sb with
   | Cap (p, b, e, a) ->
     Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+  | SealRange (p, b, e, a) ->
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_sealperm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+
+let string_of_word (w : word) : string =
+  match w with
   | I z -> Z.to_string z
+  | Sealable sb -> string_of_sealable sb
+  | Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
+
+
+let string_of_ast_sealable (sb : Ast.sealable) : string =
+  match sb with
+  | Ast.Cap (p, b, e, a) ->
+    Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+  | Ast.SealRange (p, b, e, a) ->
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_sealperm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
 
 let string_of_ast_word (w : Ast.word) : string =
   match w with
-  | Ast.Cap (p, b, e, a) ->
-    Printf.sprintf "Cap (%s,  %s, %s, %s)"
-    (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.I z -> Z.to_string z
+  | Ast.Sealable sb -> string_of_sealable sb
+  | Ast.Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
 
 let string_of_statement (s : statement) : string =
   match s with

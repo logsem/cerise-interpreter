@@ -34,6 +34,22 @@ let decode_perm (i : Z.t) : perm =
   | (true, true, true)    -> RWX
   | _ -> decode_perm_exception ()
 
+let encode_sealperm (p : seal_perm) : Z.t =
+  Z.of_int @@
+  match p with
+  | (false, false) -> 0b00
+  | (false, true) -> 0b01
+  | (true, false) -> 0b10
+  | (true, true) -> 0b11
+
+let decode_sealperm (i : Z.t) : seal_perm =
+  let decode_perm_exception = fun _ -> raise @@ DecodeException "Error decoding sealing permission: unexpected encoding" in
+  let b0 = Z.testbit i 0 in
+  let b1 = Z.testbit i 1 in
+  if Z.(i > (of_int 0b11))
+  then decode_perm_exception ()
+  else (b1,b0)
+
 let encode_reg (r : regname) : Z.t =
   match r with
   | PC -> Z.zero
@@ -171,8 +187,12 @@ let encode_machine_op (s : machine_op): Z.t =
   | GetB (r1, r2) -> ~$0x50 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
   | GetE (r1, r2) -> ~$0x51 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
   | GetA (r1, r2) -> ~$0x52 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | Fail -> ~$0x53
-  | Halt -> ~$0x54
+  | Seal (r1, r2, r3) ->
+      ~$0x53 ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
+  | UnSeal (r1, r2, r3) ->
+      ~$0x54 ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
+  | Fail -> ~$0x55
+  | Halt -> ~$0x56
 
 let decode_machine_op (i : Z.t) : machine_op =
   let opc = Z.extract i 0 8 in
@@ -618,12 +638,34 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetA (r1, r2)
   end else
 
- (* Fail *)
+
+  (* Seal *)
   if opc = ~$0x53
+  then begin
+    let (r1_enc, payload') = decode_int payload in
+    let (r2_enc, r3_enc) = decode_int payload' in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    let r3 = decode_reg r3_enc in
+    Seal (r1, r2, r3)
+  end else
+  (* UnSeal *)
+  if opc = ~$0x54
+  then begin
+    let (r1_enc, payload') = decode_int payload in
+    let (r2_enc, r3_enc) = decode_int payload' in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    let r3 = decode_reg r3_enc in
+    UnSeal (r1, r2, r3)
+  end else
+
+ (* Fail *)
+  if opc = ~$0x55
   then Fail
   else
   (* Halt *)
-  if opc = ~$0x54
+  if opc = ~$0x56
   then Halt
   else raise @@
     DecodeException

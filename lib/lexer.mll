@@ -49,12 +49,18 @@ rule token = parse
 | "getb" { GETB }
 | "gete" { GETE }
 | "geta" { GETA }
+| "seal" { SEAL }
+| "unseal" { UNSEAL }
 | "fail" { FAIL }
 | "halt" { HALT }
 
 (* single-character tokens *)
 | '(' { LPAREN }
 | ')' { RPAREN }
+| '{' { LCBRK }
+| '}' { RCBRK }
+| '[' { LSBRK }
+| ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }

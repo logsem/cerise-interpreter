@@ -10,9 +10,11 @@ type expr
   | SubOp of expr * expr
 
 type perm = O | E | RO | RX | RW | RWX
+type seal_perm = bool * bool
 type const_perm = Const of expr | Perm of perm
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
-type word = I of expr | Cap of perm * expr * expr * expr
+type sealable = Cap of perm * expr * expr * expr | SealRange of seal_perm * expr * expr * expr
+type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 exception WordException of word
 
 type machine_op
@@ -35,6 +37,8 @@ type machine_op
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
+  | Seal of regname * regname * regname
+  | UnSeal of regname * regname * regname
   | Fail
   | Halt
   | Lbl of string
@@ -85,16 +89,24 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
   | Register r -> Ast.Register (translate_regname r)
   | CP cp -> Ast.CP (translate_const_perm envr cp)
 
+let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
+  match s with
+  | Cap (p,b,e,a) ->
+    Ast.Cap ((translate_perm p),
+             (eval_expr envr b),
+             (eval_expr envr e),
+             (eval_expr envr a))
+  | SealRange (p, b, e, a) ->
+    Ast.SealRange (p,
+                   (eval_expr envr b),
+                   (eval_expr envr e),
+                   (eval_expr envr a))
+
 let translate_word (envr : env) (w : word) : Ast.statement =
   match w with
   | I e -> Ast.Word (Ast.I (eval_expr envr e))
-  | Cap (p,b,e,a) ->
-    Ast.Word (Ast.Cap
-                ((translate_perm p),
-                 (eval_expr envr b),
-                 (eval_expr envr e),
-                 (eval_expr envr a)
-                ))
+  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable envr sb))
+  | Sealed (o,sb) -> Ast.Word (Ast.Sealed (eval_expr envr o, (translate_sealable envr sb)))
 
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with
@@ -135,6 +147,8 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
+  | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
+  | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
   | Word w -> raise (WordException w)
