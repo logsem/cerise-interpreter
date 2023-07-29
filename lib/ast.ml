@@ -3,9 +3,7 @@ type regname = PC | Reg of int
 type perm = O | E | RO | RX | RW | RWX
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 type seal_perm = bool * bool
-type const_perm = Const of Z.t | Perm of perm
-type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
-(* type otype = Z.t *)
+type reg_or_const = Register of regname | Const of Z.t
 type sealable = Cap of perm * Z.t * Z.t * Z.t | SealRange of seal_perm * Z.t * Z.t * Z.t
 type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
 type machine_op
@@ -44,4 +42,4 @@ let compare_regname (r1 : regname) (r2: regname) : int =
   | Reg _, PC -> 1
   | Reg i, Reg j -> Int.compare i j
 
-let const n = CP (Const (Z.of_int n))
+let const n = Const (Z.of_int n)

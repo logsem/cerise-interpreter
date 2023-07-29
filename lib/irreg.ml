@@ -61,14 +61,14 @@ let translate_sealable (sb : sealable) (max_addr : Z.t) : Ast.sealable =
     SealRange (p,b,e,a)
 
 
-let translate_word (w : word) (max_addr : Z.t) : Machine.word =
+let translate_word (w : word) (max_addr : Z.t) : Ast.word =
   match w with
-  | WI e -> Machine.I (eval_expr e max_addr)
-  | WSealable sb -> Machine.Sealable (translate_sealable sb max_addr)
-  | WSealed (o,sb) -> Machine.Sealed (translate_addr o max_addr, translate_sealable sb max_addr)
+  | WI e -> Ast.I (eval_expr e max_addr)
+  | WSealable sb -> Ast.Sealable (translate_sealable sb max_addr)
+  | WSealed (o,sb) -> Ast.Sealed (translate_addr o max_addr, translate_sealable sb max_addr)
 
 let rec translate_regfile (regfile : t) (max_addr : Z.t):
-  (Machine.word Machine.RegMap.t) =
+  (Ast.word Machine.RegMap.t) =
   let init_regfile =
     Machine.RegMap.empty in
   match regfile with

@@ -79,6 +79,12 @@ rule token = parse
 | 'U' { U }
 | "SU" { SU }
 
+(* word type *)
+| "Int" { Int }
+| "Cap" { Cap }
+| "SealRange" { SealRange }
+| "Sealed" { Sealed }
+
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }
 | label as lbl { LABEL (lbl) }

@@ -27,7 +27,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let width = 5
     let ui ?(attr = A.empty) (p: Ast.seal_perm) =
       I.hsnap ~align:`Left width
-        (I.string attr (Pretty_printer.string_of_sealperm p))
+        (I.string attr (Pretty_printer.string_of_seal_perm p))
   end
 
   module Addr = struct
@@ -145,7 +145,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       + Sealable.width
       + 1 (* } *)
 
-    let ui ?(attr = A.empty) (w: Machine.word) =
+    let ui ?(attr = A.empty) (w: Ast.word) =
       match w with
       | I z -> I.hsnap ~align:`Right width (I.string attr (Int.ui width z) <|> I.string A.empty " ")
       | Sealable sb -> I.hsnap ~align:`Right width ((Sealable.ui ~attr sb) <|> I.string A.empty " ")
@@ -206,7 +206,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
     let is_in_r_range r a =
       match r with
-      | Machine.Sealable (Cap (_, b, e, _)) ->
+      | Ast.Sealable (Cap (_, b, e, _)) ->
          if a >= b && a < e then (
            if a = b then `AtStart
            else if a = Z.(e- ~$1) then `AtLast
@@ -215,18 +215,18 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       | _ -> `No
 
     let at_reg r a = match r with
-         Machine.Sealable (Cap (_, _, _, r)) -> a = r | _ -> false
+         Ast.Sealable (Cap (_, _, _, r)) -> a = r | _ -> false
 
     let img_instr in_range a w =
       (match w with
-       | Machine.I z when in_range a <> `No ->
+       | Ast.I z when in_range a <> `No ->
          begin match Encode.decode_machine_op z with
            | i -> Instr.ui i
            | exception Encode.DecodeException _ -> I.string A.(fg green) "???"
          end
        | _ -> I.empty)
 
-    let render_prog width (pc: Machine.word) data_range =
+    let render_prog width (pc: Ast.word) data_range =
       let is_in_pc_range a = is_in_r_range pc a in
       let at_pc a = at_reg pc a in
       let img_of_prog a w =
@@ -251,7 +251,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
     let follow_addr r (height : int) start_addr (off : int)=
       match r with
-      | Machine.Sealable (Cap (_, _, _, r)) ->
+      | Ast.Sealable (Cap (_, _, _, r)) ->
         Z.(
         if r <= start_addr && start_addr > ~$0 then
           r - ~$off
@@ -260,17 +260,17 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         else
           start_addr)
       | _ -> start_addr
-    let next_page n (_ : Machine.word) height start_addr off  =
+    let next_page n (_ : Ast.word) height start_addr off  =
       Z.(let new_addr = start_addr + (~$n * ~$height) - ~$off in
       if new_addr > Cfg.addr_max then start_addr else new_addr)
-    let previous_page n (_ : Machine.word) height start_addr off  =
+    let previous_page n (_ : Ast.word) height start_addr off  =
       Z.(let new_addr = start_addr - (~$n * ~$height) + ~$off in
       if new_addr < ~$0 then ~$0 else new_addr)
-    let next_addr (_ : Machine.word) (_:int) start_addr (_:int) =
+    let next_addr (_ : Ast.word) (_:int) start_addr (_:int) =
       Z.(let new_addr = start_addr + ~$1 in
       if new_addr > Cfg.addr_max
       then start_addr else new_addr)
-    let previous_addr (_ : Machine.word) (_:int) start_addr (_:int) =
+    let previous_addr (_ : Ast.word) (_:int) start_addr (_:int) =
       Z.(let new_addr = start_addr - ~$1 in
       if new_addr < ~$0 then ~$0 else new_addr)
 
@@ -278,7 +278,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         ?(upd_prog = follow_addr)
         height width
         (mem: Machine.mem_state)
-        (pc: Machine.word)
+        (pc: Ast.word)
         (start_prog: Z.t)
       =
 

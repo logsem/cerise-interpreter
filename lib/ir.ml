@@ -12,11 +12,8 @@ type expr
 type perm = O | E | RO | RX | RW | RWX
 type seal_perm = bool * bool
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
-(* TODO here, we don't want Perm of perm, but we would like something *)
-(* like Encoded of encoded, where encoded is a type that gather *)
-(* perm, seal_perm and wtype : they are just pre-processed at parsing ? *)
-type const_perm = Const of expr | Perm of perm
-type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
+type const_encoded = ConstExpr of expr | Perm of perm | SealPerm of seal_perm | Wtype of wtype
+type reg_or_const = Register of regname | Const of const_encoded
 type sealable = Cap of perm * expr * expr * expr | SealRange of seal_perm * expr * expr * expr
 type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 exception WordException of word
@@ -84,15 +81,79 @@ let translate_regname (r : regname) : Ast.regname =
   | PC -> Ast.PC
   | Reg i -> Ast.Reg i
 
-let translate_const_perm (envr : env) (cp : const_perm) : Ast.const_perm =
-  match cp with
-  | Const e -> Ast.Const (eval_expr envr e)
-  | Perm p -> Ast.Perm (translate_perm p)
+
+(* Interleave two integers bitwise.
+ * Example: x = 0b101 and y = 0b110
+ * results in 0b111001. *)
+let rec interleave_int (x : Z.t) (y : Z.t) : Z.t =
+  let open Z in
+  if x = zero && y = zero
+  then zero
+  else
+    let x1 = x land one in
+    let y1 = (y land one) lsl 1 in
+    let x2 = x asr 1 in
+    let y2 = y asr 1 in
+    x1 + y1 + ((interleave_int x2 y2) lsl 2)
+
+(* Encode two integers by interleaving their
+ * absolute values bitwise, followed
+ * by two bits representing signs.
+ *)
+let encode_int_int (x : Z.t) (y : Z.t) =
+  let sign_bits = Z.of_int @@ begin
+    match (Z.sign y, Z.sign x) with
+      | (-1, -1) -> 0b11
+      | (-1, (0|1))  -> 0b10
+      | ((0|1), -1)  -> 0b01
+      | ((0|1), (0|1)) -> 0b00
+      | _ -> assert false
+  end in
+  let interleaved = interleave_int (Z.abs x) (Z.abs y) in
+  Z.(sign_bits + (interleaved lsl 2))
+
+let encode_perm (p : perm) : Z.t =
+  Z.of_int @@
+  match p with
+  | O -> 0b000
+  | E -> 0b001
+  | RO -> 0b100
+  | RX -> 0b101
+  | RW -> 0b110
+  | RWX -> 0b111
+
+let encode_seal_perm (p : seal_perm) : Z.t =
+  Z.of_int @@
+  match p with
+  | (false, false) -> 0b00
+  | (false, true) -> 0b01
+  | (true, false) -> 0b10
+  | (true, true) -> 0b11
+
+let encode_wtype (w : wtype) : Z.t =
+  Z.of_int @@
+  match w with
+  | W_I -> 0b00
+  | W_Cap -> 0b01
+  | W_SealRange -> 0b10
+  | W_Sealed -> 0b11
+
+let encode_const (envr : env) (c : const_encoded) : Z.t =
+  let _CONST_ENC       = 0b00 in
+  let _PERM_ENC        = 0b01 in
+  let _SEAL_PERM_ENC   = 0b10 in
+  let _WTYPE_ENC       = 0b11 in
+  let encode t z =  encode_int_int (Z.of_int t) z in
+  match c with
+  | ConstExpr e -> encode _CONST_ENC (eval_expr envr e)
+  | Perm p -> encode _PERM_ENC (encode_perm p)
+  | SealPerm sp -> encode _SEAL_PERM_ENC (encode_seal_perm sp)
+  | Wtype wt -> encode _WTYPE_ENC (encode_wtype wt)
 
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
-  | CP cp -> Ast.CP (translate_const_perm envr cp)
+  | Const c -> Ast.Const (encode_const envr c)
 
 let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
   match s with

@@ -12,8 +12,7 @@ module RegMap =
   end)
     
 type exec_state = Running | Halted | Failed
-(* type word = I of Z.t | Cap of perm * Z.t * Z.t * Z.t *)
-type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
+(* type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable *)
 type reg_state = word RegMap.t
 type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have notation similar to the paper *)
@@ -72,8 +71,7 @@ let init
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with
   | Register r -> get_reg r conf
-  | CP (Const i) -> I i
-  | CP (Perm p) -> I (Encode.encode_perm p) (* A permission is just an integer in the model *)
+  | Const i -> let (_, c) = Encode.decode_int i in I c
 
 let upd_pc (conf : exec_conf) : mchn =
   match PC @! conf with
@@ -152,7 +150,7 @@ let can_read (p : perm) : bool =
 
 let exec_single (conf : exec_conf) : mchn =
   let fail_state = (Failed, conf) in
-  if is_pc_valid conf 
+  if is_pc_valid conf
   then match fetch_decode conf with
     | None -> fail_state
     | Some instr -> begin
@@ -209,15 +207,13 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (SealRange (sp, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    let sp' = Encode.decode_sealperm i in
+                    let sp' = Encode.decode_seal_perm i in
                     if sealperm_flowsto sp' sp
                     then !> (upd_reg r (Sealable (SealRange (sp', b, e, a))) conf)
                     else fail_state
                   end
                 | _ -> fail_state
               end
-
-
             | _ -> fail_state
           end
         | SubSeg (r, c1, c2) -> begin
@@ -329,7 +325,7 @@ let exec_single (conf : exec_conf) : mchn =
         | GetP (r1, r2) -> begin
             match r2 @! conf with
             | Sealable (Cap (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_perm p)) conf)
-            | Sealable (SealRange (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_sealperm p)) conf)
+            | Sealable (SealRange (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_seal_perm p)) conf)
             | _ -> fail_state
           end
         | GetOType (r1, r2) -> begin

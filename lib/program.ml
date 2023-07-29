@@ -7,7 +7,7 @@ let parse_prog (filename: string): (Ast.t, string) Result.t =
   with Failure _ -> close_in input; Result.Error "Parsing Failed"
 
 let parse_regfile (filename: string) (max_addr : Z.t)
-  : (Machine.word Machine.RegMap.t, string) Result.t =
+  : (Ast.word Machine.RegMap.t, string) Result.t =
   let input = open_in filename in
   try
     let filebuf = Lexing.from_channel input in
@@ -21,7 +21,7 @@ let parse_regfile (filename: string) (max_addr : Z.t)
 let init_machine
     (prog : Ast.t)
     (addr_max : Z.t option)
-    (init_regs : Machine.word Machine.RegMap.t)
+    (init_regs : Ast.word Machine.RegMap.t)
   : Machine.mchn =
   let addr_max =
     match addr_max with

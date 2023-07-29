@@ -10,6 +10,7 @@
 %token GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL FAIL HALT
 %token O E RO RX RW RWX
 %token S U SU
+%token Int Cap SealRange Sealed
 
 %left PLUS MINUS EXPR
 %left UMINUS
@@ -67,17 +68,24 @@ reg:
   | PC; { PC }
   | i = REG; { Reg i }
 
-(* TODO we want to also capture seal_perm and wtype *)
 reg_const:
   | r = reg; { Register r }
-  | c = expr %prec EXPR { CP (Const (c)) }
-  | p = perm; { CP (Perm p) }
+  | c = expr %prec EXPR { Const (ConstExpr c) }
+  | p = perm; { Const (Perm p) }
+  | p = seal_perm; { Const (SealPerm p) }
+  | w = wtype; { Const (Wtype w) }
 
 seal_perm:
   | O; { (false, false) }
   | S; { (true, false) }
   | U; { (false, true) }
   | SU; { (true, true) }
+
+wtype:
+  | Int ; { W_I }
+  | Cap ; { W_Cap }
+  | SealRange ; { W_SealRange }
+  | Sealed ; { W_Sealed }
 
 perm:
   | O; { O }

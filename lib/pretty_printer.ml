@@ -8,6 +8,14 @@ let string_of_regname (r: regname) : string =
   | PC -> "pc"
   | Reg i -> "r" ^ (string_of_int i)
 
+(* TODO is there any better way to print it ? *)
+let string_of_seal_perm (p : seal_perm) : string =
+  match p with
+  | (false, false) -> "O"
+  | (true, false) -> "S"
+  | (false, true) -> "U"
+  | (true, true) -> "SU"
+
 let string_of_perm (p: perm): string =
   match p with
   | O -> "O"
@@ -17,11 +25,31 @@ let string_of_perm (p: perm): string =
   | RW -> "RW"
   | RWX -> "RWX"
 
+let string_of_wtype (w : wtype) : string =
+  match w with
+  | W_I -> "Int"
+  | W_Cap -> "Cap"
+  | W_SealRange -> "SealRange"
+  | W_Sealed -> "Sealed"
+
+exception DecodeException of string
 let string_of_reg_or_const (c: reg_or_const) : string =
   match c with
   | Register r -> string_of_regname r
-  | CP (Const c) -> (Z.to_string c)
-  | CP (Perm p) -> string_of_perm p
+  | Const c ->
+    let decode_const_exception = fun _ -> raise @@ DecodeException "Error decoding constant: unexpected encoding" in
+    let (t, z) = Encode.decode_int c in
+    let b0 = Z.testbit t 0 in
+    let b1 = Z.testbit t 1 in
+    if Z.(t > (of_int 0b11))
+    then decode_const_exception ()
+    else
+      match (b1,b0) with
+      | (false, false) -> (Z.to_string z)
+      | (false, true) -> string_of_perm (Encode.decode_perm z)
+      | (true, false) -> string_of_seal_perm (Encode.decode_seal_perm z)
+      | (true, true) -> string_of_wtype (Encode.decode_wtype z)
+
 
 let string_of_machine_op (s: machine_op): string =
   let string_of_rr r1 r2 =
@@ -58,20 +86,13 @@ let string_of_machine_op (s: machine_op): string =
   | Fail -> "fail"
   | Halt -> "halt"
 
-(* TODO is there any better way to print it ? *)
-let string_of_sealperm (p : seal_perm) : string =
-    match p with
-    | (false, false) -> "O"
-    | (true, false) -> "S"
-    | (false, true) -> "U"
-    | (true, true) -> "SU"
 
 let string_of_sealable (sb : sealable) : string =
   match sb with
   | Cap (p, b, e, a) ->
     Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | SealRange (p, b, e, a) ->
-    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_sealperm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_seal_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
 
 let string_of_word (w : word) : string =
   match w with
@@ -85,7 +106,7 @@ let string_of_ast_sealable (sb : Ast.sealable) : string =
   | Ast.Cap (p, b, e, a) ->
     Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.SealRange (p, b, e, a) ->
-    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_sealperm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_seal_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
 
 let string_of_ast_word (w : Ast.word) : string =
   match w with
