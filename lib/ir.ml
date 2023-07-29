@@ -11,6 +11,10 @@ type expr
 
 type perm = O | E | RO | RX | RW | RWX
 type seal_perm = bool * bool
+type wtype = W_I | W_Cap | W_SealRange | W_Sealed
+(* TODO here, we don't want Perm of perm, but we would like something *)
+(* like Encoded of encoded, where encoded is a type that gather *)
+(* perm, seal_perm and wtype : they are just pre-processed at parsing ? *)
 type const_perm = Const of expr | Perm of perm
 type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
 type sealable = Cap of perm * expr * expr * expr | SealRange of seal_perm * expr * expr * expr
@@ -32,11 +36,12 @@ type machine_op
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
   | SubSeg of regname * reg_or_const * reg_or_const
-  | IsPtr of regname * regname
-  | GetP of regname * regname
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
+  | GetP of regname * regname
+  | GetOType of regname * regname
+  | GetWType of regname * regname
   | Seal of regname * regname * regname
   | UnSeal of regname * regname * regname
   | Fail
@@ -142,11 +147,12 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | SubSeg (r, c1, c2) -> Ast.SubSeg (translate_regname r,
                                       translate_reg_or_const envr c1,
                                       translate_reg_or_const envr c2)
-  | IsPtr (r1, r2) -> Ast.IsPtr (translate_regname r1, translate_regname r2)
-  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
+  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
+  | GetOType (r1, r2) -> Ast.GetOType (translate_regname r1, translate_regname r2)
+  | GetWType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
   | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
   | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
   | Fail -> Ast.Fail

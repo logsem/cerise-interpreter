@@ -7,7 +7,7 @@
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP COLON
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
-%token ISPTR GETP GETB GETE GETA SEAL UNSEAL FAIL HALT
+%token GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL FAIL HALT
 %token O E RO RX RW RWX
 %token S U SU
 
@@ -35,11 +35,12 @@ main:
   | LEA; r = reg; c = reg_const; p = main; { Lea (r, c) :: p }
   | RESTRICT; r = reg; c = reg_const; p = main; { Restrict (r, c) :: p }
   | SUBSEG; r = reg; c1 = reg_const; c2 = reg_const; p = main; { SubSeg (r, c1, c2) :: p }
-  | ISPTR; r1 = reg; r2 = reg; p = main; { IsPtr (r1, r2) :: p }
-  | GETP; r1 = reg; r2 = reg; p = main; { GetP (r1, r2) :: p }
   | GETB; r1 = reg; r2 = reg; p = main; { GetB (r1, r2) :: p }
   | GETE; r1 = reg; r2 = reg; p = main; { GetE (r1, r2) :: p }
   | GETA; r1 = reg; r2 = reg; p = main; { GetA (r1, r2) :: p }
+  | GETP; r1 = reg; r2 = reg; p = main; { GetP (r1, r2) :: p }
+  | GETOTYPE; r1 = reg; r2 = reg; p = main; { GetOType (r1, r2) :: p }
+  | GETWTYPE; r1 = reg; r2 = reg; p = main; { GetWType (r1, r2) :: p }
   | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
   | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
   | FAIL; p = main; { Fail :: p }
@@ -66,6 +67,7 @@ reg:
   | PC; { PC }
   | i = REG; { Reg i }
 
+(* TODO we want to also capture seal_perm and wtype *)
 reg_const:
   | r = reg; { Register r }
   | c = expr %prec EXPR { CP (Const (c)) }

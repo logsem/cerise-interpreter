@@ -13,6 +13,14 @@ init:
 	store pc pc
 	lea r0 100000
 	seal r2 r0 r0
+	getotype r3 r2
+	getotype r3 r0
+	getwtype r3 r0
+	getwtype r3 r1
+	getwtype r3 r2
+	getwtype r3 r3
+	getwtype r3 pc
+
 	jmp r1   		; jump to unknown code: we only give it access 10
 
 code:

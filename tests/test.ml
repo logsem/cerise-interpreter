@@ -42,11 +42,14 @@ let instr_tests = [
   ("lea r7 r8", Op (Lea (Reg 7, Register (Reg 8))));
   ("restrict r9 RX", Op (Restrict (Reg 9, CP (Perm RX))));
   ("subseg r10 pc r11", Op (SubSeg (Reg 10, Register PC, Register (Reg 11))));
-  ("isptr r12 r13", Op (IsPtr (Reg 12, Reg 13)));
-  ("getp r14 r15", Op (GetP (Reg 14, Reg 15)));
   ("getb r16 r17", Op (GetB (Reg 16, Reg 17)));
   ("gete r18 r19", Op (GetE (Reg 18, Reg 19)));
   ("geta r20 r21", Op (GetA (Reg 20, Reg 21)));
+  ("getp r14 r15", Op (GetP (Reg 14, Reg 15)));
+  ("getotype r26 r27", Op (GetOType (Reg 26, Reg 27)));
+  ("getwtype r28 r29", Op (GetWType (Reg 28, Reg 29)));
+  ("seal r22 r23 r24", Op (Seal (Reg 22, Reg 23, Reg 24)));
+  ("unseal r25 r26 r27", Op (UnSeal (Reg 25, Reg 26, Reg 27)));
   ("fail", Op (Fail));
   ("halt", Op (Halt));
 ]
@@ -181,11 +184,14 @@ let test_enc_dec_stm_list = [
   (SubSeg (Reg 5, CP (Perm E), Register PC), "encode-decode SubSeg R5 E PC");
   (SubSeg (Reg 5, CP (Perm O), const 8128), "encode-decode SubSeg R5 O 8128");
   (SubSeg (Reg 5, CP (Perm RWX), CP (Perm RO)), "encode-decode SubSeg R5 RWX RO");
-  (IsPtr (Reg 6, Reg 28), "encode-decode IsPtr R6 R28");
-  (GetP (Reg 6, Reg 28), "encode-decode GetP R6 R28");
-  (GetB (Reg 6, Reg 28), "encode-decode GetB R6 R28");
-  (GetE (Reg 6, Reg 28), "encode-decode GetE R6 R28");
-  (GetA (Reg 6, Reg 28), "encode-decode GetA R6 R28");
+  (GetB (Reg 6, Reg 31), "encode-decode GetB R6 R31");
+  (GetE (Reg 7, Reg 30), "encode-decode GetE R7 R30");
+  (GetA (Reg 8, Reg 29), "encode-decode GetA R8 R29");
+  (GetP (Reg 9, Reg 28), "encode-decode GetP R9 R28");
+  (GetOType (Reg 10, Reg 27), "encode-decode GetOType R10 R27");
+  (GetWType (Reg 11, Reg 26), "encode-decode GetWType R11 R26");
+  (Seal (Reg 12, Reg 25, Reg 14), "encode-decode Seal R12 R25 R15");
+  (UnSeal (Reg 13, Reg 24, Reg 15), "encode-decode UnSeal R13 R24 R14");
   (Fail, "encode-decode Fail");
   (Halt, "encode-decode Halt");
 ]

@@ -44,11 +44,12 @@ rule token = parse
 | "lea" { LEA }
 | "restrict" { RESTRICT }
 | "subseg" { SUBSEG }
-| "isptr" { ISPTR }
-| "getp" { GETP }
 | "getb" { GETB }
 | "gete" { GETE }
 | "geta" { GETA }
+| "getp" { GETP }
+| "getotype" { GETOTYPE }
+| "getwtype" { GETWTYPE }
 | "seal" { SEAL }
 | "unseal" { UNSEAL }
 | "fail" { FAIL }

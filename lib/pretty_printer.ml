@@ -47,11 +47,12 @@ let string_of_machine_op (s: machine_op): string =
   | Lea (r, c) -> "lea" ^- string_of_rc r c
   | Restrict (r, c) -> "restrict" ^- string_of_rc r c
   | SubSeg (r, c1, c2) -> "subseg" ^- string_of_rcc r c1 c2
-  | IsPtr (r1, r2) -> "isptr" ^- string_of_rr r1 r2
-  | GetP (r1, r2) -> "getp" ^- string_of_rr r1 r2
   | GetB (r1, r2) -> "getb" ^- string_of_rr r1 r2
   | GetE (r1, r2) -> "gete" ^- string_of_rr r1 r2
   | GetA (r1, r2) -> "geta" ^- string_of_rr r1 r2
+  | GetP (r1, r2) -> "getp" ^- string_of_rr r1 r2
+  | GetOType (r1, r2) -> "getotype" ^- string_of_rr r1 r2
+  | GetWType (r1, r2) -> "getwtype" ^- string_of_rr r1 r2
   | Seal (r1, r2, r3) -> "seal" ^- string_of_rrr r1 r2 r3
   | UnSeal (r1, r2, r3) -> "unseal" ^- string_of_rrr r1 r2 r3
   | Fail -> "fail"

@@ -2,6 +2,27 @@ open Ast
 
 exception DecodeException of string
 
+let encode_wtype (w : wtype) : Z.t =
+  Z.of_int @@
+  match w with
+  | W_I -> 0b00
+  | W_Cap -> 0b01
+  | W_SealRange -> 0b10
+  | W_Sealed -> 0b11
+
+let decode_wtype (z : Z.t) : wtype =
+  let decode_wt_exception = fun _ -> raise @@ DecodeException "Error decoding wtype: unexpected encoding" in
+  let b0 = Z.testbit z 0 in
+  let b1 = Z.testbit z 1 in
+  if Z.(z > (of_int 0b11))
+  then decode_wt_exception ()
+  else
+  match (b1,b0) with
+  | (false, false) -> W_I
+  | (false, true) -> W_Cap
+  | (true, false) -> W_SealRange
+  | (true, true) -> W_Sealed
+
 (* Encodings of permissions satisfy
  * lattice structure by:
  * - join : bitwise or
@@ -182,17 +203,18 @@ let encode_machine_op (s : machine_op): Z.t =
       let (opc, c_enc) = two_const_convert ~$0x45 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | IsPtr (r1, r2) -> ~$0x4e ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetP (r1, r2) -> ~$0x4f ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetB (r1, r2) -> ~$0x50 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetE (r1, r2) -> ~$0x51 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetA (r1, r2) -> ~$0x52 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetB (r1, r2) -> ~$0x4e ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetE (r1, r2) -> ~$0x4f ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetA (r1, r2) -> ~$0x50 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetP (r1, r2) -> ~$0x51 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetOType (r1, r2) -> ~$0x52 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetWType (r1, r2) -> ~$0x53 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
   | Seal (r1, r2, r3) ->
-      ~$0x53 ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
-  | UnSeal (r1, r2, r3) ->
       ~$0x54 ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
-  | Fail -> ~$0x55
-  | Halt -> ~$0x56
+  | UnSeal (r1, r2, r3) ->
+      ~$0x55 ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
+  | Fail -> ~$0x56
+  | Halt -> ~$0x57
 
 let decode_machine_op (i : Z.t) : machine_op =
   let opc = Z.extract i 0 8 in
@@ -596,25 +618,9 @@ let decode_machine_op (i : Z.t) : machine_op =
     end in
     SubSeg (r, c1, c2)
   end else
-  (* IsPtr *)
-  if opc = ~$0x4e
-  then begin
-    let (r1_enc, r2_enc) = decode_int payload in
-    let r1 = decode_reg r1_enc in
-    let r2 = decode_reg r2_enc in
-    IsPtr (r1, r2)
-  end else
 
-(* GetP *)
-  if opc = ~$0x4f
-  then begin
-    let (r1_enc, r2_enc) = decode_int payload in
-    let r1 = decode_reg r1_enc in
-    let r2 = decode_reg r2_enc in
-    GetP (r1, r2)
-  end else
   (* GetB *)
-  if opc = ~$0x50
+  if opc = ~$0x4e
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -622,7 +628,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetB (r1, r2)
   end else
   (* GetE *)
-  if opc = ~$0x51
+  if opc = ~$0x4f
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -630,17 +636,40 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetE (r1, r2)
   end else
   (* GetA *)
-  if opc = ~$0x52
+  if opc = ~$0x50
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetA (r1, r2)
   end else
-
+(* GetP *)
+  if opc = ~$0x51
+  then begin
+    let (r1_enc, r2_enc) = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    GetP (r1, r2)
+  end else
+(* GetOType *)
+  if opc = ~$0x52
+  then begin
+    let (r1_enc, r2_enc) = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    GetOType (r1, r2)
+  end else
+(* GetWType *)
+  if opc = ~$0x53
+  then begin
+    let (r1_enc, r2_enc) = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    GetWType (r1, r2)
+  end else
 
   (* Seal *)
-  if opc = ~$0x53
+  if opc = ~$0x54
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -650,7 +679,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     Seal (r1, r2, r3)
   end else
   (* UnSeal *)
-  if opc = ~$0x54
+  if opc = ~$0x55
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -661,11 +690,11 @@ let decode_machine_op (i : Z.t) : machine_op =
   end else
 
  (* Fail *)
-  if opc = ~$0x55
+  if opc = ~$0x56
   then Fail
   else
   (* Halt *)
-  if opc = ~$0x56
+  if opc = ~$0x57
   then Halt
   else raise @@
     DecodeException

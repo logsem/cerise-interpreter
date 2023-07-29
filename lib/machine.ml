@@ -308,12 +308,6 @@ let exec_single (conf : exec_conf) : mchn =
             | I _, I _ -> !> (upd_reg r (I Z.zero) conf)
             | _ -> fail_state
           end
-        | GetP (r1, r2) -> begin
-            match r2 @! conf with
-            | Sealable (Cap (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_perm p)) conf)
-            | Sealable (SealRange (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_sealperm p)) conf)
-            | _ -> fail_state
-          end
         | GetB (r1, r2) -> begin
             match r2 @! conf with
             | Sealable (SealRange (_, b, _, _))
@@ -332,12 +326,28 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (_, _, _, a)) -> !> (upd_reg r1 (I a) conf)
             | _ -> fail_state
           end
-        (* TODO remove IsPtr, add GetOType and GetWType *)
-        | IsPtr (r1, r2) -> begin
+        | GetP (r1, r2) -> begin
             match r2 @! conf with
-            | Sealable (Cap (_, _, _, _)) -> !> (upd_reg r1 (I ~$1) conf)
-            | _ -> !> (upd_reg r1 (I ~$0) conf)
+            | Sealable (Cap (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_perm p)) conf)
+            | Sealable (SealRange (p, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_sealperm p)) conf)
+            | _ -> fail_state
           end
+        | GetOType (r1, r2) -> begin
+            match r2 @! conf with
+            | Sealed (o,_) -> !> (upd_reg r1 (I o) conf)
+            | _ -> !> (upd_reg r1 (I ~$(-1)) conf)
+          end
+        | GetWType (r1, r2) -> begin
+            let wtype_enc =
+              Encode.encode_wtype
+                (match r2 @! conf with
+                 | I _ -> W_I
+                 | Sealable (Cap _) -> W_Cap
+                 | Sealable (SealRange _) -> W_SealRange
+                 | Sealed _ -> W_Sealed)
+            in !> (upd_reg r1 (I wtype_enc) conf)
+          end
+
         | Seal (dst, r1, r2) -> begin
             match r1 @! conf, r2 @! conf with
             | Sealable (SealRange ((true,_),b,e,a)), Sealable sb when (b <= a && a < e) ->
