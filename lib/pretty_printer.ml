@@ -60,7 +60,7 @@ let string_of_machine_op (s: machine_op): string =
 (* TODO is there any better way to print it ? *)
 let string_of_sealperm (p : seal_perm) : string =
     match p with
-    | (false, false) -> "_"
+    | (false, false) -> "O"
     | (true, false) -> "S"
     | (false, true) -> "U"
     | (true, true) -> "SU"

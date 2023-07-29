@@ -34,10 +34,16 @@ rule token = parse
 (* single-character tokens *)
 | '(' { LPAREN }
 | ')' { RPAREN }
+| '{' { LCBRK }
+| '}' { RCBRK }
+| '[' { LSBRK }
+| ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }
+| ':' { COLON }
 | ":=" { AFFECT }
+
 
 
 (* permissions *)
@@ -47,6 +53,9 @@ rule token = parse
 | "RX" { RX }
 | "RW" { RW }
 | "RWX" { RWX }
+| 'S' { S }
+| 'U' { U }
+| "SU" { SU }
 
 and comment = parse
 | eof { EOF }

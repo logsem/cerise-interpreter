@@ -64,6 +64,7 @@ rule token = parse
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }
+| ':' { COLON }
 | '#' { SHARP }
 
 (* permissions *)
@@ -73,6 +74,9 @@ rule token = parse
 | "RX" { RX }
 | "RW" { RW }
 | "RWX" { RWX }
+| 'S' { S }
+| 'U' { U }
+| "SU" { SU }
 
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }

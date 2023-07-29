@@ -9,7 +9,7 @@ type expr
   | MaxAddr
 
 type perm = O | E | RO | RX | RW | RWX
-type seal_perm = O | S | U | SU
+type seal_perm = bool * bool
 
 (* TODO special addresses: min_addr, max_addr, stk_addr ... *)
 type addr = Addr of expr
@@ -36,13 +36,6 @@ let translate_perm (p : perm) : Ast.perm =
   | RW -> Ast.RW
   | RWX -> Ast.RWX
 
-let translate_sealperm (p : seal_perm) : Ast.seal_perm =
-  match p with
-  | O -> (false, false)
-  | S -> (true, false)
-  | U -> (false, true)
-  | SU -> (true, true)
-
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
@@ -62,7 +55,6 @@ let translate_sealable (sb : sealable) (max_addr : Z.t) : Ast.sealable =
     let a = translate_addr a max_addr in
     Cap (p,b,e,a)
   | WSealRange (p,b,e,a) ->
-    let p = translate_sealperm p in
     let b = translate_addr b max_addr in
     let e = translate_addr e max_addr in
     let a = translate_addr a max_addr in

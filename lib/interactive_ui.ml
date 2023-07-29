@@ -90,6 +90,13 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       ) else s
   end
 
+  let sealed_style = A.fg (A.gray 14)
+  let cap_style = A.fg A.lightmagenta
+  let sealed_cap_style = A.fg A.magenta
+   (* TODO use rgb_888 to define the right colors *)
+  let sealrange_style = A.fg A.lightcyan
+  let sealed_sealrange_style = A.fg A.cyan
+
   module Sealable = struct
     let width =
       Perm.width + 1 (* space *) +
@@ -103,44 +110,53 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
            (with padding after the range to right-align <addr>) *)
       match sb with
       | Cap (p, b, e, a) ->
+        let attr =
+          if attr = sealed_style then sealed_cap_style else cap_style
+        in
         (I.hsnap ~align:`Left width
            (Perm.ui ~attr p
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
-         I.hsnap ~align:`Right width (Addr.ui a))
+         I.hsnap ~align:`Right width (Addr.ui ~attr a))
       | SealRange (p, b, e, a) ->
+        let attr =
+          if attr = sealed_style then sealed_sealrange_style else sealrange_style
+        in
         (I.hsnap ~align:`Left width
            (SealPerm.ui ~attr p
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
-         I.hsnap ~align:`Right width (Addr.ui a))
+         I.hsnap ~align:`Right width (Addr.ui ~attr a))
   end
 
   module Word = struct
     (* a word is printed as:
        - <sealable> if it's a sealable
-       - {<otype>, <sealable>} if it's a sealed
+       - { _<otype>: <sealable> } if it's a sealed
          (with padding after the range to right-align <addr>)
        - <int> if it's an integer
     *)
     let width =
-      Perm.width + 1 (* space *) +
-      Addr_range.width + 1 (* space *) +
-      Addr.width
+      1 (* { *)
+      + Addr.width (* otype *)
+      + 2 (* colon and space  *)
+      + Sealable.width
+      + 1 (* } *)
 
     let ui ?(attr = A.empty) (w: Machine.word) =
       match w with
-      | I z -> I.hsnap ~align:`Right width (I.string attr (Int.ui width z))
-      | Sealable sb -> I.hsnap ~align:`Right width (Sealable.ui ~attr sb)
+      | I z -> I.hsnap ~align:`Right width (I.string attr (Int.ui width z) <|> I.string A.empty " ")
+      | Sealable sb -> I.hsnap ~align:`Right width ((Sealable.ui ~attr sb) <|> I.string A.empty " ")
       | Sealed (o,sb) ->
-        I.hsnap ~align:`Left width
-           (I.string A.empty "{"
+        let attr = sealed_style in
+        I.hsnap ~align:`Right width
+           (I.string attr "{"
            <|> (I.string attr (Int.ui width o))
-           <|> I.string A.empty ","
-           <|> (I.hsnap ~align:`Right width (Sealable.ui ~attr sb))
-           <|> I.string A.empty "}")
+           <|> I.string attr ": "
+           <|> (Sealable.ui ~attr sb)
+           <|> I.string attr "}")
   end
 
   module Regname = struct
