@@ -159,10 +159,21 @@ let test_sealing =
       `Quick (test_state Halted (fst m));
   ]
 
+let test_sealing_counter =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/sealing_counter.s" in [
+    test_case
+      "sealing_counter.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "sealing_counter.s should end with r2 containing 3"
+      `Quick (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+  ]
+
 
 let () =
   let open Alcotest in
   run "Run" [
-    "Pos", test_mov_test @ test_jmper @ test_getotype @ test_getwtype @ test_sealing ;
+    "Pos", test_mov_test @ test_jmper @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter;
     "Neg", test_negatives;
   ]
