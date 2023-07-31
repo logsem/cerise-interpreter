@@ -139,11 +139,12 @@ let encode_wtype (w : wtype) : Z.t =
   | W_Sealed -> 0b11
 
 let encode_const (envr : env) (c : const_encoded) : Z.t =
+  (* TODO should be some global parameters *)
   let _CONST_ENC       = 0b00 in
   let _PERM_ENC        = 0b01 in
   let _SEAL_PERM_ENC   = 0b10 in
   let _WTYPE_ENC       = 0b11 in
-  let encode t z =  encode_int_int (Z.of_int t) z in
+  let encode t z = encode_int_int (Z.of_int t) z in
   match c with
   | ConstExpr e -> encode _CONST_ENC (eval_expr envr e)
   | Perm p -> encode _PERM_ENC (encode_perm p)

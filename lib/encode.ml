@@ -8,7 +8,7 @@ let encode_wtype (w : wtype) =
    | W_I -> Ir.W_I
    | W_Cap -> Ir.W_Cap
    | W_SealRange -> Ir.W_SealRange
-   | W_Sealed -> Ir.W_SealRange)
+   | W_Sealed -> Ir.W_Sealed)
 
 let decode_wtype (z : Z.t) : wtype =
   let decode_wt_exception = fun _ -> raise @@ DecodeException "Error decoding wtype: unexpected encoding" in

@@ -111,9 +111,58 @@ let test_jmper =
       `Quick (test_perm E (get_reg_cap_perm (Reg 1) m O));
   ]
 
+let test_getotype =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/get_otype.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "get_otype.s should end with r0 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 0) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r1 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 1) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r2 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r3 containing 10"
+      `Quick (test_const_word Z.(~$(10)) (get_reg_int_word (Ast.Reg 3) m (Z.zero)));
+  ]
+
+let test_getwtype =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/get_wtype.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "get_otype.s should end with r0 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 0) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r1 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 1) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r2 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r3 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 3) m (Z.zero)));
+  ]
+
+let test_sealing =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/seal_unseal.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+  ]
+
+
 let () =
   let open Alcotest in
   run "Run" [
-    "Pos", test_mov_test @ test_jmper;
+    "Pos", test_mov_test @ test_jmper @ test_getotype @ test_getwtype @ test_sealing ;
     "Neg", test_negatives;
   ]

@@ -73,6 +73,11 @@ let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   | Register r -> get_reg r conf
   | Const i -> let (_, c) = Encode.decode_int i in I c
 
+let get_word_type (roc : reg_or_const) : Z.t option =
+  match roc with
+  | Register _ -> None
+  | Const i -> let (wt, _) = Encode.decode_int i in Some wt
+
 let upd_pc (conf : exec_conf) : mchn =
   match PC @! conf with
   | Sealable (Cap (p, b, e, a)) -> (Running, upd_reg PC (Sealable (Cap (p, b, e, Z.(a + ~$1)))) conf)
@@ -149,6 +154,12 @@ let can_read (p : perm) : bool =
   | _ -> false
 
 let exec_single (conf : exec_conf) : mchn =
+  (* TODO should be some global parameters *)
+  let _CONST_ENC       = 0b00 in
+  let _PERM_ENC        = 0b01 in
+  let _SEAL_PERM_ENC   = 0b10 in
+  let _WTYPE_ENC       = 0b11 in
+
   let fail_state = (Failed, conf) in
   if is_pc_valid conf
   then match fetch_decode conf with
@@ -197,20 +208,30 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    let p' = Encode.decode_perm i in
-                    if perm_flowsto p' p
-                    then !> (upd_reg r (Sealable (Cap (p', b, e, a))) conf)
-                    else fail_state
+                    match get_word_type c with
+                     (* Shouldn't happen, because we already know from get_word that c is a Int *)
+                    | None -> fail_state
+                    | Some wt when wt = Z.(~$_PERM_ENC) -> (* we can safely decode i as a normal permission *)
+                        let p' = Encode.decode_perm i in
+                        if perm_flowsto p' p
+                        then !> (upd_reg r (Sealable (Cap (p', b, e, a))) conf)
+                        else fail_state
+                    | _ -> (* wt is expected to be a permission *) fail_state
                   end
                 | _ -> fail_state
               end
             | Sealable (SealRange (sp, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    let sp' = Encode.decode_seal_perm i in
-                    if sealperm_flowsto sp' sp
-                    then !> (upd_reg r (Sealable (SealRange (sp', b, e, a))) conf)
-                    else fail_state
+                    match get_word_type c with
+                    (* Shouldn't happen, because we already know from get_word that c is a Int *)
+                    | None -> fail_state
+                    | Some wt when wt = Z.(~$_SEAL_PERM_ENC) -> (* we can safely decode i as a seal permission *)
+                      let sp' = Encode.decode_seal_perm i in
+                      if sealperm_flowsto sp' sp
+                      then !> (upd_reg r (Sealable (SealRange (sp', b, e, a))) conf)
+                      else fail_state
+                    | _ -> (* wt is expected to be a seal permission *) fail_state
                   end
                 | _ -> fail_state
               end

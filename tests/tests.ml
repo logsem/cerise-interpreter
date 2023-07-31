@@ -33,32 +33,42 @@ let encode_const c =
   Const (Ir.encode_const [] (ConstExpr (IntLit c)))
 let encode_perm p =
   Const (Ir.encode_const [] (Perm p))
+let encode_seal_perm sp =
+  Const (Ir.encode_const [] (SealPerm sp))
+let encode_wtype wt =
+  Const (Ir.encode_const [] (Wtype wt))
 
 (* TODO add test cases for mul/rem/div *)
 let instr_tests = [
   ("jmp pc", Op (Jmp PC));
-  ("jmp r21", Op (Jmp (Reg 21)));
-  ("jnz r11 r9", Op (Jnz (Reg 11, Reg 9)));
+  ("jmp r0", Op (Jmp (Reg 0)));
+  ("jnz r1 r2", Op (Jnz (Reg 1, Reg 2)));
   ("mov pc 25", Op (Move (PC, encode_const (25))));
-  ("mov pc -25", Op (Move (PC, encode_const (-25))));
-  ("load r0 r1", Op (Load (Reg 0, Reg 1)));
-  ("store r2 r3", Op (Store (Reg 2, Register (Reg 3))));
-  ("add r4 (10-15) (-37)", Op (Add (Reg 4, encode_const (-5), encode_const (-37))));
-  ("sub r5 6 28", Op (Sub (Reg 5, encode_const 6, encode_const 28)));
-  ("lt r6 496 8128 ; perfect numbers are cool!", Op (Lt (Reg 6, encode_const 496, encode_const 8128)));
-  ("lea r7 r8", Op (Lea (Reg 7, Register (Reg 8))));
-  ("restrict r9 RX", Op (Restrict (Reg 9, (encode_perm RX))));
-  ("subseg r10 pc r11", Op (SubSeg (Reg 10, Register PC, Register (Reg 11))));
-  ("getb r16 r17", Op (GetB (Reg 16, Reg 17)));
-  ("gete r18 r19", Op (GetE (Reg 18, Reg 19)));
-  ("geta r20 r21", Op (GetA (Reg 20, Reg 21)));
-  ("getp r14 r15", Op (GetP (Reg 14, Reg 15)));
-  ("getotype r26 r27", Op (GetOType (Reg 26, Reg 27)));
-  ("getwtype r28 r29", Op (GetWType (Reg 28, Reg 29)));
-  ("seal r22 r23 r24", Op (Seal (Reg 22, Reg 23, Reg 24)));
-  ("unseal r25 r26 r27", Op (UnSeal (Reg 25, Reg 26, Reg 27)));
+  ("mov r3 -25", Op (Move (Reg 3, encode_const (-25))));
+  ("load r4 r5", Op (Load (Reg 4, Reg 5)));
+  ("store r6 r7", Op (Store (Reg 6, Register (Reg 7))));
+  ("add r8 (10-15) (-37)", Op (Add (Reg 8, encode_const (-5), encode_const (-37))));
+  ("sub r9 6 28", Op (Sub (Reg 9, encode_const 6, encode_const 28)));
+  ("lt r10 496 8128 ; perfect numbers are cool!",
+   Op (Lt (Reg 10, encode_const 496, encode_const 8128)));
+  ("lea r11 r12", Op (Lea (Reg 11, Register (Reg 12))));
+  ("restrict r13 RX", Op (Restrict (Reg 13, (encode_perm RX))));
+  ("restrict r14 S", Op (Restrict (Reg 14, (encode_seal_perm (true,false)))));
+  ("subseg r15 pc r16", Op (SubSeg (Reg 15, Register PC, Register (Reg 16))));
+  ("getb r21 r17", Op (GetB (Reg 21, Reg 17)));
+  ("gete r22 r18", Op (GetE (Reg 22, Reg 18)));
+  ("geta r23 r19", Op (GetA (Reg 23, Reg 19)));
+  ("getp r24 r20", Op (GetP (Reg 24, Reg 20)));
+  ("getotype r25 r26", Op (GetOType (Reg 25, Reg 26)));
+  ("getwtype r27 r28", Op (GetWType (Reg 27, Reg 28)));
+  ("seal r22 r29 r30", Op (Seal (Reg 22, Reg 29, Reg 30)));
+  ("unseal r31 r26 r27", Op (UnSeal (Reg 31, Reg 26, Reg 27)));
   ("fail", Op (Fail));
   ("halt", Op (Halt));
+  ("mov r3 Sealed", Op (Move (Reg 3, encode_wtype W_Sealed)));
+  ("mov r13 SealRange", Op (Move (Reg 13, encode_wtype W_SealRange)));
+  ("mov r23 Cap", Op (Move (Reg 23, encode_wtype W_Cap)));
+  ("mov r30 Int", Op (Move (Reg 30, encode_wtype W_I)));
 ]
 
 let z_tst =
@@ -144,7 +154,9 @@ let test_enc_dec_stm_list = [
   (Jnz (Reg 6, Reg 28), "encode-decode Jnz R6 R28");
   (Move (PC, Register (Reg 7)), "encode-decode Move PC R7");
   (Move (PC, const (-35)), "encode-decode Move PC (-35)");
-  (Move (PC, Const (Encode.encode_perm E)), "encode-decode Move PC E");
+  (Move (PC, (encode_perm E)), "encode-decode Move PC E");
+  (Move (PC, (encode_seal_perm (false, true))), "encode-decode Move PC U");
+  (Move (PC, (encode_wtype W_Cap)), "encode-decode Move PC Cap");
   (Load (Reg 9, PC), "encode-decode Load R9 PC");
   (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
   (Store (PC, const (-35)), "encode-decode Store PC (-35)");
