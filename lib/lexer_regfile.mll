@@ -37,15 +37,21 @@ rule token = parse
 (* single-character tokens *)
 | '(' { LPAREN }
 | ')' { RPAREN }
+| '{' { LCBRK }
+| '}' { RCBRK }
+| '[' { LSBRK }
+| ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }
+| ':' { COLON }
 | ":=" { AFFECT }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }
 | "GLOBAL"   | "Global"  { GLOBAL }
 | "DIRECTED" | "Directed"  { DIRECTED }
+
 
 (* permissions *)
 | 'O' { O }
@@ -60,6 +66,10 @@ rule token = parse
 | "URWX" { URWX }
 | "URWL" { URWL }
 | "URWLX" { URWLX }
+| "SO" { SO }
+| 'S' { S }
+| 'U' { U }
+| "SU" { SU }
 
 and comment = parse
 | eof { EOF }

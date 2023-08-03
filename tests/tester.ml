@@ -22,6 +22,7 @@ let perm_tst = Alcotest.testable
     (Fmt.of_to_string @@ Pretty_printer.string_of_perm)
     (fun a b -> a = b)
 
+(* TODO I should add a try/catch in case of parsing failure *)
 let run_prog (filename : string) : mchn  =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
@@ -52,7 +53,7 @@ let get_reg_int_word (r : Ast.regname) (m : mchn) (d : Z.t) =
 
 let get_reg_cap_perm (r : regname) (m : mchn) (d : perm) =
   match r @! snd m with
-  | Cap (p, _, _, _, _) -> p
+  | Sealable (Cap (p, _, _, _, _)) -> p
   | _ -> d
 
 let test_negatives =
@@ -70,7 +71,7 @@ let test_mov_test =
   let m = run_prog "../../../tests/test_files/pos/mov_test.s" in
   let pc_a = begin
     match get_reg PC @@ snd m with
-    | Cap (_, _, _, _, a) -> a
+    | Sealable (Cap (_, _, _, _, a)) -> a
     | _ -> Z.(~$(-1))
   end in
   let r2_res = begin
@@ -165,10 +166,70 @@ let test_directed_store =
       `Quick (test_state Halted (fst m));
   ]
 
+let test_getotype =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/get_otype.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "get_otype.s should end with r0 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 0) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r1 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 1) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r2 containing (-1)"
+      `Quick (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r3 containing 10"
+      `Quick (test_const_word Z.(~$(10)) (get_reg_int_word (Ast.Reg 3) m (Z.zero)));
+  ]
+
+let test_getwtype =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/get_wtype.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "get_otype.s should end with r0 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 0) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r1 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 1) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r2 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+    test_case
+      "get_otype.s should end with r3 containing 0"
+      `Quick (test_const_word Z.zero (get_reg_int_word (Ast.Reg 3) m (Z.zero)));
+  ]
+
+let test_sealing =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/seal_unseal.s" in [
+    test_case
+      "get_otype.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+  ]
+
+let test_sealing_counter =
+  let open Alcotest in
+  let m = run_prog "../../../tests/test_files/pos/sealing_counter.s" in [
+    test_case
+      "sealing_counter.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "sealing_counter.s should end with r2 containing 3"
+      `Quick (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
+  ]
+
 let () =
   let open Alcotest in
   run "Run" [
-    "Pos", test_mov_test @ test_jmper @ test_promote @ test_ucaps
-           @ test_locality_flow @ test_directed_store;
+    "Pos", test_mov_test @ test_jmper
+           @ test_promote @ test_ucaps @ test_locality_flow @ test_directed_store
+           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter;
     "Neg", test_negatives;
   ]

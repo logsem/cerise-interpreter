@@ -1,5 +1,10 @@
 open Ast
 
+(* TODO need to replace the Const by the right encoding *)
+let encode_locality l = (Const (Ir.encode_const [] (Ir.Locality l)))
+let encode_perm p l = (Const (Ir.encode_const [] (Ir.Perm (p, l))))
+let encode_const c = (Const (Ir.encode_const [] (Ir.ConstExpr (IntLit c))))
+
 let in_list (e :'a) (l : 'a list) : bool =
   match (List.find_opt (fun x -> x = e) l) with
   | None -> false
@@ -47,10 +52,11 @@ let popU r =
     Lea (STK, (Register (Reg 1)))
   ]
 
+(* TODO the macro is wrong *)
 let reqglob_instrs r =
   [ GetL (Reg 1, r);
     Sub (Reg 1, Register (Reg 1),
-         CP (Const (Encode.encode_locality Global)));
+         (Const (Encode.encode_locality Global)));
     Move (Reg 2, Register PC);
     Lea (Reg 2, Register (Reg 1));
     Jnz (Reg 2, Reg 1);
@@ -64,7 +70,7 @@ let reqglob_instrs r =
 
 let reqperm r (p : Z.t) =
   [ GetP (Reg 1, r);
-    Sub (Reg 1, Register (Reg 1), CP (Const p));
+    Sub (Reg 1, Register (Reg 1), Const p);
     Move (Reg 2, Register PC);
     Lea (Reg 2, const 6);
     Jnz (Reg 2, Reg 1);
@@ -80,7 +86,7 @@ let reqsize r s =
   [ GetP (Reg 1, r);
     GetE (Reg 2, r);
     Sub (Reg 1, Register (Reg 2), Register (Reg 1));
-    Lt (Reg 1, CP (Const s), Register (Reg 1));
+    Lt (Reg 1, Const s, Register (Reg 1));
     Move (Reg 2, Register PC);
     Lea (Reg 2, const 4);
     Jnz (Reg 2, Reg 1);
@@ -109,18 +115,19 @@ let epilogue_scall radv : (machine_op list) =
   let epilogue_b =
   [
     (* Push activation record *)
-    pushU (CP (Const w1));
-    pushU (CP (Const w2));
-    pushU (CP (Const w3));
-    pushU (CP (Const w4a));
-    pushU (CP (Const w4b));
+    pushU (Const w1);
+    pushU (Const w2);
+    pushU (Const w3);
+    pushU (Const w4a);
+    pushU (Const w4b);
   ] in
 
   let epilogue_e epilogue_off =
+  let e_local_perm = Const (Ir.encode_const [] (Perm (E, Local))) in
     (* push old pc *)
     [
       Move (Reg 1, Register PC) ;
-      Lea (Reg 1, CP (Const epilogue_off)) ;
+      Lea (Reg 1, Const epilogue_off) ;
       pushU (Register (Reg 1));
 
       (* push stack pointer *)
@@ -132,7 +139,7 @@ let epilogue_scall radv : (machine_op list) =
       Move (Reg 0, Register STK);
       PromoteU (Reg 0);
       Lea (Reg 0, const (-7));
-      Restrict (Reg 0, CP (Perm  (E, Local)));
+      Restrict (Reg 0, e_local_perm);
       (* restrict stack capability *)
       GetA (Reg 1, STK);
       GetE (Reg 2, STK);

@@ -2,9 +2,12 @@
 type regname = PC | STK | Reg of int
 type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
-type const_perm = Const of Z.t | Perm of perm * locality
-type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
-type word = I of Z.t | Cap of perm * locality * Z.t * Z.t * Z.t
+type wtype = W_I | W_Cap | W_SealRange | W_Sealed
+type seal_perm = bool * bool
+type reg_or_const = Register of regname | Const of Z.t
+type sealable = Cap of perm * locality * Z.t * Z.t * Z.t
+              | SealRange of seal_perm * locality* Z.t * Z.t * Z.t
+type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
 type machine_op
   =
   | Jmp of regname
@@ -21,12 +24,15 @@ type machine_op
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
   | SubSeg of regname * reg_or_const * reg_or_const
-  | IsPtr of regname * regname
   | GetL of regname * regname
-  | GetP of regname * regname
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
+  | GetP of regname * regname
+  | GetOType of regname * regname
+  | GetWType of regname * regname
+  | Seal of regname * regname * regname
+  | UnSeal of regname * regname * regname
   | LoadU of regname * regname * reg_or_const
   | StoreU of regname * reg_or_const * reg_or_const
   | PromoteU of regname
@@ -48,4 +54,4 @@ let compare_regname (r1 : regname) (r2: regname) : int =
   | Reg _, PC -> 1
   | Reg i, Reg j -> Int.compare i j
 
-let const n = CP (Const (Z.of_int n))
+let const n = Const (Z.of_int n)
