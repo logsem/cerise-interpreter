@@ -8,6 +8,14 @@ let string_of_regname (r: regname) : string =
   | PC -> "pc"
   | Reg i -> "r" ^ (string_of_int i)
 
+(* TODO is there any better way to print it ? *)
+let string_of_seal_perm (p : seal_perm) : string =
+  match p with
+  | (false, false) -> "O"
+  | (true, false) -> "S"
+  | (false, true) -> "U"
+  | (true, true) -> "SU"
+
 let string_of_perm (p: perm): string =
   match p with
   | O -> "O"
@@ -17,15 +25,37 @@ let string_of_perm (p: perm): string =
   | RW -> "RW"
   | RWX -> "RWX"
 
+let string_of_wtype (w : wtype) : string =
+  match w with
+  | W_I -> "Int"
+  | W_Cap -> "Cap"
+  | W_SealRange -> "SealRange"
+  | W_Sealed -> "Sealed"
+
+exception DecodeException of string
 let string_of_reg_or_const (c: reg_or_const) : string =
   match c with
   | Register r -> string_of_regname r
-  | CP (Const c) -> (Z.to_string c)
-  | CP (Perm p) -> string_of_perm p
+  | Const c ->
+    let decode_const_exception = fun _ -> raise @@ DecodeException "Error decoding constant: unexpected encoding" in
+    let (t, z) = Encode.decode_int c in
+    let b0 = Z.testbit t 0 in
+    let b1 = Z.testbit t 1 in
+    if Z.(t > (of_int 0b11))
+    then decode_const_exception ()
+    else
+      match (b1,b0) with
+      | (false, false) -> (Z.to_string z)
+      | (false, true) -> string_of_perm (Encode.decode_perm z)
+      | (true, false) -> string_of_seal_perm (Encode.decode_seal_perm z)
+      | (true, true) -> string_of_wtype (Encode.decode_wtype z)
+
 
 let string_of_machine_op (s: machine_op): string =
   let string_of_rr r1 r2 =
     string_of_regname r1 ^- string_of_regname r2
+  and string_of_rrr r1 r2 r3 =
+    string_of_regname r1 ^- string_of_regname r2 ^- string_of_regname r3
   and string_of_rc r c =
     string_of_regname r ^- string_of_reg_or_const c
   and string_of_rcc r c1 c2  =
@@ -45,26 +75,44 @@ let string_of_machine_op (s: machine_op): string =
   | Lea (r, c) -> "lea" ^- string_of_rc r c
   | Restrict (r, c) -> "restrict" ^- string_of_rc r c
   | SubSeg (r, c1, c2) -> "subseg" ^- string_of_rcc r c1 c2
-  | IsPtr (r1, r2) -> "isptr" ^- string_of_rr r1 r2
-  | GetP (r1, r2) -> "getp" ^- string_of_rr r1 r2
   | GetB (r1, r2) -> "getb" ^- string_of_rr r1 r2
   | GetE (r1, r2) -> "gete" ^- string_of_rr r1 r2
   | GetA (r1, r2) -> "geta" ^- string_of_rr r1 r2
+  | GetP (r1, r2) -> "getp" ^- string_of_rr r1 r2
+  | GetOType (r1, r2) -> "getotype" ^- string_of_rr r1 r2
+  | GetWType (r1, r2) -> "getwtype" ^- string_of_rr r1 r2
+  | Seal (r1, r2, r3) -> "seal" ^- string_of_rrr r1 r2 r3
+  | UnSeal (r1, r2, r3) -> "unseal" ^- string_of_rrr r1 r2 r3
   | Fail -> "fail"
   | Halt -> "halt"
 
-let string_of_word (w : word) : string =
-  match w with
+
+let string_of_sealable (sb : sealable) : string =
+  match sb with
   | Cap (p, b, e, a) ->
     Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+  | SealRange (p, b, e, a) ->
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_seal_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+
+let string_of_word (w : word) : string =
+  match w with
   | I z -> Z.to_string z
+  | Sealable sb -> string_of_sealable sb
+  | Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
+
+
+let string_of_ast_sealable (sb : Ast.sealable) : string =
+  match sb with
+  | Ast.Cap (p, b, e, a) ->
+    Printf.sprintf "Cap (%s, %s, %s, %s)" (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
+  | Ast.SealRange (p, b, e, a) ->
+    Printf.sprintf "SRange [%s, %s, %s, %s]" (string_of_seal_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
 
 let string_of_ast_word (w : Ast.word) : string =
   match w with
-  | Ast.Cap (p, b, e, a) ->
-    Printf.sprintf "Cap (%s,  %s, %s, %s)"
-    (string_of_perm p) (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.I z -> Z.to_string z
+  | Ast.Sealable sb -> string_of_sealable sb
+  | Ast.Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
 
 let string_of_statement (s : statement) : string =
   match s with

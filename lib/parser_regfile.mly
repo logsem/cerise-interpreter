@@ -3,9 +3,10 @@
 %token <int> REG
 %token <int> INT
 %token MAX_ADDR
-%token LPAREN RPAREN
-%token PLUS MINUS AFFECT COMMA
+%token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
+%token PLUS MINUS AFFECT COMMA COLON
 %token O E RO RX RW RWX
+%token S U SU
 
 %left PLUS MINUS EXPR
 %left UMINUS
@@ -25,16 +26,28 @@ reg:
 
 word:
   | e = expr %prec EXPR { WI (e) }
-  | LPAREN
-; p = perm ; COMMA ;
-; b = addr ; COMMA
-; e = addr ; COMMA
-; a = addr
-; RPAREN  { WCap (p, b, e, a) }
+  | sb = sealable_def {WSealable sb}
+  | s = sealed_def {s}
+
+sealable_def:
+  | LPAREN; p = perm; COMMA; b = addr; COMMA; e = addr; COMMA; a = addr; RPAREN;
+    { WCap (p, b, e, a) }
+  | LSBRK; p = seal_perm; COMMA; b = addr; COMMA; e = addr; COMMA; a = addr; RSBRK;
+    { WSealRange (p, b, e, a) }
+
+sealed_def:
+  | LCBRK; o = addr; COLON; sb = sealable_def ; RCBRK
+    { WSealed (o, sb) }
 
 addr:
   | e = expr %prec EXPR { Addr (e) }
 (* TODO support hexa addresses *)
+
+seal_perm:
+  | O; { (false, false) }
+  | S; { (true, false) }
+  | U; { (false, true) }
+  | SU; { (true, true) }
 
 perm:
   | O; { O }

@@ -44,20 +44,28 @@ rule token = parse
 | "lea" { LEA }
 | "restrict" { RESTRICT }
 | "subseg" { SUBSEG }
-| "isptr" { ISPTR }
-| "getp" { GETP }
 | "getb" { GETB }
 | "gete" { GETE }
 | "geta" { GETA }
+| "getp" { GETP }
+| "getotype" { GETOTYPE }
+| "getwtype" { GETWTYPE }
+| "seal" { SEAL }
+| "unseal" { UNSEAL }
 | "fail" { FAIL }
 | "halt" { HALT }
 
 (* single-character tokens *)
 | '(' { LPAREN }
 | ')' { RPAREN }
+| '{' { LCBRK }
+| '}' { RCBRK }
+| '[' { LSBRK }
+| ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }
+| ':' { COLON }
 | '#' { SHARP }
 
 (* permissions *)
@@ -67,6 +75,15 @@ rule token = parse
 | "RX" { RX }
 | "RW" { RW }
 | "RWX" { RWX }
+| 'S' { S }
+| 'U' { U }
+| "SU" { SU }
+
+(* word type *)
+| "Int" { Int }
+| "Cap" { Cap }
+| "SealRange" { SealRange }
+| "Sealed" { Sealed }
 
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }
