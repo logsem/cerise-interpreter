@@ -46,12 +46,16 @@ rule token = parse
 | "lea" { LEA }
 | "restrict" { RESTRICT }
 | "subseg" { SUBSEG }
-| "isptr" { ISPTR }
 | "getl" { GETL }
-| "getp" { GETP }
 | "getb" { GETB }
 | "gete" { GETE }
 | "geta" { GETA }
+| "getp" { GETP }
+| "getotype" { GETOTYPE }
+| "getwtype" { GETWTYPE }
+| "getl" { GETL }
+| "seal" { SEAL }
+| "unseal" { UNSEAL }
 | "load" ['u' 'U'] { LOADU }
 | "store" ['u' 'U'] { STOREU }
 | "promote" ['u' 'U'] { PROMOTEU }
@@ -61,9 +65,14 @@ rule token = parse
 (* single-character tokens *)
 | '(' { LPAREN }
 | ')' { RPAREN }
+| '{' { LCBRK }
+| '}' { RCBRK }
+| '[' { LSBRK }
+| ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
 | ',' { COMMA }
+| ':' { COLON }
 | '#' { SHARP }
 
 (* locality *)
@@ -84,6 +93,16 @@ rule token = parse
 | "URWX" { URWX }
 | "URWL" { URWL }
 | "URWLX" { URWLX }
+| "SO" { SO }
+| 'S' { S }
+| 'U' { U }
+| "SU" { SU }
+
+(* word type *)
+| "Int" { Int }
+| "Cap" { Cap }
+| "SealRange" { SealRange }
+| "Sealed" { Sealed }
 
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }

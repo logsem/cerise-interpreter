@@ -21,6 +21,13 @@ let translate_locality (g : locality) : Ast.locality =
   | Global -> Ast.Global
   | Directed -> Ast.Directed
 
+let translate_wtype (wt : word) : Ast.wtype =
+  match wt with
+  | WInt _ -> Ast.W_I
+  | WSealable (SCap _) -> Ast.W_Cap
+  | WSealable (SSealRange _) -> Ast.W_SealRange
+  | WSealed _ -> Ast.W_Sealed
+
 let translate_regname (r : regName) : Ast.regname =
   match r with
   | PC -> Ast.PC
@@ -30,7 +37,7 @@ let translate_regname (r : regName) : Ast.regname =
 let translate_sum (s : (Big_int_Z.big_int, regName) sum) : Ast.reg_or_const =
 match s with
 | Inr r -> Ast.Register (translate_regname r)
-| Inl z -> Ast.CP (Const z)
+| Inl z -> Ast.Const z
 
 let translate_instr (i : cerise_instruction) : Ast.machine_op =
   match i with
@@ -57,7 +64,7 @@ let translate_instr (i : cerise_instruction) : Ast.machine_op =
   | Div (r, c1, c2) -> Ast.Div (translate_regname r,
                                 translate_sum c1,
                                 translate_sum c2)
-  | Lt (r, c1, c2) -> Ast.Lt (translate_regname r,
+  | Lt0 (r, c1, c2) -> Ast.Lt (translate_regname r,
                               translate_sum c1,
                               translate_sum c2)
   | Lea (r, c) -> Ast.Lea (translate_regname r, translate_sum c)
@@ -66,12 +73,16 @@ let translate_instr (i : cerise_instruction) : Ast.machine_op =
   | Subseg (r, c1, c2) -> Ast.SubSeg (translate_regname r,
                                       translate_sum c1,
                                       translate_sum c2)
-  | IsPtr (r1, r2) -> Ast.IsPtr (translate_regname r1, translate_regname r2)
   | GetL (r1, r2) -> Ast.GetL (translate_regname r1, translate_regname r2)
-  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
+  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
+  | GetWType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
+  | GetOType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
+  | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
+  | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
+
   | LoadU (r1, r2, c) -> Ast.LoadU (translate_regname r1,
                                     translate_regname r2,
                                     translate_sum c)
@@ -91,12 +102,14 @@ let tr_reg (r : Ast.regname) : regName =
 let tr_sum (c : Ast.reg_or_const) : (Big_int_Z.big_int, regName) sum =
   match c with
   | Register r -> Inr (tr_reg r)
-  | CP cp ->
-    match cp with
-    | Const n -> Inl n
-    | Perm (p,g)->
-      let n = Encode.encode_perm_pair p g in
-      Inl n
+  | Const z -> Inl z
+    (* TODO might require to use decode/encode from Ir *)
+    (* Ir.decode *)
+    (* match cp with *)
+    (* | Const n -> Inl n *)
+    (* | Perm (p,g)-> *)
+    (*   let n = Encode.encode_perm_pair p g in *)
+    (*   Inl n *)
 
 let tr_machine_op (s : Ast.machine_op) : cerise_instruction =
   match s with
@@ -110,16 +123,19 @@ let tr_machine_op (s : Ast.machine_op) : cerise_instruction =
   | Ast.Mul (r, c1, c2) -> Mul (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Rem (r, c1, c2) -> Rem (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Div (r, c1, c2) -> Div (tr_reg r, tr_sum c1, tr_sum c2)
-  | Ast.Lt (r, c1, c2) -> Lt (tr_reg r, tr_sum c1, tr_sum c2)
+  | Ast.Lt (r, c1, c2) -> Lt0 (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.Lea (r, c) -> Lea (tr_reg r, tr_sum c)
   | Ast.Restrict (r, c) -> Restrict (tr_reg r, tr_sum c)
   | Ast.SubSeg (r, c1, c2) -> Subseg (tr_reg r, tr_sum c1, tr_sum c2)
-  | Ast.IsPtr (r1, r2) -> IsPtr (tr_reg r1, tr_reg r2)
   | Ast.GetL (r1, r2) -> GetL (tr_reg r1, tr_reg r2)
-  | Ast.GetP (r1, r2) -> GetP (tr_reg r1, tr_reg r2)
   | Ast.GetB (r1, r2) -> GetB (tr_reg r1, tr_reg r2)
   | Ast.GetE (r1, r2) -> GetE (tr_reg r1, tr_reg r2)
   | Ast.GetA (r1, r2) -> GetA (tr_reg r1, tr_reg r2)
+  | Ast.GetP (r1, r2) -> GetP (tr_reg r1, tr_reg r2)
+  | Ast.GetOType (r1, r2) -> GetOType (tr_reg r1, tr_reg r2)
+  | Ast.GetWType (r1, r2) -> GetWType (tr_reg r1, tr_reg r2)
+  | Ast.Seal (r1, r2, r3) -> Seal (tr_reg r1, tr_reg r2, tr_reg r3)
+  | Ast.UnSeal (r1, r2, r3) -> UnSeal (tr_reg r1, tr_reg r2, tr_reg r3)
   | Ast.LoadU (r1, r2, c) -> LoadU (tr_reg r1, tr_reg r2, tr_sum c)
   | Ast.StoreU (r, c1, c2) -> StoreU (tr_reg r, tr_sum c1, tr_sum c2)
   | Ast.PromoteU r -> PromoteU (tr_reg r)
@@ -146,6 +162,13 @@ let tr_loc (g : Ast.locality) : locality =
   | Ast.Local -> Local
   | Ast.Global -> Global
   | Ast.Directed -> Directed
+
+let tr_wtype (wt : Ast.wtype) : word =
+  match wt with
+  | Ast.W_I -> wt_int
+  | Ast.W_Cap -> wt_cap
+  | Ast.W_SealRange -> wt_sealrange
+  | Ast.W_Sealed -> wt_sealed
 
 let encode_label_name (l : Big_int_Z.big_int list) : Big_int_Z.big_int =
   let rec encode_label_name' (l : Big_int_Z.big_int list)
@@ -214,17 +237,27 @@ let machine_param = {
   encodeInstr = (function i -> Encode.encode_machine_op (translate_instr i));
   encodePerm = (function p -> Encode.encode_perm (translate_perm p));
   encodeLoc = (function g -> Encode.encode_locality (translate_locality g));
-  decodePermPair = (function z ->
-      let (p,g) = Encode.decode_perm_pair z in
-      (tr_perm p, tr_loc g));
-  encodePermPair = (function p ->
-    let (p,g) = p in Encode.encode_perm_pair (translate_perm p) (translate_locality g))
+
+  decodePermPair = (function z -> let (p,g) = Encode.decode_perm_loc_pair z in (tr_perm p, tr_loc g));
+  encodePermPair = (function p -> let (p,g) = p in Encode.encode_perm_loc_pair (translate_perm p) (translate_locality g));
+
+  decodeSealPermPair = (function z -> let (p,g) = Encode.decode_seal_perm_loc_pair z in (p, tr_loc g));
+  encodeSealPermPair = (function p -> let (p,g) = p in Encode.encode_seal_perm_loc_pair p (translate_locality g));
+
+  encodeSealPerms = (function p -> Encode.encode_seal_perm p);
+  decodeSealPerms = (function p -> Encode.decode_seal_perm p);
+  encodeWordType = (function wt -> Encode.encode_wtype (translate_wtype wt));
+  decodeWordType = (function wt -> tr_wtype (Encode.decode_wtype wt));
 }
 
-let translate_word (w : (Big_int_Z.big_int, (((Extract.perm * Extract.locality) * Big_int_Z.big_int) * Big_int_Z.big_int
-                    ) * Big_int_Z.big_int) Extract.sum)
-  = match w with
-  | Inl z -> Ast.I z
-  | Inr ((((p,l),b),e),a) -> Ast.Cap (translate_perm p, translate_locality l,b,e,a)
+let translate_sealable (sb : Extract.sealable) =
+  match sb with
+  | SCap ((p,l), b, e, a) -> Ast.Cap (translate_perm p, translate_locality l, b, e, a)
+  | SSealRange ((p,l), b, e, a) -> Ast.SealRange (p, translate_locality l, b, e, a)
 
-(* (Convert.translate_instr (Convert.driver.decodeInstr z)) *)
+
+let translate_word (w : Extract.word) =
+  match w with
+  | WInt z -> Ast.I z
+  | WSealable sb -> Ast.Sealable (translate_sealable sb)
+  | WSealed (ot, sb) -> Ast.Sealed (ot, translate_sealable sb)

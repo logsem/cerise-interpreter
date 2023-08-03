@@ -4,16 +4,26 @@ exception UnknownLabelException of string
 
 type regname = PC | STK | Reg of int
 type expr
-  = IntLit of int
+  = IntLit of Z.t
   | Label of string
   | AddOp of expr * expr
   | SubOp of expr * expr
 
 type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
-type const_perm = Const of expr | Perm of perm * locality
-type reg_or_const = Register of regname | CP of const_perm (* TODO: separate into two types *)
-type word = I of expr | Cap of perm * locality * expr * expr * expr
+type seal_perm = bool * bool
+type wtype = W_I | W_Cap | W_SealRange | W_Sealed
+type const_encoded = ConstExpr of expr
+                   | Perm of perm
+                   | SealPerm of seal_perm
+                   | Locality of locality
+                   | Wtype of wtype
+                   | PermLoc of perm * locality
+                   | SealPermLoc of seal_perm * locality
+
+type reg_or_const = Register of regname | Const of const_encoded
+type sealable = Cap of perm * locality * expr * expr * expr | SealRange of seal_perm * locality * expr * expr * expr
+type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 exception WordException of word
 
 type machine_op
@@ -32,12 +42,15 @@ type machine_op
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
   | SubSeg of regname * reg_or_const * reg_or_const
-  | IsPtr of regname * regname
   | GetL of regname * regname
-  | GetP of regname * regname
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
+  | GetP of regname * regname
+  | GetOType of regname * regname
+  | GetWType of regname * regname
+  | Seal of regname * regname * regname
+  | UnSeal of regname * regname * regname
   | LoadU of regname * regname * reg_or_const
   | StoreU of regname * reg_or_const * reg_or_const
   | PromoteU of regname
@@ -58,7 +71,7 @@ let rec compute_env (i : int) (prog : t) (envr : env) : env =
 
 let rec eval_expr (envr : env) (e : expr) : Z.t =
   match e with
-  | IntLit i -> (Z.of_int i)
+  | IntLit i -> i
   | Label s -> begin
       match List.find_opt (fun p -> (fst p) = s) envr with
       | Some (_,i) -> (Z.of_int i)
@@ -88,33 +101,54 @@ let translate_locality (g : locality) : Ast.locality =
   | Global -> Ast.Global
   | Directed -> Ast.Directed
 
+let translate_wt (wt : wtype) : Ast.wtype =
+  (match wt with
+   | W_I -> Ast.W_I
+   | W_Cap -> Ast.W_Cap
+   | W_SealRange -> Ast.W_SealRange
+   | W_Sealed -> Ast.W_Sealed)
+
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
   | STK -> Ast.STK
   | Reg i -> Ast.Reg i
 
-let translate_const_perm (envr : env) (cp : const_perm) : Ast.const_perm =
-  match cp with
-  | Const e -> Ast.Const (eval_expr envr e)
-  | Perm (p,g) -> Ast.Perm (translate_perm p, translate_locality g)
-
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
-  | CP cp -> Ast.CP (translate_const_perm envr cp)
+  | Const c ->
+    Ast.Const
+    (match c with
+        | ConstExpr e -> (eval_expr envr e)
+        | Locality l -> Encode.encode_locality (translate_locality l)
+        | Perm p -> Encode.encode_perm (translate_perm p)
+        | SealPerm sp -> Encode.encode_seal_perm sp
+        | Wtype wt -> Encode.encode_wtype (translate_wt wt)
+        | PermLoc (p,l) -> Encode.encode_perm_loc_pair (translate_perm p) (translate_locality l)
+        | SealPermLoc (p,l) -> Encode.encode_seal_perm_loc_pair p (translate_locality l)
+    )
+
+let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
+  match s with
+  | Cap (p, l, b, e, a) ->
+    Ast.Cap ((translate_perm p),
+             (translate_locality l),
+             (eval_expr envr b),
+             (eval_expr envr e),
+             (eval_expr envr a))
+  | SealRange (p, l, b, e, a) ->
+    Ast.SealRange (p,
+                   (translate_locality l),
+                   (eval_expr envr b),
+                   (eval_expr envr e),
+                   (eval_expr envr a))
 
 let translate_word (envr : env) (w : word) : Ast.statement =
   match w with
   | I e -> Ast.Word (Ast.I (eval_expr envr e))
-  | Cap (p,l,b,e,a) ->
-    Ast.Word (Ast.Cap
-                ((translate_perm p),
-                 (translate_locality l),
-                 (eval_expr envr b),
-                 (eval_expr envr e),
-                 (eval_expr envr a)
-                ))
+  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable envr sb))
+  | Sealed (o,sb) -> Ast.Word (Ast.Sealed (eval_expr envr o, (translate_sealable envr sb)))
 
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with
@@ -150,12 +184,15 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | SubSeg (r, c1, c2) -> Ast.SubSeg (translate_regname r,
                                       translate_reg_or_const envr c1,
                                       translate_reg_or_const envr c2)
-  | IsPtr (r1, r2) -> Ast.IsPtr (translate_regname r1, translate_regname r2)
   | GetL (r1, r2) -> Ast.GetL (translate_regname r1, translate_regname r2)
-  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
+  | GetP (r1, r2) -> Ast.GetP (translate_regname r1, translate_regname r2)
+  | GetOType (r1, r2) -> Ast.GetOType (translate_regname r1, translate_regname r2)
+  | GetWType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
+  | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
+  | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
   | LoadU (r1, r2, c) -> Ast.LoadU (translate_regname r1,
                                     translate_regname r2,
                                     translate_reg_or_const envr c)

@@ -11,11 +11,14 @@ type expr
 
 type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
+type seal_perm = bool * bool
 
 (* TODO special addresses: min_addr, max_addr, stk_addr ... *)
 type addr = Addr of expr
 
-type word = WI of expr | WCap of perm * locality * addr * addr * addr
+type sealable = WCap of perm * locality * addr * addr * addr
+              | WSealRange of seal_perm * locality * addr * addr * addr
+type word = WI of expr | WSealable of sealable | WSealed of addr * sealable
 
 type t = (regname * word) list
 
@@ -59,24 +62,35 @@ let translate_addr (a : addr) (max_addr : Z.t) (stk_addr : Z.t): Z.t =
   match a with
   | Addr e -> (eval_expr e max_addr stk_addr)
 
-
-let translate_word (w : word) (max_addr : Z.t) (stk_addr : Z.t): Machine.word =
-  match w with
-  | WI e -> Machine.I (eval_expr e max_addr stk_addr)
+let translate_sealable (sb : sealable) (max_addr : Z.t) (stk_addr : Z.t) : Ast.sealable =
+  match sb with
   | WCap (p,g,b,e,a) ->
+    let g = translate_locality g in
     let p = translate_perm p in
+    let b = translate_addr b max_addr stk_addr in
+    let e = translate_addr e max_addr stk_addr in
+    let a = translate_addr a max_addr stk_addr in
+    Cap (p,g,b,e,a)
+  | WSealRange (p,g,b,e,a) ->
     let g = translate_locality g in
     let b = translate_addr b max_addr stk_addr in
     let e = translate_addr e max_addr stk_addr in
     let a = translate_addr a max_addr stk_addr in
-    Machine.Cap (p,g,b,e,a)
+    SealRange (p,g,b,e,a)
+
+let translate_word (w : word) (max_addr : Z.t) (stk_addr : Z.t) : Ast.word =
+  match w with
+  | WI e -> Ast.I (eval_expr e max_addr stk_addr)
+  | WSealable sb -> Ast.Sealable (translate_sealable sb max_addr stk_addr)
+  | WSealed (o,sb) -> Ast.Sealed (translate_addr o max_addr stk_addr, translate_sealable sb max_addr stk_addr)
 
 let rec translate_regfile (regfile : t) (max_addr : Z.t) (stk_addr : Z.t):
-  (Machine.word Machine.RegMap.t) =
+  (Ast.word Machine.RegMap.t) =
+
   let init_regfile =
     Machine.RegMap.empty in
   match regfile with
   | [] -> init_regfile
   | (r,w)::rf ->
     let nrf = translate_regfile rf max_addr stk_addr in
-      (Machine.RegMap.add (translate_regname r) (translate_word w max_addr stk_addr) nrf)
+    (Machine.RegMap.add (translate_regname r) (translate_word w max_addr stk_addr) nrf)

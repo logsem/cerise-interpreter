@@ -30,7 +30,7 @@ let mclearU : machine_op list =
     Sub (Reg 2, Register (Reg 1), Register (Reg 2));
     Lea (Reg 4, Register (Reg 2));
     GetE (Reg 5, Reg 4);
-    Sub (Reg 5, Register (Reg 5), CP (Const Z.one));
+    Sub (Reg 5, Register (Reg 5), Const Z.one);
     Move (Reg 2, Register PC);
     Lea (Reg 2, const mclear_off_end);
     Move (Reg 3, Register PC);
@@ -54,7 +54,7 @@ let popU r =
 let reqglob_instrs r =
   [ GetL (Reg 1, r);
     Sub (Reg 1, Register (Reg 1),
-         CP (Const (Encode.encode_locality Global)));
+         Const (Encode.encode_locality Global));
     Move (Reg 2, Register PC);
     Lea (Reg 2, Register (Reg 1));
     Jnz (Reg 2, Reg 1);
@@ -68,7 +68,7 @@ let reqglob_instrs r =
 
 let reqperm r (p : Z.t) =
   [ GetP (Reg 1, r);
-    Sub (Reg 1, Register (Reg 1), CP (Const p));
+    Sub (Reg 1, Register (Reg 1), Const p);
     Move (Reg 2, Register PC);
     Lea (Reg 2, const 6);
     Jnz (Reg 2, Reg 1);
@@ -84,7 +84,7 @@ let reqsize r s =
   [ GetP (Reg 1, r);
     GetE (Reg 2, r);
     Sub (Reg 1, Register (Reg 2), Register (Reg 1));
-    Lt (Reg 1, CP (Const s), Register (Reg 1));
+    Lt (Reg 1, Const s, Register (Reg 1));
     Move (Reg 2, Register PC);
     Lea (Reg 2, const 4);
     Jnz (Reg 2, Reg 1);
@@ -97,7 +97,7 @@ let prepstack r minsize paramsize =
   reqsize r Z.(minsize+paramsize) @
   [ GetB (Reg 1, r);
     GetA (Reg 2, r);
-    Sub (Reg 2, Register (Reg 2), CP (Const paramsize));
+    Sub (Reg 2, Register (Reg 2), Const paramsize);
     Sub (Reg 1, Register (Reg 1), Register (Reg 2));
     Lea (r, Register (Reg 1));
     Move (Reg 1, const 0);
@@ -114,14 +114,15 @@ let scall_prologue radv params : (machine_op list) =
   let epilogue_b =
   [
     (* Push activation record *)
-    pushU (CP (Const w1));
-    pushU (CP (Const w2));
-    pushU (CP (Const w3));
-    pushU (CP (Const w4a));
-    pushU (CP (Const w4b));
+    pushU (Const w1);
+    pushU (Const w2);
+    pushU (Const w3);
+    pushU (Const w4a);
+    pushU (Const w4b);
   ] in
 
   let rdiff = reg_diff (params @ [PC;STK;Reg 0;radv]) in
+  let e_directed_perm = Const (Encode.encode_perm_loc_pair E Directed) in
   let epilogue_e =
     (* push old pc *)
     [
@@ -138,7 +139,7 @@ let scall_prologue radv params : (machine_op list) =
       Move (Reg 0, Register STK);
       PromoteU (Reg 0);
       Lea (Reg 0, const (-7));
-      Restrict (Reg 0, CP (Perm  (E, Directed)));
+      Restrict (Reg 0, e_directed_perm);
       (* restrict stack capability *)
       GetA (Reg 1, STK);
       GetE (Reg 2, STK);
