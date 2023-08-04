@@ -9,7 +9,7 @@
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
 %token GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL FAIL HALT
 %token O E RO RX RW RWX
-%token S U SU
+%token SO S U SU
 %token Int Cap SealRange Sealed
 
 %left PLUS MINUS EXPR
@@ -76,7 +76,7 @@ reg_const:
   | w = wtype; { Const (Wtype w) }
 
 seal_perm:
-  | O; { (false, false) }
+  | SO; { (false, false) }
   | S; { (true, false) }
   | U; { (false, true) }
   | SU; { (true, true) }

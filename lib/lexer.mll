@@ -75,6 +75,7 @@ rule token = parse
 | "RX" { RX }
 | "RW" { RW }
 | "RWX" { RWX }
+| "SO" { SO }
 | 'S' { S }
 | 'U' { U }
 | "SU" { SU }

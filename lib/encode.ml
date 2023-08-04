@@ -2,19 +2,49 @@ open Ast
 
 exception DecodeException of string
 
-let encode_wtype (w : wtype) =
-  Ir.encode_wtype
-  (match w with
-   | W_I -> Ir.W_I
-   | W_Cap -> Ir.W_Cap
-   | W_SealRange -> Ir.W_SealRange
-   | W_Sealed -> Ir.W_Sealed)
+let _PERM_ENC = Z.of_int 0b00
+let _SEAL_PERM_ENC = Z.of_int 0b01
+let _WTYPE_ENC = Z.of_int 0b10
+
+let encode_const (t : Z.t) (c : Z.t) : Z.t =
+  let open Z in
+  let enc_const = c lsl 2 in (* size of _T_ENC *)
+  enc_const lor t
+
+let decode_const (i : Z.t) : (Z.t * Z.t) =
+  let open Z in
+    let b0 = testbit i 0 in
+    let b1 = testbit i 1 in
+  let t = of_int
+      (match (b1,b0) with
+      | (false, false) -> 0b00
+      | (false, true) -> 0b01
+      | (true, false) -> 0b10
+      | (true, true) -> 0b11)
+  in
+  (t, (of_int ((to_int i) lsr 2)))
+
+let encode_wtype (w : wtype) : Z.t =
+  let enc =
+    Z.of_int @@
+    match w with
+    | W_I -> 0b00
+    | W_Cap -> 0b01
+    | W_SealRange -> 0b10
+    | W_Sealed -> 0b11
+  in encode_const _WTYPE_ENC enc
 
 let decode_wtype (z : Z.t) : wtype =
   let decode_wt_exception = fun _ -> raise @@ DecodeException "Error decoding wtype: unexpected encoding" in
-  let b0 = Z.testbit z 0 in
-  let b1 = Z.testbit z 1 in
-  if Z.(z > (of_int 0b11))
+
+  let (dec_type, dec_z) = decode_const z in
+  if (dec_type != _WTYPE_ENC)
+  then decode_wt_exception ()
+  else
+
+  let b0 = Z.testbit dec_z 0 in
+  let b1 = Z.testbit dec_z 1 in
+  if Z.(dec_z > (of_int 0b11))
   then decode_wt_exception ()
   else
   match (b1,b0) with
@@ -23,22 +53,30 @@ let decode_wtype (z : Z.t) : wtype =
   | (true, false) -> W_SealRange
   | (true, true) -> W_Sealed
 
-let encode_perm (p : perm) =
-  Ir.encode_perm
-    (match p with
-     | O -> Ir.O
-     | E -> Ir.E
-     | RO -> Ir.RO
-     | RX -> Ir.RX
-     | RW -> Ir.RW
-     | RWX -> Ir.RWX)
+let encode_perm (p : perm) : Z.t =
+  let enc =
+    Z.of_int @@
+    match p with
+    | O -> 0b000
+    | E -> 0b001
+    | RO -> 0b100
+    | RX -> 0b101
+    | RW -> 0b110
+    | RWX -> 0b111
+  in encode_const _PERM_ENC enc
 
 let decode_perm (i : Z.t) : perm =
   let decode_perm_exception = fun _ -> raise @@ DecodeException "Error decoding permission: unexpected encoding" in
-  let b0 = Z.testbit i 0 in
-  let b1 = Z.testbit i 1 in
-  let b2 = Z.testbit i 2 in
-  if Z.(i > (of_int 0b111))
+
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _PERM_ENC)
+  then decode_perm_exception ()
+  else
+
+  let b0 = Z.testbit dec_i 0 in
+  let b1 = Z.testbit dec_i 1 in
+  let b2 = Z.testbit dec_i 2 in
+  if Z.(dec_i > (of_int 0b111))
   then decode_perm_exception ()
   else
   match (b2,b1,b0) with
@@ -50,13 +88,27 @@ let decode_perm (i : Z.t) : perm =
   | (true, true, true)    -> RWX
   | _ -> decode_perm_exception ()
 
-let encode_seal_perm (sp : seal_perm) : Z.t = Ir.encode_seal_perm sp
+let encode_seal_perm (p : seal_perm) : Z.t =
+  let enc =
+    Z.of_int @@
+    match p with
+    | (false, false) -> 0b00
+    | (false, true) -> 0b01
+    | (true, false) -> 0b10
+    | (true, true) -> 0b11
+  in encode_const _SEAL_PERM_ENC enc
 
 let decode_seal_perm (i : Z.t) : seal_perm =
   let decode_perm_exception = fun _ -> raise @@ DecodeException "Error decoding sealing permission: unexpected encoding" in
-  let b0 = Z.testbit i 0 in
-  let b1 = Z.testbit i 1 in
-  if Z.(i > (of_int 0b11))
+
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _SEAL_PERM_ENC)
+  then decode_perm_exception ()
+  else
+
+  let b0 = Z.testbit dec_i 0 in
+  let b1 = Z.testbit dec_i 1 in
+  if Z.(dec_i > (of_int 0b11))
   then decode_perm_exception ()
   else (b1,b0)
 
@@ -80,6 +132,36 @@ let rec split_int (i : Z.t) : Z.t * Z.t =
     let (x2, y2) = split_int (i asr 2) in
     (x1 + (x2 lsl 1), y1 + (y2 lsl 1))
 
+(* Interleave two integers bitwise.
+ * Example: x = 0b101 and y = 0b110
+ * results in 0b111001. *)
+let rec interleave_int (x : Z.t) (y : Z.t) : Z.t =
+  let open Z in
+  if x = zero && y = zero
+  then zero
+  else
+    let x1 = x land one in
+    let y1 = (y land one) lsl 1 in
+    let x2 = x asr 1 in
+    let y2 = y asr 1 in
+    x1 + y1 + ((interleave_int x2 y2) lsl 2)
+
+(* Encode two integers by interleaving their
+ * absolute values bitwise, followed
+ * by two bits representing signs.
+ *)
+let encode_int_int (x : Z.t) (y : Z.t) =
+  let sign_bits = Z.of_int @@ begin
+    match (Z.sign y, Z.sign x) with
+      | (-1, -1) -> 0b11
+      | (-1, (0|1))  -> 0b10
+      | ((0|1), -1)  -> 0b01
+      | ((0|1), (0|1)) -> 0b00
+      | _ -> assert false
+  end in
+  let interleaved = interleave_int (Z.abs x) (Z.abs y) in
+  Z.(sign_bits + (interleaved lsl 2))
+
 let decode_int (i : Z.t) : Z.t * Z.t =
   let is_x_neg = Z.testbit i 0 in
   let is_y_neg = Z.testbit i 1 in
@@ -90,8 +172,6 @@ let decode_int (i : Z.t) : Z.t * Z.t =
   | (false, true) -> (x, Z.neg y)
   | (false, false) -> (x, y)
 
-let encode_int_int = Ir.encode_int_int
-                      
 let (~$) = Z.(~$)
 
 let encode_machine_op (s : machine_op): Z.t =

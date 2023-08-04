@@ -76,85 +76,28 @@ let translate_perm (p : perm) : Ast.perm =
   | RW -> Ast.RW
   | RWX -> Ast.RWX
 
+let translate_wt (wt : wtype) : Ast.wtype =
+  (match wt with
+   | W_I -> Ast.W_I
+   | W_Cap -> Ast.W_Cap
+   | W_SealRange -> Ast.W_SealRange
+   | W_Sealed -> Ast.W_Sealed)
+
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
   | Reg i -> Ast.Reg i
 
-
-(* Interleave two integers bitwise.
- * Example: x = 0b101 and y = 0b110
- * results in 0b111001. *)
-let rec interleave_int (x : Z.t) (y : Z.t) : Z.t =
-  let open Z in
-  if x = zero && y = zero
-  then zero
-  else
-    let x1 = x land one in
-    let y1 = (y land one) lsl 1 in
-    let x2 = x asr 1 in
-    let y2 = y asr 1 in
-    x1 + y1 + ((interleave_int x2 y2) lsl 2)
-
-(* Encode two integers by interleaving their
- * absolute values bitwise, followed
- * by two bits representing signs.
- *)
-let encode_int_int (x : Z.t) (y : Z.t) =
-  let sign_bits = Z.of_int @@ begin
-    match (Z.sign y, Z.sign x) with
-      | (-1, -1) -> 0b11
-      | (-1, (0|1))  -> 0b10
-      | ((0|1), -1)  -> 0b01
-      | ((0|1), (0|1)) -> 0b00
-      | _ -> assert false
-  end in
-  let interleaved = interleave_int (Z.abs x) (Z.abs y) in
-  Z.(sign_bits + (interleaved lsl 2))
-
-let encode_perm (p : perm) : Z.t =
-  Z.of_int @@
-  match p with
-  | O -> 0b000
-  | E -> 0b001
-  | RO -> 0b100
-  | RX -> 0b101
-  | RW -> 0b110
-  | RWX -> 0b111
-
-let encode_seal_perm (p : seal_perm) : Z.t =
-  Z.of_int @@
-  match p with
-  | (false, false) -> 0b00
-  | (false, true) -> 0b01
-  | (true, false) -> 0b10
-  | (true, true) -> 0b11
-
-let encode_wtype (w : wtype) : Z.t =
-  Z.of_int @@
-  match w with
-  | W_I -> 0b00
-  | W_Cap -> 0b01
-  | W_SealRange -> 0b10
-  | W_Sealed -> 0b11
-
-let encode_const (envr : env) (c : const_encoded) : Z.t =
-  (* TODO should be some global parameters *)
-  let _CONST_ENC       = 0b00 in
-  let _PERM_ENC        = 0b01 in
-  let _SEAL_PERM_ENC   = 0b10 in
-  let _WTYPE_ENC       = 0b11 in
-  let encode t z = encode_int_int (Z.of_int t) z in
-  match c with
-  | ConstExpr e -> encode _CONST_ENC (eval_expr envr e)
-  | Perm p -> encode _PERM_ENC (encode_perm p)
-  | SealPerm sp -> encode _SEAL_PERM_ENC (encode_seal_perm sp)
-  | Wtype wt -> encode _WTYPE_ENC (encode_wtype wt)
-
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
-  | Const c -> Ast.Const (encode_const envr c)
+  | Const c ->
+    Ast.Const
+    (match c with
+        | ConstExpr e -> (eval_expr envr e)
+        | Perm p -> Encode.encode_perm (translate_perm p)
+        | SealPerm sp -> Encode.encode_seal_perm sp
+        | Wtype wt -> Encode.encode_wtype (translate_wt wt))
 
 let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
   match s with

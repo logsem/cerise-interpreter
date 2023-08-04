@@ -15,7 +15,7 @@ let machine_op_tst = Alcotest.testable pprint_machine_op machine_op_eq
 module To_test = struct
   let lex_parse = fun x ->
     List.hd @@ Ir.translate_prog @@ Parser.main Lexer.token @@ Lexing.from_string x
-  let enc_interleave a b = Ir.interleave_int (Z.of_string a) (Z.of_string b)
+  let enc_interleave a b = Encode.interleave_int (Z.of_string a) (Z.of_string b)
   let enc_int a b = Encode.encode_int_int a b
   let enc_split = Encode.split_int
   let enc_dec_int a b = Encode.decode_int @@ Encode.encode_int_int a b
@@ -29,28 +29,23 @@ let make_op_test ((input, expect) : string * statement) =
       expect
       (To_test.lex_parse input))
 
-let encode_const c =
-  Const (Ir.encode_const [] (ConstExpr (IntLit c)))
-let encode_perm p =
-  Const (Ir.encode_const [] (Perm p))
-let encode_seal_perm sp =
-  Const (Ir.encode_const [] (SealPerm sp))
-let encode_wtype wt =
-  Const (Ir.encode_const [] (Wtype wt))
+let encode_perm p = Const (Encode.encode_perm p)
+let encode_seal_perm sp = Const (Encode.encode_seal_perm sp)
+let encode_wtype wt = Const (Encode.encode_wtype wt)
 
 (* TODO add test cases for mul/rem/div *)
 let instr_tests = [
   ("jmp pc", Op (Jmp PC));
   ("jmp r0", Op (Jmp (Reg 0)));
   ("jnz r1 r2", Op (Jnz (Reg 1, Reg 2)));
-  ("mov pc 25", Op (Move (PC, encode_const (25))));
-  ("mov r3 -25", Op (Move (Reg 3, encode_const (-25))));
+  ("mov pc 25", Op (Move (PC, const (25))));
+  ("mov r3 -25", Op (Move (Reg 3, const (-25))));
   ("load r4 r5", Op (Load (Reg 4, Reg 5)));
   ("store r6 r7", Op (Store (Reg 6, Register (Reg 7))));
-  ("add r8 (10-15) (-37)", Op (Add (Reg 8, encode_const (-5), encode_const (-37))));
-  ("sub r9 6 28", Op (Sub (Reg 9, encode_const 6, encode_const 28)));
+  ("add r8 (10-15) (-37)", Op (Add (Reg 8, const (-5), const (-37))));
+  ("sub r9 6 28", Op (Sub (Reg 9, const 6, const 28)));
   ("lt r10 496 8128 ; perfect numbers are cool!",
-   Op (Lt (Reg 10, encode_const 496, encode_const 8128)));
+   Op (Lt (Reg 10, const 496, const 8128)));
   ("lea r11 r12", Op (Lea (Reg 11, Register (Reg 12))));
   ("restrict r13 RX", Op (Restrict (Reg 13, (encode_perm RX))));
   ("restrict r14 S", Op (Restrict (Reg 14, (encode_seal_perm (true,false)))));
