@@ -8,10 +8,9 @@ let string_of_regname (r: regname) : string =
   | PC -> "pc"
   | Reg i -> "r" ^ (string_of_int i)
 
-(* TODO is there any better way to print it ? *)
 let string_of_seal_perm (p : seal_perm) : string =
   match p with
-  | (false, false) -> "O"
+  | (false, false) -> "SO"
   | (true, false) -> "S"
   | (false, true) -> "U"
   | (true, true) -> "SU"
@@ -44,9 +43,9 @@ let string_of_reg_or_const_restrict (c: reg_or_const) : string =
     let (dec_type, dec_z) = Encode.decode_const c in
     try
       if (dec_type = Encode._PERM_ENC)
-      then (string_of_perm (Encode.decode_perm dec_z))
+      then (string_of_perm (Encode.perm_decoding dec_z))
       else if (dec_type = Encode._SEAL_PERM_ENC)
-      then (string_of_seal_perm (Encode.decode_seal_perm dec_z))
+      then (string_of_seal_perm (Encode.seal_perm_decoding dec_z))
       else (Z.to_string c)
     with | Encode.DecodeException _ -> (Z.to_string c)
 
