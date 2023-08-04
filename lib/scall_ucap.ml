@@ -1,9 +1,5 @@
 open Ast
 
-(* TODO need to replace the Const by the right encoding *)
-let encode_locality l = (Const (Ir.encode_const [] (Ir.Locality l)))
-let encode_perm p l = (Const (Ir.encode_const [] (Ir.Perm (p, l))))
-let encode_const c = (Const (Ir.encode_const [] (Ir.ConstExpr (IntLit c))))
 
 let in_list (e :'a) (l : 'a list) : bool =
   match (List.find_opt (fun x -> x = e) l) with
@@ -123,7 +119,7 @@ let epilogue_scall radv : (machine_op list) =
   ] in
 
   let epilogue_e epilogue_off =
-  let e_local_perm = Const (Ir.encode_const [] (Perm (E, Local))) in
+  let e_local_perm = Const (Encode.encode_perm_loc_pair E Local) in
     (* push old pc *)
     [
       Move (Reg 1, Register PC) ;

@@ -77,8 +77,10 @@ reg:
 reg_const:
   | r = reg; { Register r }
   | c = expr %prec EXPR { Const (ConstExpr c) }
-  | LPAREN ; p = perm; COMMA ;  g = locality ; RPAREN ; { Const (Perm (p,g)) }
-  | LPAREN ; p = seal_perm; COMMA ;  g = locality ; RPAREN ; { Const (SealPerm (p,g)) }
+  | p = perm; { Const (Perm p) }
+  | sp = seal_perm; { Const (SealPerm sp) }
+  | LPAREN ; p = perm; COMMA ;  g = locality ; RPAREN ; { Const (PermLoc (p,g)) }
+  | LPAREN ; p = seal_perm; COMMA ;  g = locality ; RPAREN ; { Const (SealPermLoc (p,g)) }
   | w = wtype; { Const (Wtype w) }
   | l = locality; { Const (Locality l) }
 

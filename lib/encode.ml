@@ -2,16 +2,51 @@ open Ast
 
 exception DecodeException of string
 
-let encode_wtype (w : wtype) =
-  Ir.encode_wtype
-  (match w with
-   | W_I -> Ir.W_I
-   | W_Cap -> Ir.W_Cap
-   | W_SealRange -> Ir.W_SealRange
-   | W_Sealed -> Ir.W_Sealed)
+let _PERM_ENC = Z.of_int 0b000
+let _SEAL_PERM_ENC = Z.of_int 0b001
+let _LOCALITY_ENC = Z.of_int 0b010
+let _WTYPE_ENC = Z.of_int 0b011
+let _PERM_LOC_ENC = Z.of_int 0b100
+let _SEAL_LOC_ENC = Z.of_int 0b101
 
-let decode_wtype (z : Z.t) : wtype =
-  let decode_wt_exception = fun _ -> raise @@ DecodeException "Error decoding wtype: unexpected encoding" in
+let encode_const (t : Z.t) (c : Z.t) : Z.t =
+  let open Z in
+  let enc_const = c lsl 3 in (* size of _T_ENC *)
+  enc_const lor t
+
+let decode_const (i : Z.t) : (Z.t * Z.t) =
+  let open Z in
+    let b0 = testbit i 0 in
+    let b1 = testbit i 1 in
+    let b2 = testbit i 2 in
+  let t = of_int
+      (match (b2,b1,b0) with
+      | (false, false, false) -> 0b000
+      | (false, false, true)  -> 0b001
+      | (false, true, false)  -> 0b010
+      | (false, true, true)   -> 0b011
+      | (true, false, false)  -> 0b100
+      | (true, false, true)   -> 0b101
+      | (true, true, false)   -> 0b110
+      | (true, true, true)    -> 0b111
+      )
+  in
+  (t, (of_int ((to_int i) lsr 3)))
+
+(** WType *)
+
+let wtype_encoding (w : wtype) : Z.t =
+  Z.of_int @@
+  match w with
+  | W_I -> 0b00
+  | W_Cap -> 0b01
+  | W_SealRange -> 0b10
+  | W_Sealed -> 0b11
+
+let wtype_decoding (z : Z.t) : wtype =
+  let decode_wt_exception =
+    fun _ -> raise @@ DecodeException "Error decoding wtype: unexpected encoding"
+  in
   let b0 = Z.testbit z 0 in
   let b1 = Z.testbit z 1 in
   if Z.(z > (of_int 0b11))
@@ -23,17 +58,31 @@ let decode_wtype (z : Z.t) : wtype =
   | (true, false) -> W_SealRange
   | (true, true) -> W_Sealed
 
-let encode_locality (p : locality) =
-  Ir.encode_locality
-    (match p with
-     | Directed -> Ir.Directed
-     | Local -> Ir.Local
-     | Global -> Ir.Global)
+let encode_wtype (w : wtype) : Z.t = encode_const _WTYPE_ENC (wtype_encoding w)
 
-let decode_locality (i : Z.t) : locality =
+let decode_wtype (z : Z.t) : wtype =
+  let decode_wt_exception =
+    fun _ -> raise @@ DecodeException "Error decoding wtype: does not recognize a wtype"
+  in
+  let (dec_type, dec_z) = decode_const z in
+  if (dec_type != _WTYPE_ENC)
+  then decode_wt_exception ()
+  else wtype_decoding dec_z
+
+(** Locality *)
+
+let locality_encoding (g : locality) : Z.t =
+    Z.of_int @@
+    match g with
+    | Directed -> 0b00
+    | Local    -> 0b01
+    | Global   -> 0b10
+
+let encode_locality (g : locality) : Z.t = encode_const _LOCALITY_ENC (locality_encoding g)
+
+let locality_decoding (i : Z.t) : locality =
   let dec_loc_exception =
-    fun _ -> raise @@ DecodeException
-        "Error decoding locality: unexpected encoding"
+    fun _ -> raise @@ DecodeException "Error decoding locality: unexpected encoding"
   in
   let b0 = Z.testbit i 0 in
   let b1 = Z.testbit i 1 in
@@ -46,27 +95,36 @@ let decode_locality (i : Z.t) : locality =
     | (true, false) -> Global
     | _ -> dec_loc_exception ()
 
+let decode_locality (i : Z.t) : locality =
+  let dec_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding locality: does not recognize a locality"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _LOCALITY_ENC)
+  then dec_loc_exception ()
+  else locality_decoding dec_i
+(** Permission *)
 
-let encode_perm (p : perm) =
-  Ir.encode_perm
-    (match p with
-     | O -> Ir.O
-     | E -> Ir.E
-     | RO -> Ir.RO
-     | RX -> Ir.RX
-     | RW -> Ir.RW
-     | RWX -> Ir.RWX
-     | RWL -> Ir.RWL
-     | RWLX -> Ir.RWLX
-     | URW -> Ir.URW
-     | URWX -> Ir.URWX
-     | URWL -> Ir.URWL
-     | URWLX -> Ir.URWLX
-    )
+let perm_encoding (p : perm) : Z.t =
+    Z.of_int @@
+    match p with
+    | O     -> 0b00000
+    | E     -> 0b00001
+    | RO    -> 0b00100
+    | RX    -> 0b00101
+    | RW    -> 0b00110
+    | RWX   -> 0b00111
+    | RWL   -> 0b01110
+    | RWLX  -> 0b01111
+    | URW   -> 0b10110
+    | URWX  -> 0b10111
+    | URWL  -> 0b11110
+    | URWLX -> 0b11111
 
-let decode_perm (i : Z.t) : perm =
+let perm_decoding (i : Z.t) : perm =
   let dec_perm_exception =
-    fun _ -> raise @@ DecodeException "Error decoding permission: unexpected encoding" in
+    fun _ -> raise @@ DecodeException "Error decoding permission: unexpected encoding"
+  in
   let b0 = Z.testbit i 0 in
   let b1 = Z.testbit i 1 in
   let b2 = Z.testbit i 2 in
@@ -90,34 +148,113 @@ let decode_perm (i : Z.t) : perm =
   | (true, true, true, true, true)      -> URWLX
   | _ -> dec_perm_exception ()
 
-(* let encode_perm_pair (p : perm) (g : locality) : Z.t = *)
-(*   let open Z in *)
-(*   let encoded_g = (encode_locality g) lsl 5 in (\* size of perm *\) *)
-(*   let encoded_p = (encode_perm p) in *)
-(*   encoded_g lor encoded_p *)
+let encode_perm (p : perm) : Z.t =
+  encode_const _PERM_ENC (perm_encoding p)
 
+let decode_perm (i : Z.t) : perm =
+  let dec_perm_exception =
+    fun _ -> raise @@ DecodeException "Error decoding permission: does not recognize a permission"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _PERM_ENC)
+  then dec_perm_exception ()
+  else perm_decoding dec_i
 
-(* let decode_perm_pair (i : Z.t) : (perm * locality) = *)
-(*   let dec_perm_exception = *)
-(*     fun _ -> raise @@ DecodeException "Error decoding permission pair: unexpected encoding" in *)
-(*   let open Z in *)
-(*   if (i > (of_int 0b1111111)) *)
-(*   then dec_perm_exception () *)
-(*   else *)
-(*     let decode_g = (i land (of_int 0b1100000)) asr 5 in *)
-(*     let decode_p = (i land (of_int 0b0011111)) in *)
-(*     (decode_perm decode_p, *)
-(*      decode_locality decode_g) *)
+(** Sealing Permission *)
 
-let encode_seal_perm (sp : seal_perm) : Z.t = Ir.encode_seal_perm sp
+let seal_perm_encoding (p : seal_perm) : Z.t =
+  Z.of_int @@
+  match p with
+  | (false, false) -> 0b00
+  | (false, true) -> 0b01
+  | (true, false) -> 0b10
+  | (true, true) -> 0b11
 
-let decode_seal_perm (i : Z.t) : seal_perm =
-  let decode_perm_exception = fun _ -> raise @@ DecodeException "Error decoding sealing permission: unexpected encoding" in
+let seal_perm_decoding (i : Z.t) : seal_perm =
+  let decode_perm_exception =
+    fun _ -> raise @@ DecodeException "Error decoding sealing permission: unexpected encoding"
+  in
   let b0 = Z.testbit i 0 in
   let b1 = Z.testbit i 1 in
   if Z.(i > (of_int 0b11))
   then decode_perm_exception ()
   else (b1,b0)
+
+let encode_seal_perm (p : seal_perm) : Z.t =
+  encode_const _SEAL_PERM_ENC (seal_perm_encoding p)
+
+let decode_seal_perm (i : Z.t) : seal_perm =
+  let decode_perm_exception =
+    fun _ -> raise @@ DecodeException "Error decoding sealing permission: does not recognize a sealing permission"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _SEAL_PERM_ENC)
+  then decode_perm_exception ()
+  else seal_perm_decoding dec_i
+
+(** Permission-locality encoding *)
+let perm_loc_pair_encoding (p : perm) (g : locality) : Z.t =
+  let size_perm = 5 in
+  let open Z in
+  let encoded_g = (locality_encoding g) lsl size_perm in
+  let encoded_p = (perm_encoding p) in
+  encoded_g lor encoded_p
+
+let encode_perm_loc_pair (p : perm) (g : locality) : Z.t =
+  encode_const _PERM_LOC_ENC (perm_loc_pair_encoding p g)
+
+let perm_loc_pair_decoding (i : Z.t) : (perm * locality) =
+  let size_perm = 5 in
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding permission-locality pair: unexpected encoding" in
+  let open Z in
+  if (i > (of_int 0b1111111))
+  then dec_perm_loc_exception ()
+  else
+    let encoded_g = (i land (of_int 0b1100000)) asr size_perm in
+    let encoded_p = (i land (of_int 0b0011111)) in
+    (perm_decoding encoded_p, locality_decoding encoded_g)
+
+let decode_perm_loc_pair (i : Z.t) : (perm * locality) =
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding permission-locality pair: does not recognize a permission-locality pair"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _PERM_LOC_ENC)
+  then dec_perm_loc_exception ()
+  else perm_loc_pair_decoding dec_i
+
+(** Sealing Permission-locality encoding *)
+let seal_perm_loc_pair_encoding (p : seal_perm) (g : locality) : Z.t =
+  let size_seal_perm = 2 in
+  let open Z in
+  let encoded_g = (locality_encoding g) lsl size_seal_perm in
+  let encoded_p = (seal_perm_encoding p) in
+  encoded_g lor encoded_p
+
+let seal_perm_loc_pair_decoding (i : Z.t) : (seal_perm * locality) =
+  let size_seal_perm = 2 in
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding seal permission-locality pair: unexpected encoding" in
+  let open Z in
+  if (i > (of_int 0b1111111))
+  then dec_perm_loc_exception ()
+  else
+    let encoded_g = (i land (of_int 0b1100)) asr size_seal_perm in
+    let encoded_p = (i land (of_int 0b0011)) in
+    (seal_perm_decoding encoded_p, locality_decoding encoded_g)
+
+let encode_seal_perm_loc_pair (p : seal_perm) (g : locality) : Z.t =
+  encode_const _SEAL_LOC_ENC (seal_perm_loc_pair_encoding p g)
+
+let decode_seal_perm_loc_pair (i : Z.t) : (seal_perm * locality) =
+  let dec_seal_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding seal permission-locality pair: does not recognize a seal permission-locality pair"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _SEAL_LOC_ENC)
+  then dec_seal_perm_loc_exception ()
+  else seal_perm_loc_pair_decoding dec_i
 
 let encode_reg (r : regname) : Z.t =
   match r with
@@ -144,6 +281,36 @@ let rec split_int (i : Z.t) : Z.t * Z.t =
     let (x2, y2) = split_int (i asr 2) in
     (x1 + (x2 lsl 1), y1 + (y2 lsl 1))
 
+(* Interleave two integers bitwise.
+ * Example: x = 0b101 and y = 0b110
+ * results in 0b111001. *)
+let rec interleave_int (x : Z.t) (y : Z.t) : Z.t =
+  let open Z in
+  if x = zero && y = zero
+  then zero
+  else
+    let x1 = x land one in
+    let y1 = (y land one) lsl 1 in
+    let x2 = x asr 1 in
+    let y2 = y asr 1 in
+    x1 + y1 + ((interleave_int x2 y2) lsl 2)
+
+(* Encode two integers by interleaving their
+ * absolute values bitwise, followed
+ * by two bits representing signs.
+ *)
+let encode_int_int (x : Z.t) (y : Z.t) =
+  let sign_bits = Z.of_int @@ begin
+    match (Z.sign y, Z.sign x) with
+      | (-1, -1) -> 0b11
+      | (-1, (0|1))  -> 0b10
+      | ((0|1), -1)  -> 0b01
+      | ((0|1), (0|1)) -> 0b00
+      | _ -> assert false
+  end in
+  let interleaved = interleave_int (Z.abs x) (Z.abs y) in
+  Z.(sign_bits + (interleaved lsl 2))
+
 let decode_int (i : Z.t) : Z.t * Z.t =
   let is_x_neg = Z.testbit i 0 in
   let is_y_neg = Z.testbit i 1 in
@@ -154,8 +321,6 @@ let decode_int (i : Z.t) : Z.t * Z.t =
   | (false, true) -> (x, Z.neg y)
   | (false, false) -> (x, y)
 
-let encode_int_int = Ir.encode_int_int
-                      
 let (~$) = Z.(~$)
 
 let encode_machine_op (s : machine_op): Z.t =
@@ -550,6 +715,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     UnSeal (r1, r2, r3)
   end else
 
+  (* LoadU *)
   if opc = ~$0x30 (* register register register *)
   then begin
     let (payload', c_enc) = decode_int payload in

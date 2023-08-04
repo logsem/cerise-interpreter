@@ -78,12 +78,7 @@ let init
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with
   | Register r -> get_reg r conf
-  | Const i -> let (_, c) = Encode.decode_int i in I c
-
-let get_word_type (roc : reg_or_const) : Z.t option =
-  match roc with
-  | Register _ -> None
-  | Const i -> let (wt, _) = Encode.decode_int i in Some wt
+  | Const i -> I i
 
 let upd_pc (conf : exec_conf) : mchn =
   match PC @! conf with
@@ -221,14 +216,14 @@ let can_read_upto (w : word) =
   | Sealable (Cap (p,_,_,e,a)) -> if is_uperm p then Z.min a e else e
   | _ -> Z.zero
 
-let exec_single (conf : exec_conf) : mchn =
-  (* TODO should be some global parameters *)
-  let _CONST_ENC       = 0b00 in
-  let _PERM_ENC        = 0b01 in
-  let _SEAL_PERM_ENC   = 0b10 in
-  let _WTYPE_ENC       = 0b11 in
-  let _LOCALITY_ENC    = 0b11 in
+let get_wtype (w : word) : wtype =
+  (match w with
+   | I _ -> W_I
+   | Sealable (Cap _) -> W_Cap
+   | Sealable (SealRange _) -> W_SealRange
+   | Sealed (_, _) -> W_Sealed)
 
+let exec_single (conf : exec_conf) : mchn =
   let fail_state = (Failed, conf) in
   if is_pc_valid conf
   then match fetch_decode conf with
@@ -290,34 +285,30 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, g, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    match get_word_type c with
-                     (* Shouldn't happen, because we already know from get_word that c is a Int *)
+                    let decode_p' =
+                      try Some (Encode.decode_perm_loc_pair i) with | Encode.DecodeException _ -> None
+                    in
+                    match decode_p' with
                     | None -> fail_state
-                    | Some wt when wt = Z.(~$_PERM_ENC) -> (* we can safely decode i as a normal permission *)
-                      let (p', g') = Encode.decode_int i in
-                      let p' = Encode.decode_perm p' in
-                      let g' = Encode.decode_locality g' in
+                    | Some (p', g') ->
                       if (perm_flowsto p' p) && (locality_flowsto g' g)
                         then !> (upd_reg r (Sealable (Cap (p', g', b, e, a))) conf)
                         else fail_state
-                    | _ -> (* wt is expected to be a permission *) fail_state
                   end
                 | _ -> fail_state
               end
             | Sealable (SealRange (sp, g, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    match get_word_type c with
-                    (* Shouldn't happen, because we already know from get_word that c is a Int *)
+                    let decode_sp' =
+                      try Some (Encode.decode_seal_perm_loc_pair i) with | Encode.DecodeException _ -> None
+                    in
+                    match decode_sp' with
                     | None -> fail_state
-                    | Some wt when wt = Z.(~$_SEAL_PERM_ENC) -> (* we can safely decode i as a seal permission *)
-                      let (sp', g') = Encode.decode_int i in
-                      let sp' = Encode.decode_seal_perm sp' in
-                      let g' = Encode.decode_locality g' in
+                    | Some (sp', g') ->
                       if (sealperm_flowsto sp' sp) && (locality_flowsto g' g)
                       then !> (upd_reg r (Sealable (SealRange (sp', g', b, e, a))) conf)
                       else fail_state
-                    | _ -> (* wt is expected to be a seal permission *) fail_state
                   end
                 | _ -> fail_state
               end
@@ -447,14 +438,8 @@ let exec_single (conf : exec_conf) : mchn =
             | _ -> !> (upd_reg r1 (I ~$(-1)) conf)
           end
         | GetWType (r1, r2) -> begin
-            let wtype_enc =
-              Encode.encode_wtype
-                (match r2 @! conf with
-                 | I _ -> W_I
-                 | Sealable (Cap _) -> W_Cap
-                 | Sealable (SealRange _) -> W_SealRange
-                 | Sealed _ -> W_Sealed)
-            in !> (upd_reg r1 (I wtype_enc) conf)
+            let wtype_enc = Encode.encode_wtype (get_wtype (r2 @! conf)) in
+            !> (upd_reg r1 (I wtype_enc) conf)
           end
 
         | Seal (dst, r1, r2) -> begin

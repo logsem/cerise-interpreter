@@ -53,7 +53,7 @@ let call_prologue (rargs : regname list) : (machine_op list) =
   ]
 
 let scall (r : regname) (rargs : regname list) : machine_op list =
-  let e_directed_perm = Const (Ir.encode_const [] (Perm (E,Directed))) in
+  let e_directed_perm = Const (Encode.encode_perm_loc_pair E Directed) in
   call_prologue rargs @
   [ Move (Reg 30, Register rstk);
     PromoteU (Reg 30);

@@ -9,10 +9,9 @@ let string_of_regname (r: regname) : string =
   | STK -> "stk"
   | Reg i -> "r" ^ (string_of_int i)
 
-(* TODO is there any better way to print it ? *)
 let string_of_seal_perm (p : seal_perm) : string =
   match p with
-  | (false, false) -> "O"
+  | (false, false) -> "SO"
   | (true, false) -> "S"
   | (false, true) -> "U"
   | (true, true) -> "SU"
@@ -45,34 +44,27 @@ let string_of_wtype (w : wtype) : string =
   | W_SealRange -> "SealRange"
   | W_Sealed -> "Sealed"
 
-exception DecodeException of string
 let string_of_reg_or_const (c: reg_or_const) : string =
   match c with
   | Register r -> string_of_regname r
+  | Const c -> (Z.to_string c)
+
+let string_of_reg_or_const_restrict (c: reg_or_const) : string =
+  match c with
+  | Register r -> string_of_regname r
   | Const c ->
-    let decode_const_exception = fun _ -> raise @@ DecodeException "Error decoding constant: unexpected encoding" in
-    let (t, z) = Encode.decode_int c in
-    let b0 = Z.testbit t 0 in
-    let b1 = Z.testbit t 1 in
-    let b2 = Z.testbit t 2 in
-    if Z.(t > (of_int 0b100))
-    then decode_const_exception ()
-    else
-      match (b2,b1,b0) with
-      | (false, false, false) -> (Z.to_string z)
-      | (false, false, true) ->
-        let (p, g) = Encode.decode_int z in
-        let p = string_of_perm (Encode.decode_perm p) in
-        let g = string_of_locality (Encode.decode_locality g) in
-        "(" ^ p ^ "," ^- g  ^ ")"
-      | (false, true, false) ->
-        let (p, g) = Encode.decode_int z in
-        let p = string_of_seal_perm (Encode.decode_seal_perm p) in
-        let g = string_of_locality (Encode.decode_locality g) in
-        "(" ^ p ^ "," ^- g  ^ ")"
-      | (false, true, true) -> string_of_wtype (Encode.decode_wtype z)
-      | (true, false, false) -> string_of_locality (Encode.decode_locality z)
-      | _ -> decode_const_exception ()
+    let (dec_type, dec_z) = Encode.decode_const c in
+    try
+      if (dec_type = Encode._PERM_LOC_ENC)
+      then
+        let (p,g) = (Encode.perm_loc_pair_decoding dec_z) in
+        "(" ^ (string_of_perm p) ^ "," ^- (string_of_locality g) ^ ")"
+      else if (dec_type = Encode._SEAL_LOC_ENC)
+      then
+        let (p,g) = (Encode.seal_perm_loc_pair_decoding dec_z) in
+        "(" ^ (string_of_seal_perm p) ^ "," ^- (string_of_locality g) ^ ")"
+      else (Z.to_string c)
+    with | Encode.DecodeException _ -> (Z.to_string c)
 
 let string_of_machine_op (s: machine_op): string =
   let string_of_rr r1 r2 =
@@ -98,7 +90,9 @@ let string_of_machine_op (s: machine_op): string =
   | Div (r, c1, c2) -> "div" ^- string_of_rcc r c1 c2
   | Lt (r, c1, c2) -> "lt" ^- string_of_rcc r c1 c2
   | Lea (r, c) -> "lea" ^- string_of_rc r c
-  | Restrict (r, c) -> "restrict" ^- string_of_rc r c
+  (* NOTE Restrict is a special case, because we know that we are supposed to restrict with a
+   permission, we can try to decode it *)
+  | Restrict (r, c) -> "restrict" ^- string_of_regname r ^- string_of_reg_or_const_restrict c
   | SubSeg (r, c1, c2) -> "subseg" ^- string_of_rcc r c1 c2
   | GetL (r1, r2) -> "getl" ^- string_of_rr r1 r2
   | GetB (r1, r2) -> "getb" ^- string_of_rr r1 r2
