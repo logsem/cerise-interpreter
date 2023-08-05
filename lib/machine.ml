@@ -37,11 +37,6 @@ let init_reg_state (addr_max : Z.t) : reg_state =
   let stk_init =
     if !flags.stack
     then
-      (* Sanity check: cannot have stack without local *)
-      let _ =
-        if (not (locality_allowed Local))
-        then raise (NotSupported "Sanity check: cannot allow stack without locality.")
-      in
       let stk_locality = !flags.locality in
       let stk_perm = if !flags.unitialized then URWLX else RWLX in
       [(STK, Sealable (Cap (stk_perm, stk_locality, start_stk_addr, max_stk_addr, start_stk_addr)))]
@@ -310,31 +305,60 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, g, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    let decode_p' =
-                      try Some (Encode.decode_perm_loc_pair i) with | Encode.DecodeException _ -> None
-                    in
-                    match decode_p' with
-                    | None -> fail_state
-                    | Some (p', g') ->
-                      check_perm p; check_perm p; check_locality g; check_locality g';
-                      if (perm_flowsto p' p) && (locality_flowsto g' g)
-                      then !> (upd_reg r (Sealable (Cap (p', g', b, e, a))) conf)
-                      else fail_state
-                  end
+                    if (!flags.locality = Global)
+                       then
+                         (* Locality is Global, so we only check the permission *)
+                         let decode_p' =
+                           try Some (Encode.decode_perm i) with | Encode.DecodeException _ -> None
+                         in
+                         match decode_p' with
+                         | None -> fail_state
+                         | Some p' ->
+                           check_perm p; check_perm p';
+                           if (perm_flowsto p' p)
+                           then !> (upd_reg r (Sealable (Cap (p', Global, b, e, a))) conf)
+                           else fail_state
+                       else
+                         let decode_p' =
+                           try Some (Encode.decode_perm_loc_pair i) with | Encode.DecodeException _ -> None
+                         in
+                         match decode_p' with
+                         | None -> fail_state
+                         | Some (p', g') ->
+                           check_perm p; check_perm p'; check_locality g; check_locality g';
+                           if (perm_flowsto p' p) && (locality_flowsto g' g)
+                           then !> (upd_reg r (Sealable (Cap (p', g', b, e, a))) conf)
+                           else fail_state
+                     end
                 | _ -> fail_state
               end
             | Sealable (SealRange (sp, g, b, e, a)) -> begin
                 match get_word conf c with
                 | I i -> begin
-                    let decode_sp' =
-                      try Some (Encode.decode_seal_perm_loc_pair i) with | Encode.DecodeException _ -> None
-                    in
-                    match decode_sp' with
-                    | None -> fail_state
-                    | Some (sp', g') ->
-                      if (sealperm_flowsto sp' sp) && (locality_flowsto g' g)
-                      then !> (upd_reg r (Sealable (SealRange (sp', g', b, e, a))) conf)
-                      else fail_state
+                    (* Locality is Global, so we only check the permission *)
+                    if (!flags.locality = Global)
+                    then
+                      let decode_sp' =
+                        try Some (Encode.decode_seal_perm i) with | Encode.DecodeException _ -> None
+                      in
+                      match decode_sp' with
+                      | None -> fail_state
+                      | Some sp' ->
+                        check_seal_perm sp ; check_seal_perm sp' ;
+                        if (sealperm_flowsto sp' sp)
+                        then !> (upd_reg r (Sealable (SealRange (sp', Global, b, e, a))) conf)
+                        else fail_state
+                    else
+                      let decode_sp' =
+                        try Some (Encode.decode_seal_perm_loc_pair i) with | Encode.DecodeException _ -> None
+                      in
+                      match decode_sp' with
+                      | None -> fail_state
+                      | Some (sp', g') ->
+                        check_seal_perm sp ; check_seal_perm sp' ; check_locality g ; check_locality g' ;
+                        if (sealperm_flowsto sp' sp) && (locality_flowsto g' g)
+                        then !> (upd_reg r (Sealable (SealRange (sp', g', b, e, a))) conf)
+                        else fail_state
                   end
                 | _ -> fail_state
               end

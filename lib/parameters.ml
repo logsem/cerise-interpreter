@@ -53,11 +53,88 @@ let full_cerise : machineFlags =
     version = "cerise";
   }
 
+let custom_cerise : machineFlags =
+  {
+    sealing = false;
+    stack  = false;
+    locality  = Global;
+    unitialized  = false;
+    version = "custom";
+  }
+
+
 let default : machineFlags = full_cerise
 let flags : machineFlags ref = ref default
 
+exception MalformedConfiguration of string
+let config_check (f : machineFlags) =
+  if (f.stack && (f.locality = Global))
+  then raise @@ MalformedConfiguration "A configuration with the stack requires at least the Local locality."
+  else () (* TODO is there other bad configurations ? *)
+
+let set_sealing s =
+  flags :=
+    {
+    sealing = s;
+    stack  = !flags.stack;
+    locality  = !flags.locality;
+    unitialized  = !flags.unitialized;
+    version =
+      match !flags.sealing, s with
+      | (false, true) -> (Printf.sprintf "%s +sealing" !flags.version)
+      | (true, false) -> (Printf.sprintf "%s -sealing" !flags.version)
+      | _ -> !flags.version;
+    }
+
+let set_stack t =
+  flags :=
+    {
+    sealing = !flags.sealing;
+    stack  = t;
+    locality  = !flags.locality;
+    unitialized  = !flags.unitialized;
+    version =
+      match !flags.stack, t with
+      | (false, true) -> (Printf.sprintf "%s +stack" !flags.version)
+      | (true, false) -> (Printf.sprintf "%s -stack" !flags.version)
+      | _ -> !flags.version;
+    }
+
+let set_locality l =
+  flags :=
+    {
+    sealing = !flags.sealing;
+    stack  = !flags.stack;
+    locality  = l;
+    unitialized  = !flags.unitialized;
+    version =
+      if !flags.locality = l
+      then !flags.version
+      else
+        (Printf.sprintf "%s +%s" !flags.version
+        (match l with
+        | Global -> "Global"
+        | Local -> "Local"
+        | Directed -> "Directed"
+        ))
+    }
+
+let set_uperms u =
+  flags :=
+    {
+    sealing = !flags.sealing;
+    stack  = !flags.stack;
+    locality  = !flags.locality;
+    unitialized  = u;
+    version =
+      match !flags.unitialized, u with
+      | (false, true) -> (Printf.sprintf "%s +uperms" !flags.version)
+      | (true, false) -> (Printf.sprintf "%s -uperms" !flags.version)
+      | _ -> !flags.version;
+    }
+
 exception NotSupported of string
-let not_supported s = raise @@ NotSupported (Printf.sprintf "%s: %s" !flags.version s)
+let not_supported s = raise @@ NotSupported (Printf.sprintf "%s (%s)" s !flags.version)
 let instruction_not_supported i =
     not_supported (Printf.sprintf "Instruction %s is not supported." i)
 
@@ -73,6 +150,10 @@ let locality_allowed (g : locality) : bool =
     (match g with
      | Global -> true
      | _ -> false)
+
+let check_seal_perm _ =
+  if not !flags.sealing
+  then not_supported "Sealing permissions not supported"
 
 let check_perm (p : Ast.perm) =
   if not !flags.unitialized

@@ -30,9 +30,9 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
   module Locality = struct
     let width = 6
     let ui ?(attr = A.empty) (g: Ast.locality) =
-      I.hsnap ~align:`Left width
-        (I.string attr (Pretty_printer.string_of_locality g))
-    end
+      (I.hsnap ~align:`Left width
+         (I.string attr (Pretty_printer.string_of_locality g)))
+  end
 
   module SealPerm = struct
     let width = 5
@@ -110,8 +110,12 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
   module Sealable = struct
     let width =
+      (* NOTE If locality is Global, then do not show it *)
       Perm.width + 1 (* space *) +
-      Locality.width + 1 (* space *) +
+      (if !flags.locality = Global
+       then 0
+       else Locality.width + 1 (* space *)
+       ) +
       Addr_range.width + 1 (* space *) +
       Addr.width
 
@@ -129,8 +133,10 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         in
         (I.hsnap ~align:s_left width
            (Perm.ui ~attr p
-            <|> I.string A.empty " "
-            <|> Locality.ui ~attr g
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
@@ -141,8 +147,10 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         in
         (I.hsnap ~align:s_left width
            (SealPerm.ui ~attr p
-            <|> I.string A.empty " "
-            <|> Locality.ui ~attr g
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
