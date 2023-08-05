@@ -23,15 +23,17 @@ let perm_tst = Alcotest.testable
     (fun a b -> a = b)
 
 (* TODO I should add a try/catch in case of parsing failure *)
+(* TODO also test multiple flags configurations *)
 let run_prog (filename : string) : mchn  =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
   let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
   let _ = close_in input in
 
-  let stk_locality = Ast.Directed in
+  let _ = (Parameters.flags := Parameters.full_cerise) in
+
   let addr_max = Z.(~$10000) in
-  let init_regs = Machine.init_reg_state addr_max true stk_locality in
+  let init_regs = Machine.init_reg_state addr_max in
   let init_mems = Machine.init_mem_state Z.(~$0) addr_max parse_res in
   let m = Machine.init init_regs init_mems in
 
@@ -230,6 +232,7 @@ let () =
   run "Run" [
     "Pos", test_mov_test @ test_jmper
            @ test_promote @ test_ucaps @ test_locality_flow @ test_directed_store
-           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter;
+           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+    ;
     "Neg", test_negatives;
   ]

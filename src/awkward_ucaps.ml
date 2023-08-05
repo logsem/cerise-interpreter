@@ -15,7 +15,8 @@ let () =
   let module Cfg = struct let addr_max = addr_max end in
   let module Ui = Interactive_ui.MkUi (Cfg) in
 
-  let init_regfile = Machine.init_reg_state Cfg.addr_max true Ast.Local in
+  let _ = (Parameters.flags := Parameters.stack_cerise) in
+  let init_regfile = Machine.init_reg_state Cfg.addr_max in
 
   let m_init_state, m_init_conf =
     Program.init_machine prog (Some Cfg.addr_max) init_regfile in
@@ -39,8 +40,6 @@ let () =
   in
   let m_init_conf = env_upd renv (ret_upd (Reg 0) (adv_upd radv m_init_conf)) in
   let m_init = ( m_init_state, m_init_conf) in
-
-  (* let term = Term.create () in *)
 
   let prog_panel_start = ref Z.zero in
   let stk_panel_start = ref (Z. ((Cfg.addr_max)/ ~$2)) in

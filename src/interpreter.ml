@@ -29,9 +29,9 @@ let () =
   in
   let addr_max = Z.of_int ((Int32.to_int Int32.max_int)/4096) in
 
-  let stk_opt = true in
-  let stk_locality = Ast.Local in
-  let init_regfile = Machine.init_reg_state addr_max stk_opt stk_locality in
+  (* let stk_opt = true in *)
+  (* let stk_locality = Ast.Local in *)
+  let init_regfile = Machine.init_reg_state addr_max in
 
   let m_init = Program.init_machine prog (Some addr_max) init_regfile in
   let m_final = Machine.run m_init in

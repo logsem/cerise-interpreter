@@ -1,6 +1,7 @@
 open Notty
 open Notty.Infix
 open Notty_unix
+open Parameters
 
 
 type side = Left | Right
@@ -396,7 +397,9 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             ~show_stack:show_stack
             (term_height - 1 - I.height regs_img) term_width mem
             (Machine.RegMap.find Ast.PC reg)
-            (Machine.RegMap.find Ast.STK reg)
+            (if !flags.stack
+             then (Machine.RegMap.find Ast.STK reg)
+             else Ast.I Z.zero)
             !prog_panel_start
             !stk_panel_start
         in
@@ -456,6 +459,11 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
           | `Key (`ASCII ' ', _) ->
             begin match Machine.step m with
+              | Some m' -> loop show_stack m' (m::history)
+              | None -> (* XX *) loop show_stack m history
+            end
+          | `Key (`ASCII 'n', _) ->
+            begin match Machine.step_n m 10 with
               | Some m' -> loop show_stack m' (m::history)
               | None -> (* XX *) loop show_stack m history
             end

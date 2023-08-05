@@ -4,7 +4,10 @@ open Libinterp
 let () =
   let addr_max = (Int32.to_int Int32.max_int)/4096 in
 
-  let usage_msg = "interactive [--no-stack] [--mem-size size] <file>" in
+  (* TODO parsing argument in its own file, for sharing with interpreter *)
+  (* TODO more arguments for version flags *)
+  let usage_msg = "interactive [--no-stack] [--mem-size size] [--vanilla] <file>" in
+  let vanilla_option = ref false in
   let no_stack_option = ref false in
   let mem_size_option = ref addr_max in
   let regfile_name_option = ref "" in
@@ -13,6 +16,7 @@ let () =
   let anon_fun filename = input_files := filename :: !input_files in
   let speclist =
     [
+      ("--vanilla", Arg.Set vanilla_option, "Vanilla Cerise");
       ("--no-stack", Arg.Set no_stack_option, "Disable the stack");
       ("--mem-size", Arg.Set_int mem_size_option, "Size of the memory, as an integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
@@ -46,19 +50,24 @@ let () =
   let module Cfg = struct let addr_max : Z.t = size_mem end in
   let module Ui = Interactive_ui.MkUi (Cfg) in
 
-  let stack_opt = not !no_stack_option in
-  (* let stk_locality = Ast.Directed in *)
-  (* TODO add an option in the CLI to choose the stack locality *)
+  (* TODO better management of version flags *)
+  let cerise_flags =
+    (* if !vanilla_option then Parameters.mcerise else Parameters.cerise *)
+    if !vanilla_option
+    then (no_stack_option := true; Parameters.vanilla_cerise)
+    else Parameters.full_cerise
+  in
+  let _ = (Parameters.flags := cerise_flags) in
+  let stack_opt = not !no_stack_option in (* TODO should only rely on
+     Parameters.flags now *)
+
   let prog_panel_start = ref Z.zero in
   let stk_panel_start = ref Z.(if stack_opt then ((Cfg.addr_max)/ ~$2) else ~$0) in
 
   let regfile =
-    let stk_locality = Ast.Local in
-    let init_regfile =
-      (Machine.init_reg_state Cfg.addr_max stack_opt stk_locality) in
+    let init_regfile = (Machine.init_reg_state Cfg.addr_max) in
     if !regfile_name_option = ""
-    then
-      init_regfile
+    then init_regfile
     else
       (match Program.parse_regfile !regfile_name_option Cfg.addr_max !stk_panel_start with
        | Ok regs ->
@@ -72,8 +81,5 @@ let () =
 
   let m_init =
     Program.init_machine prog (Some Cfg.addr_max) regfile in
-
-  (* let term = Term.create () in *)
-
 
   Ui.render_loop ~show_stack:stack_opt prog_panel_start stk_panel_start m_init
