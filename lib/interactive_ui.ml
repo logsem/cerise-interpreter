@@ -269,7 +269,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
              else I.string A.empty "   ")
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> I.string A.empty "  "
-        <|> Word.ui w Right
+        <|> Word.ui w Left
         <|> I.string A.empty "  "
         <|> img_instr is_in_pc_range a w
 
@@ -286,7 +286,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         let color_indicator = A.lightmagenta in
         img_instr (is_in_stk_range) a w
         <|> I.string A.empty "  "
-        <|> Word.ui w Left
+        <|> Word.ui w Right
         <|> I.string A.empty "  "
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> (if at_stk a then I.string A.(fg color_indicator) " ◀ "
