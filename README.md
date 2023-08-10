@@ -13,8 +13,15 @@ eval $(opam env --set-switch)
 make
 ```
 
+Finally, the command `make install` creates a symbolic link to the interactive interpreter in this repository.
+
 ## Usage
-Executable: `./_build/default/src/interactive <file>`
+Executable: `./interactive <file>`
 Assembly examples in `./tests` (for the syntax)
+
+The default version of the interpreter uses a version of Cerise with seals, uninitialized and directed capabilities. 
+For a version of Cerise without these features, use `./interactive --version vanilla`.
+
+For more information about the options, `./interactive --help`.
 
 Press `SPACE` to take a step, and `ESC` to exit.

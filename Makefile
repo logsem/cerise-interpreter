@@ -9,3 +9,6 @@ clean:
 
 test:
 	dune test
+
+install:
+	@test -s interactive || ln -s ./_build/default/src/interactive.exe interactive
