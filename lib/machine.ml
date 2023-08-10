@@ -240,6 +240,14 @@ let get_wtype (w : word) : wtype =
    | Sealable (SealRange _) -> W_SealRange
    | Sealed (_, _) -> W_Sealed)
 
+let get_locality_sealable (s : sealable) =
+  match s with | Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
+
+let is_sealrange (sb : sealable) =
+ match sb with | SealRange _ -> true | _ -> false
+let is_cap (sb : sealable) =
+ match sb with | Cap _ -> true | _ -> false
+
 (* NOTE Although we've already check that not supported instructions / capabilities *)
 (*  are not in the initial machine, we still need to make sure that *)
 (*  the user does not encode not supported instructions *)
@@ -273,14 +281,14 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, _, b, e, a)) when (b <= a && a < e) ->
               if can_write p then
                 (match w with
-                 | Sealable (SealRange (_, Local,_,_,_))
-                 (* NOTE We consider that a Directed sealing capability is similar to Local *)
-                 | Sealable (SealRange (_, Directed,_,_,_))
-                 | Sealable (Cap (_, Local,_,_,_)) ->
+                 (* We consider that a Directed sealing capability is similar to Local *)
+                 | Sealed ( _, sb) | Sealable sb
+                   when (get_locality_sealable sb = Local) || (get_locality_sealable sb = Directed && is_sealrange sb) ->
                    if is_WLperm p
                    then !> (upd_mem a w conf)
                    else fail_state
-                 | Sealable (Cap (_, Directed,_,_,_)) ->
+                 | Sealed ( _, sb) | Sealable sb
+                   when (get_locality_sealable sb = Directed && is_cap sb) ->
                    if (is_WLperm p && (can_read_upto w <= a))
                    then !> (upd_mem a w conf)
                    else fail_state
@@ -455,8 +463,10 @@ let exec_single (conf : exec_conf) : mchn =
         | GetL (r1, r2) ->
           begin
             match r2 @! conf with
-            | Sealable (SealRange (_, g, _, _, _))
-            | Sealable (Cap (_, g, _, _, _)) -> !> (upd_reg r1 (I (Encode.encode_locality g)) conf)
+            | Sealable sb
+            | Sealed (_, sb) ->
+              let g = get_locality_sealable sb in
+              !> (upd_reg r1 (I (Encode.encode_locality g)) conf)
             | _ -> fail_state
           end
         | GetB (r1, r2) -> begin
