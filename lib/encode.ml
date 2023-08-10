@@ -636,15 +636,15 @@ let decode_machine_op (i : Z.t) : machine_op =
     in
     SubSeg (r, c1, c2)
   end else
-(* GetL *)
-  if opc = ~$0x27
+
+  (* GetL *)
+  if opc = ~$0x27 && (Parameters.locality_allowed Local)
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetL (r1, r2)
   end else
-
   (* GetB *)
   if opc = ~$0x28
   then begin
@@ -678,7 +678,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetP (r1, r2)
   end else
 (* GetOType *)
-  if opc = ~$0x2c
+  if opc = ~$0x2c && !Parameters.flags.sealing
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -695,7 +695,7 @@ let decode_machine_op (i : Z.t) : machine_op =
   end else
 
   (* Seal *)
-  if opc = ~$0x2e
+  if opc = ~$0x2e && !Parameters.flags.sealing
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -705,7 +705,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     Seal (r1, r2, r3)
   end else
   (* UnSeal *)
-  if opc = ~$0x2f
+  if opc = ~$0x2f && !Parameters.flags.sealing
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -716,7 +716,8 @@ let decode_machine_op (i : Z.t) : machine_op =
   end else
 
   (* LoadU *)
-  if opc = ~$0x30 (* register register register *)
+  if opc = ~$0x30 && !Parameters.flags.unitialized
+   (* register register register *)
   then begin
     let (payload', c_enc) = decode_int payload in
     let (r1_enc, r2_enc) = decode_int payload' in
@@ -725,7 +726,8 @@ let decode_machine_op (i : Z.t) : machine_op =
     let c = Register (decode_reg c_enc) in
     LoadU (r1, r2, c)
   end else
-  if opc = ~$0x31 (* register register const *)
+  if opc = ~$0x31 && !Parameters.flags.unitialized
+   (* register register const *)
   then begin
     let (payload', c_enc) = decode_int payload in
     let (r1_enc, r2_enc) = decode_int payload' in
@@ -735,7 +737,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     LoadU (r1, r2, c)
   end else
   (* StoreU *)
-  if ~$0x32 <= opc && opc <= ~$0x35
+  if ~$0x32 <= opc && opc <= ~$0x35 && !Parameters.flags.unitialized
   then begin
     let (r_enc, payload') = decode_int payload in
     let (c1_enc, c2_enc) = decode_int payload' in
@@ -753,7 +755,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     StoreU (r, c1, c2)
   end else
   (* PromoteU *)
-  if opc = ~$0x36
+  if opc = ~$0x36 && !Parameters.flags.unitialized
   then PromoteU (decode_reg payload)
   else
   (* Fail *)
