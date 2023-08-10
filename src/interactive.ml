@@ -3,26 +3,16 @@ open Libinterp
 (* main loop *)
 let () =
   let addr_max = (Int32.to_int Int32.max_int)/4096 in
+  let (filename_prog, regfile_name, size_mem) =
+    Cli_parser.parse_argument_interactive addr_max
+  in
 
-  let usage_msg = "interactive [--mem-size size] <file>" in
-  let mem_size_option = ref addr_max in
-  let regfile_name_option = ref "" in
-  let input_files = ref [] in
+  let module Cfg = struct let addr_max : Z.t = size_mem end in
+  let module Ui = Interactive_ui.MkUi (Cfg) in
 
-  let anon_fun filename = input_files := filename :: !input_files in
-  let speclist =
-    [
-      ("--mem-size", Arg.Set_int mem_size_option, "Size of the memory, as an integer");
-      ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
-    ] in
-  Arg.parse speclist anon_fun usage_msg;
-
-  let filename_prog =
-    match !input_files with
-    | [filename] -> filename
-    | _ ->
-      Printf.eprintf "%s\n" usage_msg;
-      exit 1
+  let prog_panel_start = ref Z.zero in
+  let stk_panel_start =
+    ref Z.(if !Parameters.flags.stack then ((Cfg.addr_max)/ ~$2) else ~$0)
   in
 
   let prog =
@@ -33,27 +23,12 @@ let () =
       exit 1
   in
 
-  let size_mem : Z.t =
-    Z.(
-    let s = ~$ !mem_size_option in
-    if s < ~$0
-    then (Printf.eprintf "Size of memory must be positive (%s)" (Z.to_string s); exit 1)
-    else s)
-  in
-
-  let module Cfg = struct let addr_max : Z.t = size_mem end in
-  let module Ui = Interactive_ui.MkUi (Cfg) in
-
-  let prog_panel_start = ref Z.zero in
-
   let regfile =
-    let init_regfile =
-      (Machine.init_reg_state Cfg.addr_max) in
-    if !regfile_name_option = ""
-    then
-      init_regfile
+    let init_regfile = (Machine.init_reg_state Cfg.addr_max) in
+    if regfile_name = ""
+    then init_regfile
     else
-      (match Program.parse_regfile !regfile_name_option Cfg.addr_max with
+      (match Program.parse_regfile regfile_name Cfg.addr_max !stk_panel_start with
        | Ok regs ->
          (Machine.RegMap.fold
             (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
@@ -62,11 +37,6 @@ let () =
          exit 1)
   in
 
+  let m_init = Program.init_machine prog (Some Cfg.addr_max) regfile in
 
-  let m_init =
-    Program.init_machine prog (Some Cfg.addr_max) regfile in
-
-  (* let term = Term.create () in *)
-
-
-  Ui.render_loop prog_panel_start m_init
+  Ui.render_loop ~show_stack:(!Parameters.flags.stack) prog_panel_start stk_panel_start m_init

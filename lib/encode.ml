@@ -2,27 +2,36 @@ open Ast
 
 exception DecodeException of string
 
-let _PERM_ENC = Z.of_int 0b00
-let _SEAL_PERM_ENC = Z.of_int 0b01
-let _WTYPE_ENC = Z.of_int 0b10
+let _PERM_ENC = Z.of_int 0b000
+let _SEAL_PERM_ENC = Z.of_int 0b001
+let _LOCALITY_ENC = Z.of_int 0b010
+let _WTYPE_ENC = Z.of_int 0b011
+let _PERM_LOC_ENC = Z.of_int 0b100
+let _SEAL_LOC_ENC = Z.of_int 0b101
 
 let encode_const (t : Z.t) (c : Z.t) : Z.t =
   let open Z in
-  let enc_const = c lsl 2 in (* size of _T_ENC *)
+  let enc_const = c lsl 3 in (* size of _T_ENC *)
   enc_const lor t
 
 let decode_const (i : Z.t) : (Z.t * Z.t) =
   let open Z in
     let b0 = testbit i 0 in
     let b1 = testbit i 1 in
+    let b2 = testbit i 2 in
   let t = of_int
-      (match (b1,b0) with
-      | (false, false) -> 0b00
-      | (false, true) -> 0b01
-      | (true, false) -> 0b10
-      | (true, true) -> 0b11)
+      (match (b2,b1,b0) with
+      | (false, false, false) -> 0b000
+      | (false, false, true)  -> 0b001
+      | (false, true, false)  -> 0b010
+      | (false, true, true)   -> 0b011
+      | (true, false, false)  -> 0b100
+      | (true, false, true)   -> 0b101
+      | (true, true, false)   -> 0b110
+      | (true, true, true)    -> 0b111
+      )
   in
-  (t, (of_int ((to_int i) lsr 2)))
+  (t, (of_int ((to_int i) lsr 3)))
 
 (** WType *)
 
@@ -60,6 +69,40 @@ let decode_wtype (z : Z.t) : wtype =
   then decode_wt_exception ()
   else wtype_decoding dec_z
 
+(** Locality *)
+
+let locality_encoding (g : locality) : Z.t =
+    Z.of_int @@
+    match g with
+    | Directed -> 0b00
+    | Local    -> 0b01
+    | Global   -> 0b10
+
+let encode_locality (g : locality) : Z.t = encode_const _LOCALITY_ENC (locality_encoding g)
+
+let locality_decoding (i : Z.t) : locality =
+  let dec_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding locality: unexpected encoding"
+  in
+  let b0 = Z.testbit i 0 in
+  let b1 = Z.testbit i 1 in
+  if Z.(i > (of_int 0b11))
+  then dec_loc_exception ()
+  else
+  match (b1,b0) with
+    | (false, false) -> Directed
+    | (false, true) -> Local
+    | (true, false) -> Global
+    | _ -> dec_loc_exception ()
+
+let decode_locality (i : Z.t) : locality =
+  let dec_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding locality: does not recognize a locality"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _LOCALITY_ENC)
+  then dec_loc_exception ()
+  else locality_decoding dec_i
 (** Permission *)
 
 let perm_encoding (p : perm) : Z.t =
@@ -71,6 +114,12 @@ let perm_encoding (p : perm) : Z.t =
     | RX    -> 0b00101
     | RW    -> 0b00110
     | RWX   -> 0b00111
+    | RWL   -> 0b01110
+    | RWLX  -> 0b01111
+    | URW   -> 0b10110
+    | URWX  -> 0b10111
+    | URWL  -> 0b11110
+    | URWLX -> 0b11111
 
 let perm_decoding (i : Z.t) : perm =
   let dec_perm_exception =
@@ -79,16 +128,24 @@ let perm_decoding (i : Z.t) : perm =
   let b0 = Z.testbit i 0 in
   let b1 = Z.testbit i 1 in
   let b2 = Z.testbit i 2 in
-  if Z.(i > (of_int 0b111))
+  let b3 = Z.testbit i 3 in
+  let b4 = Z.testbit i 4 in
+  if Z.(i > (of_int 0b11111))
   then dec_perm_exception ()
   else
-  match (b2,b1,b0) with
-  | (false, false, false) -> O
-  | (false, false, true)  -> E
-  | (true, false, false)  -> RO
-  | (true, false, true)   -> RX
-  | (true, true, false)   -> RW
-  | (true, true, true)    -> RWX
+  match (b4,b3,b2,b1,b0) with
+  | (false, false, false, false, false) -> O
+  | (false, false, false, false, true)  -> E
+  | (false, false, true, false, false)  -> RO
+  | (false, false, true, false, true)   -> RX
+  | (false, false, true, true, false)   -> RW
+  | (false, false, true, true, true)    -> RWX
+  | (false, true, true, true, false)    -> RWL
+  | (false, true, true, true, true)     -> RWLX
+  | (true, false, true, true, false)    -> URW
+  | (true, false, true, true, true)     -> URWX
+  | (true, true, true, true, false)     -> URWL
+  | (true, true, true, true, true)      -> URWLX
   | _ -> dec_perm_exception ()
 
 let encode_perm (p : perm) : Z.t =
@@ -135,15 +192,84 @@ let decode_seal_perm (i : Z.t) : seal_perm =
   then decode_perm_exception ()
   else seal_perm_decoding dec_i
 
+(** Permission-locality encoding *)
+let perm_loc_pair_encoding (p : perm) (g : locality) : Z.t =
+  let size_perm = 5 in
+  let open Z in
+  let encoded_g = (locality_encoding g) lsl size_perm in
+  let encoded_p = (perm_encoding p) in
+  encoded_g lor encoded_p
+
+let encode_perm_loc_pair (p : perm) (g : locality) : Z.t =
+  encode_const _PERM_LOC_ENC (perm_loc_pair_encoding p g)
+
+let perm_loc_pair_decoding (i : Z.t) : (perm * locality) =
+  let size_perm = 5 in
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding permission-locality pair: unexpected encoding" in
+  let open Z in
+  if (i > (of_int 0b1111111))
+  then dec_perm_loc_exception ()
+  else
+    let encoded_g = (i land (of_int 0b1100000)) asr size_perm in
+    let encoded_p = (i land (of_int 0b0011111)) in
+    (perm_decoding encoded_p, locality_decoding encoded_g)
+
+let decode_perm_loc_pair (i : Z.t) : (perm * locality) =
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding permission-locality pair: does not recognize a permission-locality pair"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _PERM_LOC_ENC)
+  then dec_perm_loc_exception ()
+  else perm_loc_pair_decoding dec_i
+
+(** Sealing Permission-locality encoding *)
+let seal_perm_loc_pair_encoding (p : seal_perm) (g : locality) : Z.t =
+  let size_seal_perm = 2 in
+  let open Z in
+  let encoded_g = (locality_encoding g) lsl size_seal_perm in
+  let encoded_p = (seal_perm_encoding p) in
+  encoded_g lor encoded_p
+
+let seal_perm_loc_pair_decoding (i : Z.t) : (seal_perm * locality) =
+  let size_seal_perm = 2 in
+  let dec_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding seal permission-locality pair: unexpected encoding" in
+  let open Z in
+  if (i > (of_int 0b1111111))
+  then dec_perm_loc_exception ()
+  else
+    let encoded_g = (i land (of_int 0b1100)) asr size_seal_perm in
+    let encoded_p = (i land (of_int 0b0011)) in
+    (seal_perm_decoding encoded_p, locality_decoding encoded_g)
+
+let encode_seal_perm_loc_pair (p : seal_perm) (g : locality) : Z.t =
+  encode_const _SEAL_LOC_ENC (seal_perm_loc_pair_encoding p g)
+
+let decode_seal_perm_loc_pair (i : Z.t) : (seal_perm * locality) =
+  let dec_seal_perm_loc_exception =
+    fun _ -> raise @@ DecodeException "Error decoding seal permission-locality pair: does not recognize a seal permission-locality pair"
+  in
+  let (dec_type, dec_i) = decode_const i in
+  if (dec_type != _SEAL_LOC_ENC)
+  then dec_seal_perm_loc_exception ()
+  else seal_perm_loc_pair_decoding dec_i
+
 let encode_reg (r : regname) : Z.t =
   match r with
   | PC -> Z.zero
-  | Reg i -> Z.succ @@ Z.of_int i
+  | STK -> Z.succ @@ Z.zero
+  | Reg i -> Z.succ @@ Z.succ @@ Z.of_int i
 
 let decode_reg (i : Z.t) : regname =
   if i = Z.zero
   then PC
-  else Reg (Z.to_int @@ Z.pred i)
+  else
+  if i = Z.succ @@ Z.zero
+  then STK else
+    Reg (Z.to_int @@ Z.pred @@ Z.pred i)
+
 
 let rec split_int (i : Z.t) : Z.t * Z.t =
   let open Z in
@@ -259,27 +385,40 @@ let encode_machine_op (s : machine_op): Z.t =
       let (opc, c_enc) = const_convert ~$0x21 c in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-
   | SubSeg (r, c1, c2) -> begin (* 0x23, 0x24, 0x25, 0x26 *)
       let (opc, c_enc) = two_const_convert ~$0x23 c1 c2 in
       opc ^! (encode_int_int (encode_reg r) c_enc)
     end
-  | GetB (r1, r2) -> ~$0x27 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetE (r1, r2) -> ~$0x28 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetA (r1, r2) -> ~$0x29 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetP (r1, r2) -> ~$0x2a ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetOType (r1, r2) -> ~$0x2b ^! (encode_int_int (encode_reg r1) (encode_reg r2))
-  | GetWType (r1, r2) -> ~$0x2c ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetL (r1, r2) -> ~$0x27 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetB (r1, r2) -> ~$0x28 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetE (r1, r2) -> ~$0x29 ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetA (r1, r2) -> ~$0x2a ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetP (r1, r2) -> ~$0x2b ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetOType (r1, r2) -> ~$0x2c ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+  | GetWType (r1, r2) -> ~$0x2d ^! (encode_int_int (encode_reg r1) (encode_reg r2))
+
   | Seal (r1, r2, r3) ->
-      ~$0x2d ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
-  | UnSeal (r1, r2, r3) ->
       ~$0x2e ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
-  | Fail -> ~$0x2f
-  | Halt -> ~$0x30
+  | UnSeal (r1, r2, r3) ->
+      ~$0x2f ^! (encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3)))
+  | LoadU (r1, r2, c) -> begin (* 0x30, 0x31 *)
+      let (opc, c_enc) = const_convert ~$0x30 c in
+      opc ^! (encode_int_int (encode_int_int (encode_reg r1) (encode_reg r2)) c_enc)
+    end
+  | StoreU (r, c1, c2) -> begin (* 0x32, 0x33, 0x34, 0x35 *)
+      let (opc, c_enc) = two_const_convert ~$0x32 c1 c2 in
+      opc ^! (encode_int_int (encode_reg r) c_enc)
+    end
+  | PromoteU r -> ~$0x36 ^! (encode_reg r)
+  | Fail -> ~$0x37
+  | Halt -> ~$0x38
 
 let decode_machine_op (i : Z.t) : machine_op =
+  (* let dec_perm = *)
+  (*   fun c_enc -> let (p,g) = (decode_perm_pair c_enc) in Perm (p,g) *)
+  (* in *)
   let opc = Z.extract i 0 8 in
-  let payload = Z.(i asr 8) in 
+  let payload = Z.(i asr 8) in
   (* Jmp *)
   if opc = ~$0x00
   then Jmp (decode_reg payload)
@@ -498,8 +637,16 @@ let decode_machine_op (i : Z.t) : machine_op =
     SubSeg (r, c1, c2)
   end else
 
+  (* GetL *)
+  if opc = ~$0x27 && (Parameters.locality_allowed Local)
+  then begin
+    let (r1_enc, r2_enc) = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    GetL (r1, r2)
+  end else
   (* GetB *)
-  if opc = ~$0x27
+  if opc = ~$0x28
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -507,7 +654,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetB (r1, r2)
   end else
   (* GetE *)
-  if opc = ~$0x28
+  if opc = ~$0x29
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -515,7 +662,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetE (r1, r2)
   end else
   (* GetA *)
-  if opc = ~$0x29
+  if opc = ~$0x2a
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -523,7 +670,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetA (r1, r2)
   end else
 (* GetP *)
-  if opc = ~$0x2a
+  if opc = ~$0x2b
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -531,7 +678,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetP (r1, r2)
   end else
 (* GetOType *)
-  if opc = ~$0x2b
+  if opc = ~$0x2c && !Parameters.flags.sealing
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -539,7 +686,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     GetOType (r1, r2)
   end else
 (* GetWType *)
-  if opc = ~$0x2c
+  if opc = ~$0x2d
   then begin
     let (r1_enc, r2_enc) = decode_int payload in
     let r1 = decode_reg r1_enc in
@@ -548,7 +695,7 @@ let decode_machine_op (i : Z.t) : machine_op =
   end else
 
   (* Seal *)
-  if opc = ~$0x2d
+  if opc = ~$0x2e && !Parameters.flags.sealing
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -558,7 +705,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     Seal (r1, r2, r3)
   end else
   (* UnSeal *)
-  if opc = ~$0x2e
+  if opc = ~$0x2f && !Parameters.flags.sealing
   then begin
     let (r1_enc, payload') = decode_int payload in
     let (r2_enc, r3_enc) = decode_int payload' in
@@ -568,12 +715,55 @@ let decode_machine_op (i : Z.t) : machine_op =
     UnSeal (r1, r2, r3)
   end else
 
- (* Fail *)
-  if opc = ~$0x2f
+  (* LoadU *)
+  if opc = ~$0x30 && !Parameters.flags.unitialized
+   (* register register register *)
+  then begin
+    let (payload', c_enc) = decode_int payload in
+    let (r1_enc, r2_enc) = decode_int payload' in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    let c = Register (decode_reg c_enc) in
+    LoadU (r1, r2, c)
+  end else
+  if opc = ~$0x31 && !Parameters.flags.unitialized
+   (* register register const *)
+  then begin
+    let (payload', c_enc) = decode_int payload in
+    let (r1_enc, r2_enc) = decode_int payload' in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    let c = Const c_enc in
+    LoadU (r1, r2, c)
+  end else
+  (* StoreU *)
+  if ~$0x32 <= opc && opc <= ~$0x35 && !Parameters.flags.unitialized
+  then begin
+    let (r_enc, payload') = decode_int payload in
+    let (c1_enc, c2_enc) = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 =
+      if opc = ~$0x32 || opc = ~$0x33
+      then Register (decode_reg c1_enc)
+      else Const c1_enc
+    in
+    let c2 =
+      if opc = ~$0x32 || opc = ~$0x34
+      then Register (decode_reg c2_enc)
+      else Const c2_enc
+    in
+    StoreU (r, c1, c2)
+  end else
+  (* PromoteU *)
+  if opc = ~$0x36 && !Parameters.flags.unitialized
+  then PromoteU (decode_reg payload)
+  else
+  (* Fail *)
+  if opc = ~$0x37
   then Fail
   else
   (* Halt *)
-  if opc = ~$0x30
+  if opc = ~$0x38
   then Halt
   else raise @@
     DecodeException

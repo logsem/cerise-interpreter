@@ -2,24 +2,33 @@
 
 exception UnknownLabelException of string
 
-type regname = PC | Reg of int
+type regname = PC | STK | Reg of int
 type expr
   = IntLit of int
   | Label of string
   | AddOp of expr * expr
   | SubOp of expr * expr
 
-type perm = O | E | RO | RX | RW | RWX
+type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
+type locality = Global | Local | Directed
 type seal_perm = bool * bool
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
-type const_encoded = ConstExpr of expr | Perm of perm | SealPerm of seal_perm | Wtype of wtype
+type const_encoded = ConstExpr of expr
+                   | Perm of perm
+                   | SealPerm of seal_perm
+                   | Locality of locality
+                   | Wtype of wtype
+                   | PermLoc of perm * locality
+                   | SealPermLoc of seal_perm * locality
+
 type reg_or_const = Register of regname | Const of const_encoded
-type sealable = Cap of perm * expr * expr * expr | SealRange of seal_perm * expr * expr * expr
+type sealable = Cap of perm * locality * expr * expr * expr | SealRange of seal_perm * locality * expr * expr * expr
 type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 exception WordException of word
 
 type machine_op
-  = Jmp of regname
+  =
+  | Jmp of regname
   | Jnz of regname * regname
   | Move of regname * reg_or_const
   | Load of regname * regname
@@ -33,6 +42,7 @@ type machine_op
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
   | SubSeg of regname * reg_or_const * reg_or_const
+  | GetL of regname * regname
   | GetB of regname * regname
   | GetE of regname * regname
   | GetA of regname * regname
@@ -41,6 +51,9 @@ type machine_op
   | GetWType of regname * regname
   | Seal of regname * regname * regname
   | UnSeal of regname * regname * regname
+  | LoadU of regname * regname * reg_or_const
+  | StoreU of regname * reg_or_const * reg_or_const
+  | PromoteU of regname
   | Fail
   | Halt
   | Lbl of string
@@ -75,6 +88,18 @@ let translate_perm (p : perm) : Ast.perm =
   | RX -> Ast.RX
   | RW -> Ast.RW
   | RWX -> Ast.RWX
+  | RWL -> Ast.RWL
+  | RWLX -> Ast.RWLX
+  | URW -> Ast.URW
+  | URWL -> Ast.URWL
+  | URWX -> Ast.URWX
+  | URWLX -> Ast.URWLX
+
+let translate_locality (g : locality) : Ast.locality =
+  match g with
+  | Local -> Ast.Local
+  | Global -> Ast.Global
+  | Directed -> Ast.Directed
 
 let translate_wt (wt : wtype) : Ast.wtype =
   (match wt with
@@ -86,28 +111,73 @@ let translate_wt (wt : wtype) : Ast.wtype =
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
+  | STK -> Ast.STK
   | Reg i -> Ast.Reg i
+
+(* Check whether the encoded constant is supported *)
+let check_ir_const (c : const_encoded) =
+  let open Parameters in
+  match c with
+  | Perm p ->
+    (match p with
+     | RWL
+     | RWLX ->
+       if !flags.locality = Global
+       then not_supported "Parsing: Write-local permissions are not supported."
+     | URW
+     | URWX ->
+       if not !flags.unitialized
+       then not_supported "Parsing: U-permissions are not supported."
+     | URWL
+     | URWLX ->
+       if not !flags.unitialized
+       then not_supported "Parsing: U-permissions are not supported."
+       else if !flags.locality = Global
+       then not_supported "Parsing: Write-local permissions are not supported."
+     | _ -> ()
+    )
+  | SealPerm _ ->
+    if not !flags.sealing
+    then not_supported "Parsing: Sealing permissions are not supported."
+  | PermLoc (_, _)
+  | Locality _ ->
+    if !flags.locality = Global
+    then not_supported "Parsing: Locality is not supported."
+  | SealPermLoc (_, _) ->
+    if !flags.locality = Global
+    then not_supported "Parsing: Locality is not supported."
+    else if not !flags.sealing
+    then not_supported "Parsing: Sealing permissions are not supported."
+  | Wtype _
+  | ConstExpr _ -> ()
 
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | Const c ->
+    check_ir_const c;
     Ast.Const
     (match c with
         | ConstExpr e -> (eval_expr envr e)
+        | Locality l -> Encode.encode_locality (translate_locality l)
         | Perm p -> Encode.encode_perm (translate_perm p)
         | SealPerm sp -> Encode.encode_seal_perm sp
-        | Wtype wt -> Encode.encode_wtype (translate_wt wt))
+        | Wtype wt -> Encode.encode_wtype (translate_wt wt)
+        | PermLoc (p,l) -> Encode.encode_perm_loc_pair (translate_perm p) (translate_locality l)
+        | SealPermLoc (p,l) -> Encode.encode_seal_perm_loc_pair p (translate_locality l)
+    )
 
 let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
   match s with
-  | Cap (p,b,e,a) ->
+  | Cap (p, l, b, e, a) ->
     Ast.Cap ((translate_perm p),
+             (translate_locality l),
              (eval_expr envr b),
              (eval_expr envr e),
              (eval_expr envr a))
-  | SealRange (p, b, e, a) ->
+  | SealRange (p, l, b, e, a) ->
     Ast.SealRange (p,
+                   (translate_locality l),
                    (eval_expr envr b),
                    (eval_expr envr e),
                    (eval_expr envr a))
@@ -152,6 +222,7 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | SubSeg (r, c1, c2) -> Ast.SubSeg (translate_regname r,
                                       translate_reg_or_const envr c1,
                                       translate_reg_or_const envr c2)
+  | GetL (r1, r2) -> Ast.GetL (translate_regname r1, translate_regname r2)
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
   | GetA (r1, r2) -> Ast.GetA (translate_regname r1, translate_regname r2)
@@ -160,6 +231,13 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | GetWType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
   | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
   | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
+  | LoadU (r1, r2, c) -> Ast.LoadU (translate_regname r1,
+                                    translate_regname r2,
+                                    translate_reg_or_const envr c)
+  | StoreU (r, c1, c2) -> Ast.StoreU (translate_regname r,
+                                      translate_reg_or_const envr c1,
+                                      translate_reg_or_const envr c2)
+  | PromoteU r -> Ast.PromoteU (translate_regname r)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
   | Word w -> raise (WordException w)

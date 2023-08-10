@@ -20,12 +20,12 @@ init:
 	;; prepare the main capability in r0
 	lea r0 (main+1-init)   	; r0 = (RWX, init, end, main+1)
 	subseg r0 main data		; r0 = (RWX, main, data, main+1)
-	restrict r0 E			; r0 = (E, main, data, main+1)
+	restrict r0 (E, Global)	; r0 = (E, main, data, main+1)
 	jmp r0   				; jump to main main
 
 main:
 	;; r0 = pc / r1 = {0: (RO, counter, counter+1, counter)}
-	#(RO, linking_table, end, linking_table)
+	#(RO, Global, linking_table, end, linking_table)
 
 	;; prepare the sentry for get and incr in r30 and r31
 	mov r0 pc
@@ -59,14 +59,14 @@ main:
 
 	halt
 data:
-	#{0: (RW, counter, counter+1, counter)}
+	#{0: (RW, Global, counter, counter+1, counter)}
 linking_table:
-	#(E, get, incr, get+1) 		; get
-	#(E, incr, end, incr+2)		; incr
+	#(E, Global, get, incr, get+1) 		; get
+	#(E, Global, incr, end, incr+2)		; incr
 counter:
 	#0
 get: 							; check whether the otype matches with the actual value
-	#[SU, 0, 10, 0]
+	#[SU, Global, 0, 10, 0]
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, get, incr, get+1)
 	lea r2 (-1)					; r2 = (RX, get, incr, get)
@@ -83,8 +83,8 @@ get: 							; check whether the otype matches with the actual value
 	jmp r0						; r2 contains the return value
 	fail 						; Case r3 != 0, then fail
 incr:
-	#[SU, 0, 10, 0]
-	#(RW, incr, incr+1, incr)
+	#[SU, Global, 0, 10, 0]
+	#(RW, Global, incr, incr+1, incr)
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, incr, end, incr+2)
 	lea r2 (-2)					; r2 = (RX, incr, end, incr)

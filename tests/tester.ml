@@ -22,11 +22,15 @@ let perm_tst = Alcotest.testable
     (Fmt.of_to_string @@ Pretty_printer.string_of_perm)
     (fun a b -> a = b)
 
+(* TODO I should add a try/catch in case of parsing failure *)
+(* TODO also test multiple flags configurations *)
 let run_prog (filename : string) : mchn  =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
   let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
   let _ = close_in input in
+
+  let _ = (Parameters.flags := Parameters.full_cerise) in
 
   let addr_max = Z.(~$10000) in
   let init_regs = Machine.init_reg_state addr_max in
@@ -51,12 +55,14 @@ let get_reg_int_word (r : Ast.regname) (m : mchn) (d : Z.t) =
 
 let get_reg_cap_perm (r : regname) (m : mchn) (d : perm) =
   match r @! snd m with
-  | Sealable (Cap (p, _, _, _)) -> p
+  | Sealable (Cap (p, _, _, _, _)) -> p
   | _ -> d
+
+let test_path s = "../../../tests/test_files/default/" ^ s
 
 let test_negatives =
   let open Alcotest in
-  let path = "../../../tests/test_files/neg/" in
+  let path = test_path "neg/" in
   let test_names = make_test_list path in
   Array.to_list @@ Array.map (fun t ->
       test_case
@@ -66,10 +72,10 @@ let test_negatives =
 
 let test_mov_test =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/mov_test.s" in
+  let m = run_prog (test_path "pos/mov_test.s") in
   let pc_a = begin
     match get_reg PC @@ snd m with
-    | Sealable (Cap (_, _, _, a)) -> a
+    | Sealable (Cap (_, _, _, _, a)) -> a
     | _ -> Z.(~$(-1))
   end in
   let r2_res = begin
@@ -99,7 +105,7 @@ let test_mov_test =
 
 let test_jmper =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/jmper.s" in [
+  let m = run_prog (test_path "pos/jmper.s") in [
     test_case
       "jmper.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -111,9 +117,62 @@ let test_jmper =
       `Quick (test_perm E (get_reg_cap_perm (Reg 1) m O));
   ]
 
+let test_promote =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/ucap_promote.s") in [
+    test_case
+      "ucap_promote.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "ucap_promote.s should contain RWLX permission in r0"
+      `Quick (test_perm RWLX (get_reg_cap_perm (Reg 0) m O));
+    test_case
+      "ucap_promote.s should contain RWL permission in r1"
+      `Quick (test_perm RWL (get_reg_cap_perm (Reg 1) m O));
+    test_case
+      "ucap_promote.s should contain RWX permission in r2"
+      `Quick (test_perm RWX (get_reg_cap_perm (Reg 2) m O));
+    test_case
+      "ucap_promote.s should contain RW permission in r3"
+      `Quick (test_perm RW (get_reg_cap_perm (Reg 3) m O));
+  ]
+
+let test_ucaps =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/test_ucaps.s") in [
+    test_case
+      "test_ucaps.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+    test_case
+      "test_ucaps.s should contain 42 in r0"
+      `Quick (test_const_word (Z.of_int 42) (get_reg_int_word (Reg 0) m Z.one));
+    test_case
+      "test_ucaps.s should contain 43 in r1"
+      `Quick (test_const_word (Z.of_int 43) (get_reg_int_word (Reg 1) m Z.one));
+    test_case
+      "test_ucaps.s should contain RWLX permission in r2"
+      `Quick (test_perm RWLX (get_reg_cap_perm (Reg 2) m O));
+  ]
+
+let test_locality_flow =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/test_locality_flow.s") in [
+    test_case
+      "test_locality.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+  ]
+
+let test_directed_store =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/test_directed_store.s") in [
+    test_case
+      "test_directed_store.s should end in halted state"
+      `Quick (test_state Halted (fst m));
+  ]
+
 let test_getotype =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/get_otype.s" in [
+  let m = run_prog (test_path "pos/get_otype.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -133,7 +192,7 @@ let test_getotype =
 
 let test_getwtype =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/get_wtype.s" in [
+  let m = run_prog (test_path "pos/get_wtype.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -153,7 +212,7 @@ let test_getwtype =
 
 let test_sealing =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/seal_unseal.s" in [
+  let m = run_prog (test_path "pos/seal_unseal.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -161,7 +220,7 @@ let test_sealing =
 
 let test_sealing_counter =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/sealing_counter.s" in [
+  let m = run_prog (test_path "pos/sealing_counter.s") in [
     test_case
       "sealing_counter.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -170,10 +229,12 @@ let test_sealing_counter =
       `Quick (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m (Z.zero)));
   ]
 
-
 let () =
   let open Alcotest in
   run "Run" [
-    "Pos", test_mov_test @ test_jmper @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter;
+    "Pos", test_mov_test @ test_jmper
+           @ test_promote @ test_ucaps @ test_locality_flow @ test_directed_store
+           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+    ;
     "Neg", test_negatives;
   ]

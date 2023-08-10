@@ -1,5 +1,5 @@
 %token EOF
-%token PC
+%token PC STK
 %token <int> REG
 %token <int> INT
 %token <string> LABELDEF
@@ -7,11 +7,12 @@
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP COLON
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
-%token GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL FAIL HALT
-%token O E RO RX RW RWX
+%token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
+%token LOADU STOREU PROMOTEU FAIL HALT
+%token LOCAL GLOBAL DIRECTED
+%token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
 %token SO S U SU
 %token Int Cap SealRange Sealed
-
 %left PLUS MINUS EXPR
 %left UMINUS
 
@@ -36,6 +37,7 @@ main:
   | LEA; r = reg; c = reg_const; p = main; { Lea (r, c) :: p }
   | RESTRICT; r = reg; c = reg_const; p = main; { Restrict (r, c) :: p }
   | SUBSEG; r = reg; c1 = reg_const; c2 = reg_const; p = main; { SubSeg (r, c1, c2) :: p }
+  | GETL; r1 = reg; r2 = reg; p = main; { GetL (r1, r2) :: p }
   | GETB; r1 = reg; r2 = reg; p = main; { GetB (r1, r2) :: p }
   | GETE; r1 = reg; r2 = reg; p = main; { GetE (r1, r2) :: p }
   | GETA; r1 = reg; r2 = reg; p = main; { GetA (r1, r2) :: p }
@@ -44,6 +46,9 @@ main:
   | GETWTYPE; r1 = reg; r2 = reg; p = main; { GetWType (r1, r2) :: p }
   | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
   | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
+  | LOADU; r1 = reg; r2 = reg; c = reg_const; p = main; { LoadU (r1, r2, c) :: p }
+  | STOREU; r = reg; c1 = reg_const; c2 = reg_const; p = main; { StoreU (r, c1, c2) :: p }
+  | PROMOTEU; r = reg; p = main ; { PromoteU r :: p }
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }
   | lbl = LABELDEF; p = main; { Lbl lbl :: p }
@@ -55,10 +60,10 @@ word_def:
   | z = expr; { I z }
 
 sealable_def:
-  | LPAREN; p = perm; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
-    { Cap (p, b, e, a) }
-  | LSBRK; p = seal_perm; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RSBRK;
-    { SealRange (p, b, e, a) }
+  | LPAREN; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
+    { Cap (p, g, b, e, a) }
+  | LSBRK; p = seal_perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RSBRK;
+    { SealRange (p, g, b, e, a) }
 
 sealed_def:
   | LCBRK; o = expr; COLON; sb = sealable_def ; RCBRK
@@ -66,14 +71,18 @@ sealed_def:
 
 reg:
   | PC; { PC }
+  | STK; { STK }
   | i = REG; { Reg i }
 
 reg_const:
   | r = reg; { Register r }
   | c = expr %prec EXPR { Const (ConstExpr c) }
   | p = perm; { Const (Perm p) }
-  | p = seal_perm; { Const (SealPerm p) }
+  | sp = seal_perm; { Const (SealPerm sp) }
+  | LPAREN ; p = perm; COMMA ;  g = locality ; RPAREN ; { Const (PermLoc (p,g)) }
+  | LPAREN ; p = seal_perm; COMMA ;  g = locality ; RPAREN ; { Const (SealPermLoc (p,g)) }
   | w = wtype; { Const (Wtype w) }
+  | l = locality; { Const (Locality l) }
 
 seal_perm:
   | SO; { (false, false) }
@@ -87,6 +96,11 @@ wtype:
   | SealRange ; { W_SealRange }
   | Sealed ; { W_Sealed }
 
+locality:
+  | LOCAL; { Local }
+  | GLOBAL; { Global }
+  | DIRECTED; { Directed }
+
 perm:
   | O; { O }
   | E; { E }
@@ -94,6 +108,12 @@ perm:
   | RX; { RX }
   | RW; { RW }
   | RWX; { RWX }
+  | RWL; { RWL }
+  | RWLX; { RWLX }
+  | URW; { URW }
+  | URWX; { URWX }
+  | URWL; { URWL }
+  | URWLX; { URWLX }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }

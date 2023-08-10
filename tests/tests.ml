@@ -29,9 +29,12 @@ let make_op_test ((input, expect) : string * statement) =
       expect
       (To_test.lex_parse input))
 
+let encode_locality l = Const (Encode.encode_locality l)
 let encode_perm p = Const (Encode.encode_perm p)
 let encode_seal_perm sp = Const (Encode.encode_seal_perm sp)
 let encode_wtype wt = Const (Encode.encode_wtype wt)
+let encode_perm_loc p g = Const (Encode.encode_perm_loc_pair p g)
+let encode_seal_loc p g = Const (Encode.encode_seal_perm_loc_pair p g)
 
 (* TODO add test cases for mul/rem/div *)
 let instr_tests = [
@@ -40,16 +43,28 @@ let instr_tests = [
   ("jnz r1 r2", Op (Jnz (Reg 1, Reg 2)));
   ("mov pc 25", Op (Move (PC, const (25))));
   ("mov r3 -25", Op (Move (Reg 3, const (-25))));
+  ("mov r30 stk", Op (Move (Reg 30, Register STK)));
+  ("mov r30 RW", Op (Move (Reg 30, (encode_perm RW))));
+  ("mov r30 U", Op (Move (Reg 30, (encode_seal_perm (false,true)))));
+  ("mov r30 DIRECTED", Op (Move (Reg 30, (encode_locality Directed))));
+  ("mov r3 Sealed", Op (Move (Reg 3, encode_wtype W_Sealed)));
+  ("mov r13 SealRange", Op (Move (Reg 13, encode_wtype W_SealRange)));
+  ("mov r23 Cap", Op (Move (Reg 23, encode_wtype W_Cap)));
+  ("mov r30 Int", Op (Move (Reg 30, encode_wtype W_I)));
   ("load r4 r5", Op (Load (Reg 4, Reg 5)));
   ("store r6 r7", Op (Store (Reg 6, Register (Reg 7))));
   ("add r8 (10-15) (-37)", Op (Add (Reg 8, const (-5), const (-37))));
   ("sub r9 6 28", Op (Sub (Reg 9, const 6, const 28)));
+  ("sub r8 r8 Global", Op (Sub (Reg 8, Register (Reg 8), encode_locality Global)));
   ("lt r10 496 8128 ; perfect numbers are cool!",
    Op (Lt (Reg 10, const 496, const 8128)));
   ("lea r11 r12", Op (Lea (Reg 11, Register (Reg 12))));
-  ("restrict r13 RX", Op (Restrict (Reg 13, (encode_perm RX))));
-  ("restrict r14 S", Op (Restrict (Reg 14, (encode_seal_perm (true,false)))));
+  ("restrict r13 (RX, Global)", Op (Restrict (Reg 13, (encode_perm_loc RX Global))));
+  ("restrict r13 (RWL, LOCAL)", Op (Restrict (Reg 13, (encode_perm_loc RWL Local))));
+  ("restrict r13 (URWL, DIRECTED)", Op (Restrict (Reg 13, (encode_perm_loc URWL Directed))));
+  ("restrict r14 (S, GLOBAL)", Op (Restrict (Reg 14, (encode_seal_loc (true,false) Global))));
   ("subseg r15 pc r16", Op (SubSeg (Reg 15, Register PC, Register (Reg 16))));
+  ("getl r21 r17", Op (GetL (Reg 21, Reg 17)));
   ("getb r21 r17", Op (GetB (Reg 21, Reg 17)));
   ("gete r22 r18", Op (GetE (Reg 22, Reg 18)));
   ("geta r23 r19", Op (GetA (Reg 23, Reg 19)));
@@ -58,12 +73,11 @@ let instr_tests = [
   ("getwtype r27 r28", Op (GetWType (Reg 27, Reg 28)));
   ("seal r22 r29 r30", Op (Seal (Reg 22, Reg 29, Reg 30)));
   ("unseal r31 r26 r27", Op (UnSeal (Reg 31, Reg 26, Reg 27)));
+  ("loadU r24 r25 3", Op (LoadU (Reg 24, Reg 25, const 3)));
+  ("storeu r26 r27 r28", Op (StoreU (Reg 26, Register (Reg 27), Register (Reg 28))));
+  ("promoteu r29", Op (PromoteU (Reg 29)));
   ("fail", Op (Fail));
   ("halt", Op (Halt));
-  ("mov r3 Sealed", Op (Move (Reg 3, encode_wtype W_Sealed)));
-  ("mov r13 SealRange", Op (Move (Reg 13, encode_wtype W_SealRange)));
-  ("mov r23 Cap", Op (Move (Reg 23, encode_wtype W_Cap)));
-  ("mov r30 Int", Op (Move (Reg 30, encode_wtype W_I)));
 ]
 
 let z_tst =
@@ -149,63 +163,89 @@ let test_enc_dec_stm_list = [
   (Jnz (Reg 6, Reg 28), "encode-decode Jnz R6 R28");
   (Move (PC, Register (Reg 7)), "encode-decode Move PC R7");
   (Move (PC, const (-35)), "encode-decode Move PC (-35)");
-  (Move (PC, (encode_perm E)), "encode-decode Move PC E");
-  (Move (PC, (encode_seal_perm (false, true))), "encode-decode Move PC U");
+  (Move (PC, (encode_perm_loc E Global)), "encode-decode Move PC (E, Global)");
+  (Move (PC, (encode_seal_loc (false, true) Local)), "encode-decode Move PC (U,Local)");
   (Move (PC, (encode_wtype W_Cap)), "encode-decode Move PC Cap");
+  (Move (PC, (encode_perm RWX)), "encode-decode Move PC RWX");
+  (Move (PC, (encode_seal_perm (true,false))), "encode-decode Move PC U");
+  (Move (PC, (encode_locality Directed)), "encode-decode Move PC DIRECTED");
+  (Move (Reg 0, Register STK), "encode-decode Move R0 STK");
   (Load (Reg 9, PC), "encode-decode Load R9 PC");
   (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
   (Store (PC, const (-35)), "encode-decode Store PC (-35)");
-  (Store (PC, (encode_perm E)), "encode-decode Store PC E");
+  (Store (PC, (encode_perm_loc E Global)), "encode-decode Store PC (E, Global)");
   (Add (Reg 5, Register (Reg 6), Register PC), "encode-decode Add R5 R6 PC");
   (Add (Reg 5, Register (Reg 6), const 8128), "encode-decode Add R5 R6 8128");
-  (Add (Reg 5, Register (Reg 6), (encode_perm RO)), "encode-decode Add R5 R6 RO");
+  (Add (Reg 5, Register (Reg 6), (encode_perm_loc RO Global)),
+   "encode-decode Add R5 R6 (RO, Global)");
   (Add (Reg 5, const (-549), Register PC), "encode-decode Add R5 (-549) PC");
   (Add (Reg 5, const (102), const 8128), "encode-decode Add R5 102 8128");
-  (Add (Reg 5, const (83), (encode_perm RO)), "encode-decode Add R5 83 RO");
-  (Add (Reg 5, (encode_perm E), Register PC), "encode-decode Add R5 E PC");
-  (Add (Reg 5, (encode_perm O), const 8128), "encode-decode Add R5 O 8128");
-  (Add (Reg 5, (encode_perm RWX), (encode_perm RO)), "encode-decode Add R5 RWX RO");
+  (Add (Reg 5, const (83), (encode_perm_loc RO Global)),
+   "encode-decode Add R5 83 (RO, Global)");
+  (Add (Reg 5, (encode_perm_loc E Global), Register PC), "encode-decode Add R5 E PC");
+  (Add (Reg 5, (encode_perm_loc O Global), const 8128), "encode-decode Add R5 O 8128");
+  (Add (Reg 5, (encode_perm_loc RWX Global), (encode_perm_loc RO Global)),
+   "encode-decode Add R5 RWX (RO, Global)");
   (Sub (Reg 5, Register (Reg 6), Register PC), "encode-decode Sub R5 R6 PC");
   (Sub (Reg 5, Register (Reg 6), const 8128), "encode-decode Sub R5 R6 8128");
-  (Sub (Reg 5, Register (Reg 6), (encode_perm RO)), "encode-decode Sub R5 R6 RO");
+  (Sub (Reg 5, Register (Reg 6), (encode_perm_loc RO Global)), "encode-decode Sub R5 R6 RO");
   (Sub (Reg 5, const (-549), Register PC), "encode-decode Sub R5 (-549) PC");
   (Sub (Reg 5, const (102), const 8128), "encode-decode Sub R5 102 8128");
-  (Sub (Reg 5, const (83), (encode_perm RO)), "encode-decode Sub R5 83 RO");
-  (Sub (Reg 5, (encode_perm E), Register PC), "encode-decode Sub R5 E PC");
-  (Sub (Reg 5, (encode_perm O), const 8128), "encode-decode Sub R5 O 8128");
-  (Sub (Reg 5, (encode_perm RWX), (encode_perm RO)), "encode-decode Sub R5 RWX RO");
+  (Sub (Reg 5, const (83), (encode_perm_loc RO Global)), "encode-decode Sub R5 83 RO");
+  (Sub (Reg 5, (encode_perm_loc E Global), Register PC), "encode-decode Sub R5 E PC");
+  (Sub (Reg 5, (encode_perm_loc O Global), const 8128), "encode-decode Sub R5 O 8128");
+  (Sub (Reg 5, (encode_perm_loc RWX Global), (encode_perm_loc RO Global)), "encode-decode Sub R5 RWX RO");
   (Lt (Reg 5, Register (Reg 6), Register PC), "encode-decode Lt R5 R6 PC");
   (Lt (Reg 5, Register (Reg 6), const 8128), "encode-decode Lt R5 R6 8128");
-  (Lt (Reg 5, Register (Reg 6), (encode_perm RO)), "encode-decode Lt R5 R6 RO");
+  (Lt (Reg 5, Register (Reg 6), (encode_perm_loc RO Global)), "encode-decode Lt R5 R6 RO");
   (Lt (Reg 5, const (-549), Register PC), "encode-decode Lt R5 (-549) PC");
   (Lt (Reg 5, const (102), const 8128), "encode-decode Lt R5 102 8128");
-  (Lt (Reg 5, const (83), (encode_perm RO)), "encode-decode Lt R5 83 RO");
-  (Lt (Reg 5, (encode_perm E), Register PC), "encode-decode Lt R5 E PC");
-  (Lt (Reg 5, (encode_perm O), const 8128), "encode-decode Lt R5 O 8128");
-  (Lt (Reg 5, (encode_perm RWX), (encode_perm RO)), "encode-decode Lt R5 RWX RO");
+  (Lt (Reg 5, const (83), (encode_perm_loc RO Global)), "encode-decode Lt R5 83 RO");
+  (Lt (Reg 5, (encode_perm_loc E Global), Register PC), "encode-decode Lt R5 E PC");
+  (Lt (Reg 5, (encode_perm_loc O Global), const 8128), "encode-decode Lt R5 O 8128");
+  (Lt (Reg 5, (encode_perm_loc RWX Global), (encode_perm_loc RO Global)), "encode-decode Lt R5 RWX RO");
   (Lea (PC, Register (Reg 7)), "encode-decode Lea PC R7");
   (Lea (PC, const (-35)), "encode-decode Lea PC (-35)");
-  (Lea (PC, (encode_perm E)), "encode-decode Lea PC E");
+  (Lea (PC, (encode_perm_loc E Global)), "encode-decode Lea PC E");
   (Restrict (PC, Register (Reg 7)), "encode-decode Restrict PC R7");
   (Restrict (PC, const (-35)), "encode-decode Restrict PC (-35)");
-  (Restrict (PC, (encode_perm E)), "encode-decode Restrict PC E");
+  (Restrict (PC, (encode_perm_loc E Global)), "encode-decode Restrict PC E");
+  (Restrict (Reg 30, encode_perm_loc RWL Global), "encode-decode Restrict R30 RWL Global");
+  (Restrict (Reg 30, encode_perm_loc RWL Local), "encode-decode Restrict R30 RWL Local");
+  (Restrict (Reg 1, encode_perm_loc URWL Local), "encode-decode Restrict R1 URWL Local");
+  (Restrict (Reg 1, encode_perm_loc URWL Directed), "encode-decode Restrict R1 URWL Directed");
   (SubSeg (Reg 5, Register (Reg 6), Register PC), "encode-decode SubSeg R5 R6 PC");
   (SubSeg (Reg 5, Register (Reg 6), const 8128), "encode-decode SubSeg R5 R6 8128");
-  (SubSeg (Reg 5, Register (Reg 6), (encode_perm RO)), "encode-decode SubSeg R5 R6 RO");
+  (SubSeg (Reg 5, Register (Reg 6), (encode_perm_loc RO Global)), "encode-decode SubSeg R5 R6 RO");
   (SubSeg (Reg 5, const (-549), Register PC), "encode-decode SubSeg R5 (-549) PC");
   (SubSeg (Reg 5, const (102), const 8128), "encode-decode SubSeg R5 102 8128");
-  (SubSeg (Reg 5, const (83), (encode_perm RO)), "encode-decode SubSeg R5 83 RO");
-  (SubSeg (Reg 5, (encode_perm E), Register PC), "encode-decode SubSeg R5 E PC");
-  (SubSeg (Reg 5, (encode_perm O), const 8128), "encode-decode SubSeg R5 O 8128");
-  (SubSeg (Reg 5, (encode_perm RWX), (encode_perm RO)), "encode-decode SubSeg R5 RWX RO");
+  (SubSeg (Reg 5, const (83), (encode_perm_loc RO Global)), "encode-decode SubSeg R5 83 RO");
+  (SubSeg (Reg 5, (encode_perm_loc E Global), Register PC), "encode-decode SubSeg R5 E PC");
+  (SubSeg (Reg 5, (encode_perm_loc O Global), const 8128), "encode-decode SubSeg R5 O 8128");
+  (SubSeg (Reg 5, (encode_perm_loc RWX Global), (encode_perm_loc RO Global)), "encode-decode SubSeg R5 RWX RO");
   (GetB (Reg 6, Reg 31), "encode-decode GetB R6 R31");
   (GetE (Reg 7, Reg 30), "encode-decode GetE R7 R30");
   (GetA (Reg 8, Reg 29), "encode-decode GetA R8 R29");
   (GetP (Reg 9, Reg 28), "encode-decode GetP R9 R28");
+  (GetL (Reg 6, Reg 28), "encode-decode GetL R6 R28");
   (GetOType (Reg 10, Reg 27), "encode-decode GetOType R10 R27");
   (GetWType (Reg 11, Reg 26), "encode-decode GetWType R11 R26");
   (Seal (Reg 12, Reg 25, Reg 14), "encode-decode Seal R12 R25 R15");
   (UnSeal (Reg 13, Reg 24, Reg 15), "encode-decode UnSeal R13 R24 R14");
+  (StoreU (Reg 5, Register (Reg 6), const 8128), "encode-decode StoreU R5 R6 8128");
+  (StoreU (Reg 5, Register (Reg 6), encode_perm_loc RO Global), "encode-decode StoreU R5 R6 RO");
+  (StoreU (Reg 5, Register (Reg 6), Register STK), "encode-decode StoreU R5 R6 STK");
+  (StoreU (Reg 5, const (-549), Register STK), "encode-decode StoreU R5 (-549) STK");
+  (StoreU (Reg 5, const (102), const 8128), "encode-decode StoreU R5 102 8128");
+  (StoreU (Reg 5, const (83), encode_perm_loc RO Global), "encode-decode StoreU R5 83 RO");
+  (StoreU (Reg 5, encode_perm_loc E Global, Register STK), "encode-decode StoreU R5 E STK");
+  (StoreU (Reg 5, encode_perm_loc O Global, const 8128), "encode-decode StoreU R5 O 8128");
+  (StoreU (Reg 5, encode_perm_loc RWX Global, encode_perm_loc RO Global), "encode-decode StoreU R5 RWX RO");
+  (LoadU (Reg 30, STK, Register (Reg 31)), "encore-decode LoadU R30 STK R31");
+  (LoadU (Reg 30, STK, const 8129), "encore-decode LoadU R30 STK 8129");
+  (LoadU (Reg 30, STK, encode_perm_loc URWL Local), "encore-decode LoadU R30 STK URWL Local");
+  (LoadU (Reg 31, STK, encode_perm_loc URWLX Directed), "encore-decode LoadU R31 STK URWLX Directed");
+  (PromoteU STK, "encore-decode PromoteU STK");
   (Fail, "encode-decode Fail");
   (Halt, "encode-decode Halt");
 ]

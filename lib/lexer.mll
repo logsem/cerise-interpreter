@@ -13,6 +13,7 @@ let digit = ['0'-'9']
 let hex = (digit | ['a'-'f'] | ['A'-'F'])
 let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
 let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
+let locality = ("LOCAL" | "GLOBAL" | "DIRECTED" | "Local" | "Global" | "Directed")
 let letter = ['a'-'z' 'A'-'Z']
 let label = ('_' | letter) (letter | '_' | digit)*
 
@@ -26,6 +27,7 @@ rule token = parse
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
+| ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n) 
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
@@ -44,14 +46,19 @@ rule token = parse
 | "lea" { LEA }
 | "restrict" { RESTRICT }
 | "subseg" { SUBSEG }
+| "getl" { GETL }
 | "getb" { GETB }
 | "gete" { GETE }
 | "geta" { GETA }
 | "getp" { GETP }
 | "getotype" { GETOTYPE }
 | "getwtype" { GETWTYPE }
+| "getl" { GETL }
 | "seal" { SEAL }
 | "unseal" { UNSEAL }
+| "load" ['u' 'U'] { LOADU }
+| "store" ['u' 'U'] { STOREU }
+| "promote" ['u' 'U'] { PROMOTEU }
 | "fail" { FAIL }
 | "halt" { HALT }
 
@@ -68,6 +75,11 @@ rule token = parse
 | ':' { COLON }
 | '#' { SHARP }
 
+(* locality *)
+| "LOCAL"    | "Local" { LOCAL }
+| "GLOBAL"   | "Global"  { GLOBAL }
+| "DIRECTED" | "Directed"  { DIRECTED }
+
 (* permissions *)
 | 'O' { O }
 | 'E' { E }
@@ -75,6 +87,12 @@ rule token = parse
 | "RX" { RX }
 | "RW" { RW }
 | "RWX" { RWX }
+| "RWL" { RWL }
+| "RWLX" { RWLX }
+| "URW" { URW }
+| "URWX" { URWX }
+| "URWL" { URWL }
+| "URWLX" { URWLX }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

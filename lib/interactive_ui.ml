@@ -1,8 +1,10 @@
 open Notty
 open Notty.Infix
 open Notty_unix
+open Parameters
 
 
+type side = Left | Right
 (* ui components *)
 
 module type MachineConfig = sig val addr_max : Z.t end
@@ -10,6 +12,8 @@ module type MachineConfig = sig val addr_max : Z.t end
 module type Ui =
 sig
   val render_loop :
+    ?show_stack:bool ->
+    Z.t ref ->
     Z.t ref ->
     Machine.mchn ->
     unit
@@ -21,6 +25,13 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let ui ?(attr = A.empty) (p: Ast.perm) =
       I.hsnap ~align:`Left width
         (I.string attr (Pretty_printer.string_of_perm p))
+  end
+
+  module Locality = struct
+    let width = 6
+    let ui ?(attr = A.empty) (g: Ast.locality) =
+      (I.hsnap ~align:`Left width
+         (I.string attr (Pretty_printer.string_of_locality g)))
   end
 
   module SealPerm = struct
@@ -99,36 +110,51 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
   module Sealable = struct
     let width =
+      (* NOTE If locality is Global, then do not show it *)
       Perm.width + 1 (* space *) +
+      (if !flags.locality = Global
+       then 0
+       else Locality.width + 1 (* space *)
+       ) +
       Addr_range.width + 1 (* space *) +
       Addr.width
 
-    let ui ?(attr = A.empty) (sb: Ast.sealable) =
+    let ui ?(attr = A.empty) (sb: Ast.sealable) (s : side) =
       (* - <perm> <range> <addr> if it's a capability
          (with padding after the range to right-align <addr>)
          - <perm> <range> <otype> if it's a sealrange
            (with padding after the range to right-align <addr>) *)
+      let s_left = match s with | Left -> `Left  | Right -> `Right in
+      let s_right = match s with | Left -> `Right  | Right -> `Left in
       match sb with
-      | Cap (p, b, e, a) ->
+      | Cap (p, g, b, e, a) ->
         let attr =
           if attr = sealed_style then sealed_cap_style else cap_style
         in
-        (I.hsnap ~align:`Left width
+        (I.hsnap ~align:s_left width
            (Perm.ui ~attr p
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
-         I.hsnap ~align:`Right width (Addr.ui ~attr a))
-      | SealRange (p, b, e, a) ->
+         I.hsnap ~align:s_right width (Addr.ui ~attr a))
+      | SealRange (p, g, b, e, a) ->
         let attr =
           if attr = sealed_style then sealed_sealrange_style else sealrange_style
         in
-        (I.hsnap ~align:`Left width
+        (I.hsnap ~align:s_left width
            (SealPerm.ui ~attr p
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
-         I.hsnap ~align:`Right width (Addr.ui ~attr a))
+         I.hsnap ~align:s_right width (Addr.ui ~attr a))
   end
 
   module Word = struct
@@ -145,17 +171,20 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       + Sealable.width
       + 1 (* } *)
 
-    let ui ?(attr = A.empty) (w: Ast.word) =
+    let ui ?(attr = A.empty) (w: Ast.word) (s : side) =
+      (* let s_left = match s with | Left -> `Left  | Right -> `Right in *)
+      let s_right = match s with | Left -> `Right  | Right -> `Left in
       match w with
-      | I z -> I.hsnap ~align:`Right width (I.string attr (Int.ui width z) <|> I.string A.empty " ")
-      | Sealable sb -> I.hsnap ~align:`Right width ((Sealable.ui ~attr sb) <|> I.string A.empty " ")
+      | I z -> I.hsnap ~align:s_right width (I.string attr (Int.ui width z))
+      | Sealable sb ->
+        I.hsnap ~align:s_right width ((Sealable.ui ~attr sb s) <|> I.string A.empty " ")
       | Sealed (o,sb) ->
         let attr = sealed_style in
-        I.hsnap ~align:`Right width
+        I.hsnap ~align:s_right width
            (I.string attr "{"
            <|> (I.string attr (Int.ui width o))
            <|> I.string attr ": "
-           <|> (Sealable.ui ~attr sb)
+           <|> (Sealable.ui ~attr sb s)
            <|> I.string attr "}")
   end
 
@@ -182,7 +211,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             img
             <->
             ((if not fst_col then I.string A.empty "  " else I.empty) <|>
-             Regname.ui r <|> I.string A.empty ": " <|> Word.ui w)) I.empty col
+             Regname.ui r <|> I.string A.empty ": " <|> Word.ui w Left)) I.empty col
           <|>
           loop false regs
         ) in
@@ -198,15 +227,16 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
   module Program_panel = struct
     (* TODO: associate a color to each permission and make the color of the
        range (+pointer?) match the permission of PC *)
-    (*    <addr>  <word>  <decoded instr>
-      ┏   <addr>  <word>  <decoded instr>
-      ┃ ▶ <addr>  <word>  <decoded instr>
-      ┗   <addr>  <word>  <decoded instr>
+    (*            HEAP                              STACK                   *)
+    (*    <addr>  <word>  <decoded instr>  <decoded instr> <word> <addr>
+      ┏   <addr>  <word>  <decoded instr>  <decoded instr> <word> <addr>   ┓
+      ┃ ▶ <addr>  <word>  <decoded instr>  <decoded instr> <word> <addr> ◀ ┃
+      ┗   <addr>  <word>  <decoded instr>  <decoded instr> <word> <addr>   ┛
     *)
 
     let is_in_r_range r a =
       match r with
-      | Ast.Sealable (Cap (_, b, e, _)) ->
+      | Ast.Sealable (Cap (_, _, b, e, _)) ->
          if a >= b && a < e then (
            if a = b then `AtStart
            else if a = Z.(e- ~$1) then `AtLast
@@ -215,7 +245,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       | _ -> `No
 
     let at_reg r a = match r with
-         Ast.Sealable (Cap (_, _, _, r)) -> a = r | _ -> false
+         Ast.Sealable (Cap (_, _, _,  _, r)) -> a = r | _ -> false
 
     let img_instr in_range a w =
       (match w with
@@ -239,7 +269,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
              else I.string A.empty "   ")
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> I.string A.empty "  "
-        <|> Word.ui w
+        <|> Word.ui w Left
         <|> I.string A.empty "  "
         <|> img_instr is_in_pc_range a w
 
@@ -249,9 +279,36 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       (List.fold_left (fun img (a, w) -> img <-> img_of_prog a w)
          I.empty data_range)
 
+    let render_stack width (stk: Ast.word) data_range =
+      let at_stk a = at_reg stk a in
+      let is_in_stk_range a = is_in_r_range stk a in
+      let img_of_stack a w =
+        let color_indicator = A.lightmagenta in
+        img_instr (is_in_stk_range) a w
+        <|> I.string A.empty "  "
+        <|> Word.ui w Right
+        <|> I.string A.empty "  "
+        <|> Addr.ui ~attr:A.(fg yellow) a
+        <|> (if at_stk a then I.string A.(fg color_indicator) " ◀ "
+             else I.string A.empty "   ")
+        <|>
+        (match is_in_stk_range a with
+         | `No -> I.string A.empty " "
+         | `AtStart -> I.string A.(fg color_indicator) "┓"
+         | `InRange -> I.string A.(fg color_indicator) "┃"
+         | `AtLast -> I.string A.(fg color_indicator) "┛")
+        |> I.hsnap ~align:`Right width
+      in
+      (I.string A.empty "STACK"
+        |> I.hsnap ~align:`Right width)
+      <->
+      (List.fold_left (fun img (a, w) -> img <-> img_of_stack a w)
+         I.empty data_range)
+
     let follow_addr r (height : int) start_addr (off : int)=
       match r with
-      | Ast.Sealable (Cap (_, _, _, r)) ->
+      | Ast.I _ -> start_addr
+      | Ast.Sealable (Cap (_, _, _, _, r)) ->
         Z.(
         if r <= start_addr && start_addr > ~$0 then
           r - ~$off
@@ -273,13 +330,18 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let previous_addr (_ : Ast.word) (_:int) start_addr (_:int) =
       Z.(let new_addr = start_addr - ~$1 in
       if new_addr < ~$0 then ~$0 else new_addr)
+    let id (_ : Ast.word) (_:int) start_addr (_:int) = start_addr
 
     let ui
         ?(upd_prog = follow_addr)
+        ?(upd_stk = follow_addr)
+        ?(show_stack = true)
         height width
         (mem: Machine.mem_state)
         (pc: Ast.word)
+        (stk: Ast.word)
         (start_prog: Z.t)
+        (start_stk: Z.t)
       =
 
       let addr_show (start_addr : Z.t) =
@@ -289,11 +351,18 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         |> List.map (fun a -> Z.( ~$a, Machine.MemMap.find ~$a mem)) in
 
       let start_prog = upd_prog pc height start_prog 2 in
+      let start_stk = upd_stk stk height start_stk 2 in
 
       let img_of_dataline = render_prog width pc (addr_show start_prog) in
+      let img_of_stack =
+        if show_stack
+        then render_stack width stk (addr_show start_stk)
+        else I.empty
+      in
 
-      (img_of_dataline),
-      start_prog
+      (img_of_dataline </> img_of_stack),
+      start_prog,
+      start_stk
   end
 
   module Exec_state = struct
@@ -307,10 +376,21 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
   end
 
   module Render = struct
-    let main prog_panel_start m_init =
+    let main
+        ?(show_stack = true)
+        prog_panel_start
+        stk_panel_start
+        m_init =
       let term = Term.create () in
+      let toggle_show_stack showing =
+        if show_stack
+        then (if showing then false else true)
+        else false
+      in
       let rec loop
           ?(update_prog = Program_panel.follow_addr)
+          ?(update_stk = Program_panel.follow_addr)
+          show_stack
           m
           history
         =
@@ -318,14 +398,21 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         let reg = (snd m).Machine.reg in
         let mem = (snd m).Machine.mem in
         let regs_img = Regs_panel.ui term_width reg in
-        let mem_img, panel_start =
+        let mem_img, panel_start, panel_stk =
           Program_panel.ui
             ~upd_prog:update_prog
+            ~upd_stk:update_stk
+            ~show_stack:show_stack
             (term_height - 1 - I.height regs_img) term_width mem
             (Machine.RegMap.find Ast.PC reg)
+            (if !flags.stack
+             then (Machine.RegMap.find Ast.STK reg)
+             else Ast.I Z.zero)
             !prog_panel_start
+            !stk_panel_start
         in
         prog_panel_start := panel_start;
+        stk_panel_start := panel_stk;
         let mach_state_img =
           I.hsnap ~align:`Right term_width
             (I.string A.empty "machine state: " <|> Exec_state.ui (fst m))
@@ -342,50 +429,62 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           | `End | `Key (`Escape, _) | `Key (`ASCII 'q', _) -> Term.release term
           (* Heap *)
           | `Key (`ASCII 'k', _) ->
-            loop ~update_prog:(Program_panel.previous_addr) m history
+            loop ~update_prog:(Program_panel.previous_addr)
+              show_stack m history
           | `Key (`ASCII 'j', _) ->
-            loop ~update_prog:(Program_panel.next_addr) m history
+            loop ~update_prog:(Program_panel.next_addr)
+              show_stack m history
           | `Key (`ASCII 'h', _) ->
-            loop ~update_prog:(Program_panel.previous_page 1) m history
+            loop ~update_prog:(Program_panel.previous_page 1)
+              show_stack m history
           | `Key (`ASCII 'H', _) ->
-            loop ~update_prog:(Program_panel.previous_page 10) m history
+            loop ~update_prog:(Program_panel.previous_page 10)
+              show_stack m history
           | `Key (`ASCII 'l', _) ->
-            loop ~update_prog:(Program_panel.next_page 1) m history
+            loop ~update_prog:(Program_panel.next_page 1)
+              show_stack m history
           | `Key (`ASCII 'L', _) ->
-            loop ~update_prog:(Program_panel.next_page 10) m history
+            loop ~update_prog:(Program_panel.next_page 10)
+              show_stack m history
 
-          (* With arrows *)
+          (* Stack *)
           | `Key (`Arrow `Up, _) ->
-            loop ~update_prog:(Program_panel.previous_addr) m history
+            loop ~update_stk:(Program_panel.previous_addr)
+              show_stack m history
           | `Key (`Arrow `Down, _) ->
-            loop ~update_prog:(Program_panel.next_addr) m history
+            loop ~update_stk:(Program_panel.next_addr)
+              show_stack m history
           | `Key (`Arrow `Left, _) ->
-            loop ~update_prog:(Program_panel.previous_page 1) m history
+            loop ~update_stk:(Program_panel.previous_page 1)
+              show_stack m history
           | `Key (`Arrow `Right, _) ->
-            loop ~update_prog:(Program_panel.next_page 1) m history
+            loop ~update_stk:(Program_panel.next_page 1)
+              show_stack m history
+
+          | `Key (`ASCII 's', _) ->
+            loop ~update_prog:Program_panel.id
+              (toggle_show_stack show_stack) m history
 
           | `Key (`ASCII ' ', _) ->
             begin match Machine.step m with
-              | Some m' -> loop m' (m::history)
-              | None -> (* XX *) loop m history
+              | Some m' -> loop show_stack m' (m::history)
+              | None -> (* XX *) loop show_stack m history
             end
           | `Key (`ASCII 'n', _) ->
             begin match Machine.step_n m 10 with
-              | Some m' -> loop m' (m::history)
-              | None -> (* XX *) loop m history
+              | Some m' -> loop show_stack m' (m::history)
+              | None -> (* XX *) loop show_stack m history
             end
-
           | `Key (`Backspace, _) ->
             (match history with
-            | [] -> loop m history
-            | m'::h' -> loop m' h')
-    
-          | `Resize (_, _) -> loop m history
+            | [] -> loop show_stack m history
+            | m'::h' -> loop show_stack m' h')
+          | `Resize (_, _) -> loop show_stack m history
           | _ -> process_events ()
         in
         process_events ()
       in
-      loop m_init []
+      loop show_stack m_init []
   end
 
   let render_loop = Render.main
