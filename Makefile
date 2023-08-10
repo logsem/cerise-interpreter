@@ -19,7 +19,7 @@ no-warning:
 
 run:
 	./compile
-	./interactive --version default --regfile $(REG_FILE) $(S_FILE)
+	./interpreter -I --version default --regfile $(REG_FILE) $(S_FILE)
 
 compiler: get-extract no-warning run
 
@@ -30,5 +30,5 @@ test:
 	# dune test
 	dune test --profile release
 install:
-	@test -s interactive || ln -s ./_build/default/src/interactive.exe interactive
+	@test -s interpreter || ln -s ./_build/default/src/interpreter.exe interpreter
 	@test -s compile || ln -s ./_build/default/src/compile.exe compile

@@ -428,57 +428,105 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           match Term.event term with
           | `End | `Key (`Escape, _) | `Key (`ASCII 'q', _) -> Term.release term
           (* Heap *)
-          | `Key (`ASCII 'k', _) ->
-            loop ~update_prog:(Program_panel.previous_addr)
-              show_stack m history
-          | `Key (`ASCII 'j', _) ->
-            loop ~update_prog:(Program_panel.next_addr)
-              show_stack m history
-          | `Key (`ASCII 'h', _) ->
-            loop ~update_prog:(Program_panel.previous_page 1)
-              show_stack m history
-          | `Key (`ASCII 'H', _) ->
-            loop ~update_prog:(Program_panel.previous_page 10)
-              show_stack m history
-          | `Key (`ASCII 'l', _) ->
-            loop ~update_prog:(Program_panel.next_page 1)
-              show_stack m history
-          | `Key (`ASCII 'L', _) ->
-            loop ~update_prog:(Program_panel.next_page 10)
-              show_stack m history
+          | `Key (`Arrow `Up, l) ->
+            begin
+              match l with
+              | [`Ctrl] ->
+                loop ~update_stk:(Program_panel.previous_addr) show_stack m history
+              | [] ->
+                loop ~update_prog:(Program_panel.previous_addr) show_stack m history
+              | _ -> ()
+            end
 
-          (* Stack *)
-          | `Key (`Arrow `Up, _) ->
-            loop ~update_stk:(Program_panel.previous_addr)
-              show_stack m history
-          | `Key (`Arrow `Down, _) ->
-            loop ~update_stk:(Program_panel.next_addr)
-              show_stack m history
-          | `Key (`Arrow `Left, _) ->
-            loop ~update_stk:(Program_panel.previous_page 1)
-              show_stack m history
-          | `Key (`Arrow `Right, _) ->
-            loop ~update_stk:(Program_panel.next_page 1)
-              show_stack m history
+          | `Key (`Arrow `Down, l) ->
+            begin
+              match l with
+              | [`Ctrl] ->
+                loop ~update_stk:(Program_panel.next_addr) show_stack m history
+              | [] ->
+                loop ~update_prog:(Program_panel.next_addr) show_stack m history
+              | _ -> ()
+            end
+
+          | `Key (`Arrow `Left, l) ->
+            begin
+              match l with
+              | [`Shift;`Ctrl]
+              | [`Ctrl;`Shift] ->
+                loop ~update_stk:(Program_panel.previous_page 10) show_stack m history
+              | [`Ctrl] ->
+                loop ~update_stk:(Program_panel.previous_page 1) show_stack m history
+              | [`Shift] ->
+                loop ~update_prog:(Program_panel.previous_page 10) show_stack m history
+              | [] ->
+                loop ~update_prog:(Program_panel.previous_page 1) show_stack m history
+              | _ -> ()
+            end
+
+          | `Key (`Arrow `Right, l) ->
+            begin
+              match l with
+              | [`Shift;`Ctrl]
+              | [`Ctrl;`Shift] ->
+                loop ~update_stk:(Program_panel.next_page 10) show_stack m history
+              | [`Ctrl] ->
+                loop ~update_stk:(Program_panel.next_page 1) show_stack m history
+              | [`Shift] ->
+                loop ~update_prog:(Program_panel.next_page 10) show_stack m history
+              | [] ->
+                loop ~update_prog:(Program_panel.next_page 1) show_stack m history
+              | _ -> ()
+            end
+
+          | `Key (`Page `Down, _) ->
+            loop ~update_prog:(Program_panel.previous_page 1) show_stack m history
+          | `Key (`Page `Up, _) ->
+            loop ~update_prog:(Program_panel.next_page 1) show_stack m history
+
+          | `Mouse (`Press (`Scroll `Down), (x,_), l) ->
+            let stack_x = (fst @@ Term.size term)/2 in
+            let upd_fnt =
+            (match l with
+            | [`Ctrl] -> (Program_panel.next_page 1)
+            | _ -> (Program_panel.next_addr))
+            in
+            if (x >= stack_x) && !Parameters.flags.stack
+            then loop ~update_stk:upd_fnt show_stack m history
+            else loop ~update_prog:upd_fnt show_stack m history
+          | `Mouse (`Press (`Scroll `Up), (x,_), l) ->
+            let stack_x = (fst @@ Term.size term)/2 in
+            let upd_fnt =
+            (match l with
+            | [`Ctrl] -> (Program_panel.previous_page 1)
+            | _ -> (Program_panel.previous_addr))
+            in
+            if (x >= stack_x) && !Parameters.flags.stack
+            then loop ~update_stk:upd_fnt show_stack m history
+            else loop ~update_prog:upd_fnt show_stack m history
 
           | `Key (`ASCII 's', _) ->
             loop ~update_prog:Program_panel.id
               (toggle_show_stack show_stack) m history
 
           | `Key (`ASCII ' ', _) ->
-            begin match Machine.step m with
+            begin
+            match Machine.step m with
               | Some m' -> loop show_stack m' (m::history)
               | None -> (* XX *) loop show_stack m history
             end
           | `Key (`ASCII 'n', _) ->
-            begin match Machine.step_n m 10 with
-              | Some m' -> loop show_stack m' (m::history)
-              | None -> (* XX *) loop show_stack m history
+            begin
+              match Machine.step_n m 10 with
+              | Some m' when m != m'-> loop show_stack m' (m::history)
+              | _ -> (* XX *) loop show_stack m history
             end
+
           | `Key (`Backspace, _) ->
-            (match history with
-            | [] -> loop show_stack m history
-            | m'::h' -> loop show_stack m' h')
+            begin
+              match history with
+              | [] -> loop show_stack m history
+              | m'::h' -> loop show_stack m' h'
+            end
           | `Resize (_, _) -> loop show_stack m history
           | _ -> process_events ()
         in
