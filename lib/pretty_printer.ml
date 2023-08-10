@@ -63,6 +63,14 @@ let string_of_reg_or_const_restrict (c: reg_or_const) : string =
       then
         let (p,g) = (Encode.seal_perm_loc_pair_decoding dec_z) in
         "(" ^ (string_of_seal_perm p) ^ "," ^- (string_of_locality g) ^ ")"
+      else if (dec_type = Encode._PERM_ENC)
+      then
+        let p = (Encode.perm_decoding dec_z) in
+        string_of_perm p
+      else if (dec_type = Encode._SEAL_PERM_ENC)
+      then
+        let p = (Encode.seal_perm_decoding dec_z) in
+        string_of_seal_perm p
       else (Z.to_string c)
     with | Encode.DecodeException _ -> (Z.to_string c)
 

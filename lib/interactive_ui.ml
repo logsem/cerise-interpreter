@@ -1,6 +1,7 @@
 open Notty
 open Notty.Infix
 open Notty_unix
+open Parameters
 
 
 type side = Left | Right
@@ -29,9 +30,9 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
   module Locality = struct
     let width = 6
     let ui ?(attr = A.empty) (g: Ast.locality) =
-      I.hsnap ~align:`Left width
-        (I.string attr (Pretty_printer.string_of_locality g))
-    end
+      (I.hsnap ~align:`Left width
+         (I.string attr (Pretty_printer.string_of_locality g)))
+  end
 
   module SealPerm = struct
     let width = 5
@@ -109,8 +110,12 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
 
   module Sealable = struct
     let width =
+      (* NOTE If locality is Global, then do not show it *)
       Perm.width + 1 (* space *) +
-      Locality.width + 1 (* space *) +
+      (if !flags.locality = Global
+       then 0
+       else Locality.width + 1 (* space *)
+       ) +
       Addr_range.width + 1 (* space *) +
       Addr.width
 
@@ -128,8 +133,10 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         in
         (I.hsnap ~align:s_left width
            (Perm.ui ~attr p
-            <|> I.string A.empty " "
-            <|> Locality.ui ~attr g
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
@@ -140,8 +147,10 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         in
         (I.hsnap ~align:s_left width
            (SealPerm.ui ~attr p
-            <|> I.string A.empty " "
-            <|> Locality.ui ~attr g
+            <|> (if !flags.locality = Global
+                 then I.empty
+                 else (I.string A.empty " " <|> Locality.ui ~attr g)
+                )
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
          </>
@@ -260,7 +269,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
              else I.string A.empty "   ")
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> I.string A.empty "  "
-        <|> Word.ui w Right
+        <|> Word.ui w Left
         <|> I.string A.empty "  "
         <|> img_instr is_in_pc_range a w
 
@@ -277,7 +286,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         let color_indicator = A.lightmagenta in
         img_instr (is_in_stk_range) a w
         <|> I.string A.empty "  "
-        <|> Word.ui w Left
+        <|> Word.ui w Right
         <|> I.string A.empty "  "
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> (if at_stk a then I.string A.(fg color_indicator) " ◀ "
@@ -396,7 +405,9 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             ~show_stack:show_stack
             (term_height - 1 - I.height regs_img) term_width mem
             (Machine.RegMap.find Ast.PC reg)
-            (Machine.RegMap.find Ast.STK reg)
+            (if !flags.stack
+             then (Machine.RegMap.find Ast.STK reg)
+             else Ast.I Z.zero)
             !prog_panel_start
             !stk_panel_start
         in
@@ -464,7 +475,6 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
               | Some m' -> loop show_stack m' (m::history)
               | None -> (* XX *) loop show_stack m history
             end
-
           | `Key (`Backspace, _) ->
             (match history with
             | [] -> loop show_stack m history

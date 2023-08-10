@@ -114,10 +114,48 @@ let translate_regname (r : regname) : Ast.regname =
   | STK -> Ast.STK
   | Reg i -> Ast.Reg i
 
+(* Check whether the encoded constant is supported *)
+let check_ir_const (c : const_encoded) =
+  let open Parameters in
+  match c with
+  | Perm p ->
+    (match p with
+     | RWL
+     | RWLX ->
+       if !flags.locality = Global
+       then not_supported "Parsing: Write-local permissions are not supported."
+     | URW
+     | URWX ->
+       if not !flags.unitialized
+       then not_supported "Parsing: U-permissions are not supported."
+     | URWL
+     | URWLX ->
+       if not !flags.unitialized
+       then not_supported "Parsing: U-permissions are not supported."
+       else if !flags.locality = Global
+       then not_supported "Parsing: Write-local permissions are not supported."
+     | _ -> ()
+    )
+  | SealPerm _ ->
+    if not !flags.sealing
+    then not_supported "Parsing: Sealing permissions are not supported."
+  | PermLoc (_, _)
+  | Locality _ ->
+    if !flags.locality = Global
+    then not_supported "Parsing: Locality is not supported."
+  | SealPermLoc (_, _) ->
+    if !flags.locality = Global
+    then not_supported "Parsing: Locality is not supported."
+    else if not !flags.sealing
+    then not_supported "Parsing: Sealing permissions are not supported."
+  | Wtype _
+  | ConstExpr _ -> ()
+
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | Const c ->
+    check_ir_const c;
     Ast.Const
     (match c with
         | ConstExpr e -> (eval_expr envr e)

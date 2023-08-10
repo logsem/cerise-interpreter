@@ -23,15 +23,17 @@ let perm_tst = Alcotest.testable
     (fun a b -> a = b)
 
 (* TODO I should add a try/catch in case of parsing failure *)
+(* TODO also test multiple flags configurations *)
 let run_prog (filename : string) : mchn  =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
   let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
   let _ = close_in input in
 
-  let stk_locality = Ast.Directed in
+  let _ = (Parameters.flags := Parameters.full_cerise) in
+
   let addr_max = Z.(~$10000) in
-  let init_regs = Machine.init_reg_state addr_max true stk_locality in
+  let init_regs = Machine.init_reg_state addr_max in
   let init_mems = Machine.init_mem_state Z.(~$0) addr_max parse_res in
   let m = Machine.init init_regs init_mems in
 
@@ -56,9 +58,11 @@ let get_reg_cap_perm (r : regname) (m : mchn) (d : perm) =
   | Sealable (Cap (p, _, _, _, _)) -> p
   | _ -> d
 
+let test_path s = "../../../tests/test_files/default/" ^ s
+
 let test_negatives =
   let open Alcotest in
-  let path = "../../../tests/test_files/neg/" in
+  let path = test_path "neg/" in
   let test_names = make_test_list path in
   Array.to_list @@ Array.map (fun t ->
       test_case
@@ -68,7 +72,7 @@ let test_negatives =
 
 let test_mov_test =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/mov_test.s" in
+  let m = run_prog (test_path "pos/mov_test.s") in
   let pc_a = begin
     match get_reg PC @@ snd m with
     | Sealable (Cap (_, _, _, _, a)) -> a
@@ -101,7 +105,7 @@ let test_mov_test =
 
 let test_jmper =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/jmper.s" in [
+  let m = run_prog (test_path "pos/jmper.s") in [
     test_case
       "jmper.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -115,7 +119,7 @@ let test_jmper =
 
 let test_promote =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/ucap_promote.s" in [
+  let m = run_prog (test_path "pos/ucap_promote.s") in [
     test_case
       "ucap_promote.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -135,7 +139,7 @@ let test_promote =
 
 let test_ucaps =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/test_ucaps.s" in [
+  let m = run_prog (test_path "pos/test_ucaps.s") in [
     test_case
       "test_ucaps.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -152,7 +156,7 @@ let test_ucaps =
 
 let test_locality_flow =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/test_locality_flow.s" in [
+  let m = run_prog (test_path "pos/test_locality_flow.s") in [
     test_case
       "test_locality.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -160,7 +164,7 @@ let test_locality_flow =
 
 let test_directed_store =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/test_directed_store.s" in [
+  let m = run_prog (test_path "pos/test_directed_store.s") in [
     test_case
       "test_directed_store.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -168,7 +172,7 @@ let test_directed_store =
 
 let test_getotype =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/get_otype.s" in [
+  let m = run_prog (test_path "pos/get_otype.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -188,7 +192,7 @@ let test_getotype =
 
 let test_getwtype =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/get_wtype.s" in [
+  let m = run_prog (test_path "pos/get_wtype.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -208,7 +212,7 @@ let test_getwtype =
 
 let test_sealing =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/seal_unseal.s" in [
+  let m = run_prog (test_path "pos/seal_unseal.s") in [
     test_case
       "get_otype.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -216,7 +220,7 @@ let test_sealing =
 
 let test_sealing_counter =
   let open Alcotest in
-  let m = run_prog "../../../tests/test_files/pos/sealing_counter.s" in [
+  let m = run_prog (test_path "pos/sealing_counter.s") in [
     test_case
       "sealing_counter.s should end in halted state"
       `Quick (test_state Halted (fst m));
@@ -230,6 +234,7 @@ let () =
   run "Run" [
     "Pos", test_mov_test @ test_jmper
            @ test_promote @ test_ucaps @ test_locality_flow @ test_directed_store
-           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter;
+           @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+    ;
     "Neg", test_negatives;
   ]

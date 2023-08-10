@@ -18,15 +18,8 @@ no-warning:
 	dune build --profile release
 
 run:
-ifeq (,$(wildcard $(REG_FILE)))
-	$(error $(REG_FILE) does not exists.)
-endif
-
-ifeq (,$(wildcard $(S_FILE)))
-	$(error $(S_FILE) does not exists.)
-endif
 	./compile
-	./interactive --regfile $(REG_FILE) $(S_FILE)
+	./interactive --version default --regfile $(REG_FILE) $(S_FILE)
 
 compiler: get-extract no-warning run
 
@@ -36,3 +29,6 @@ clean:
 test:
 	# dune test
 	dune test --profile release
+install:
+	@test -s interactive || ln -s ./_build/default/src/interactive.exe interactive
+	@test -s compile || ln -s ./_build/default/src/compile.exe compile
