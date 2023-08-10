@@ -23,12 +23,11 @@ let init_reg_state (addr_max : Z.t) : reg_state =
   let max_stk_addr = addr_max in
 
   let l =
+    let seal_reg = (if !flags.sealing then 1 else 0) in
     let n =
-      32
-      - (if !flags.sealing then 1 else 0)
-      - (if !flags.stack then 1 else 0)
+      32 - seal_reg
     in
-    List.init n (fun i -> Reg (i+1), I Z.zero)
+    List.init n (fun i -> Reg (i+seal_reg), I Z.zero)
   in
 
   (* The PC register starts with full permission over the entire "heap" segment *)
