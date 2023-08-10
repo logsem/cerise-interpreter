@@ -583,10 +583,11 @@ let step (m: mchn): mchn option =
   | (Failed | Halted), _ -> None
 
 let rec step_n (m: mchn) n : mchn option =
-  if n > 0 then
-  (match (step m) with
-  | Some m' -> step_n m' (n-1)
-  | None -> None)
+  if n > 0
+  then
+    (match (step m) with
+     | Some m' -> step_n m' (n-1)
+     | None -> Some m)
   else Some m
 
 let rec run (m : mchn) : mchn =

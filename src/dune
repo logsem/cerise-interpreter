@@ -3,11 +3,6 @@
  (modules     interpreter)
  (libraries libinterp notty notty.unix containers))
 
-; (executable
-;  (name      interactive)
-;  (modules   interactive)
-;  (libraries libinterp notty notty.unix containers))
-
 (executable
  (name      awkward_ucaps)
  (modules   awkward_ucaps)
