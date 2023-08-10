@@ -20,4 +20,8 @@ let () =
   full_compile
     "asm-toys/reg_alloc_loaded.reg"
     "asm-toys/reg_alloc_loaded.s"
-    Extract.loaded_reg_alloc_example
+    Extract.loaded_reg_alloc_example;
+  full_compile
+    "asm-toys/incr_loaded.reg"
+    "asm-toys/incr_loaded.s"
+    Extract.loaded_incr_example
