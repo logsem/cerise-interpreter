@@ -11,4 +11,4 @@ test:
 	dune test
 
 install:
-	@test -s interactive || ln -s ./_build/default/src/interactive.exe interactive
+	@test -s interpreter || ln -s ./_build/default/src/interpreter.exe interpreter

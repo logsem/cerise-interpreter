@@ -1,10 +1,16 @@
-(* TODO only one cli command, with a -I flag for --interactive*)
 (* TODO test of the CLI *)
-(* TODO reuse the parser for the interpreter *)
-let parse_argument_interactive addr_max =
+
+type cli_mode = Interactive_mode | Interpreter_mode
+
+(** Initialize the Cerise version and returns
+   (mode, program_filename, register_filename, size_mem) *)
+let parse_arguments addr_max :
+  (cli_mode * string * string * Z.t)
+  =
   let usage_msg =
-    "interactive [--version version] [--locality locality] [--sealing | --no-sealing]  [--stack | --no-stack] [--uperms | --no-uperms] [--mem-size size] <file>"
+    "interpreter [-I] [--interactive] [--version version] [--locality locality] [--sealing | --no-sealing]  [--stack | --no-stack] [--uperms | --no-uperms] [--mem-size size] <file>"
   in
+  let interactive_option = ref false in
   let version_option = ref "default" in
   let stack_option = ref false in
   let no_stack_option = ref false in
@@ -20,6 +26,8 @@ let parse_argument_interactive addr_max =
   let anon_fun filename = input_files := filename :: !input_files in
   let speclist =
     [
+      ("--interactive", Arg.Set interactive_option, "Interactive mode of the interpreter");
+      ("-I", Arg.Set interactive_option, "Interactive mode of the interpreter");
       ("--version", Arg.Set_string version_option, "Version Cerise: default, vanilla, ucerise, mcerise, seal_cerise, custom");
       ("--sealing", Arg.Set sealing_option, "Enable the seals");
       ("--no-sealing", Arg.Set no_sealing_option, "Disable the seals");
@@ -32,6 +40,8 @@ let parse_argument_interactive addr_max =
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
     ] in
   Arg.parse speclist anon_fun usage_msg;
+
+  let mode = if !interactive_option then Interactive_mode else Interpreter_mode in
 
   (* Construct the configuration *)
   let _ =
@@ -95,4 +105,4 @@ let parse_argument_interactive addr_max =
     else s)
   in
 
-  (filename_prog, !regfile_name_option, size_mem)
+  (mode, filename_prog, !regfile_name_option, size_mem)

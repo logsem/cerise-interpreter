@@ -1,12 +1,12 @@
 (executable
  (name        interpreter)
  (modules     interpreter)
- (libraries   libinterp))
-
-(executable
- (name      interactive)
- (modules   interactive)
  (libraries libinterp notty notty.unix containers))
+
+; (executable
+;  (name      interactive)
+;  (modules   interactive)
+;  (libraries libinterp notty notty.unix containers))
 
 (executable
  (name      awkward_ucaps)
