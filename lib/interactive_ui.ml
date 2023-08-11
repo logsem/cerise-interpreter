@@ -388,8 +388,8 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         else false
       in
       let rec loop
-          ?(update_prog = Program_panel.follow_addr)
-          ?(update_stk = Program_panel.follow_addr)
+          ?(update_prog = Program_panel.id)
+          ?(update_stk = Program_panel.id)
           show_stack
           m
           history
@@ -504,6 +504,12 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             then loop ~update_stk:upd_fnt show_stack m history
             else loop ~update_prog:upd_fnt show_stack m history
 
+          | `Key (`Tab, l) ->
+            begin
+              match l with
+              | [`Shift] -> loop ~update_stk:Program_panel.follow_addr show_stack m history
+              | _ -> loop ~update_prog:Program_panel.follow_addr show_stack m history
+            end
           | `Key (`ASCII 's', _) ->
             loop ~update_prog:Program_panel.id
               (toggle_show_stack show_stack) m history
@@ -511,16 +517,21 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
           | `Key (`ASCII ' ', _) ->
             begin
             match Machine.step m with
-              | Some m' -> loop show_stack m' (m::history)
+              | Some m' ->
+                loop ~update_prog:Program_panel.follow_addr ~update_stk:Program_panel.follow_addr show_stack m' (m::history)
               | None -> (* XX *) loop show_stack m history
             end
           | `Key (`ASCII 'n', _) ->
             begin
               match Machine.step_n m 10 with
-              | Some m' when m != m'-> loop show_stack m' (m::history)
+              | Some m' when m != m'
+                -> loop ~update_prog:Program_panel.follow_addr ~update_stk:Program_panel.follow_addr show_stack m' (m::history)
               | _ -> (* XX *) loop show_stack m history
             end
 
+          (* TODO it would be great if backspace unrolls one "step", and
+             not the last "n-steps": it means that step_n actually returns a list
+             of machine_state, not only the last one *)
           | `Key (`Backspace, _) ->
             begin
               match history with
