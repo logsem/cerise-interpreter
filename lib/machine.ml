@@ -16,11 +16,14 @@ type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state } (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
 
-let init_reg_state (addr_max : Z.t) : reg_state =
+let init_reg_state (stk_addr : Z.t) : reg_state =
   let start_heap_addr = ~$0 in
-  let max_heap_addr = if !flags.stack then Z.(addr_max / ~$2) else addr_max in
-  let start_stk_addr =  max_heap_addr in
-  let max_stk_addr = addr_max in
+  let max_heap_addr =
+    if !flags.stack
+    then Infinite_z.Int stk_addr
+    else !Parameters.flags.max_addr
+  in
+  let max_stk_addr = !Parameters.flags.max_addr in
 
   let l =
     let seal_reg = (if !flags.sealing then 1 else 0) in
@@ -38,13 +41,13 @@ let init_reg_state (addr_max : Z.t) : reg_state =
     then
       let stk_locality = !flags.locality in
       let stk_perm = if !flags.unitialized then URWLX else RWLX in
-      [(STK, Sealable (Cap (stk_perm, stk_locality, start_stk_addr, max_stk_addr, start_stk_addr)))]
+      [(STK, Sealable (Cap (stk_perm, stk_locality, stk_addr, max_stk_addr, stk_addr)))]
     else []
   in
 
   let pc_sealing =
     if !flags.sealing
-    then [(Reg 0, Sealable (SealRange ((true,true), Global, start_heap_addr, max_heap_addr, start_heap_addr)))]
+    then [(Reg 0, Sealable (SealRange ((true,true), Global, start_heap_addr, stk_addr, start_heap_addr)))]
     else []
   in
   (* The stk register starts with full permission over the entire "stack" segment *)
@@ -57,10 +60,11 @@ let (@!) x y = get_reg x y
 let upd_reg (r : regname) (w : word) ({reg ; mem} : exec_conf) : exec_conf =
   {reg = RegMap.add r w reg ; mem}
 
-let init_mem_state (addr_start: Z.t) (addr_max : Z.t) (prog : t) : mem_state =
+let init_mem_state (addr_start: Z.t) (prog : t) : mem_state =
   let zeroed_mem =
-    (* NB: addr_max is not addressable *)
     let rec loop (i : Z.t) m =
+      let addr_max = Parameters.get_max_addr () in
+      (* NB: addr_max is not addressable *)
       if i >= addr_max then m else loop Z.(i+ ~$1) (MemMap.add i (I ~$0) m) in
     loop Z.zero MemMap.empty
   in
@@ -122,7 +126,7 @@ let fetch_decode (conf : exec_conf) : machine_op option =
 let is_pc_valid (conf : exec_conf) : bool =
   match PC @! conf with
   | Sealable (Cap ((RX|RWX|RWLX), _, b, e, a)) -> begin
-      if b <= a && a < e
+      if b <= a && (Infinite_z.z_lt a e)
       then Option.is_some @@ a @? conf
       else false
     end
@@ -227,10 +231,10 @@ let can_read (p : perm) : bool =
   | RO|RX|RW|RWX|RWL|RWLX-> true
   | _ -> false
 
-let can_read_upto (w : word) =
+let can_read_upto (w : word) : Infinite_z.t =
   match w with
-  | Sealable (Cap (p,_,_,e,a)) -> if is_uperm p then Z.min a e else e
-  | _ -> Z.zero
+  | Sealable (Cap (p,_,_,e,a)) -> if is_uperm p then Infinite_z.z_min a e else e
+  | _ -> Int Z.zero
 
 let get_wtype (w : word) : wtype =
   (match w with
@@ -269,7 +273,13 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, _, b, e, a)) ->
               if can_read p then
                 match a @? conf with
-                | Some w when (b <= a && a < e) -> !> (upd_reg r1 w conf)
+                | Some w when (b <= a && Infinite_z.z_lt a e) -> !> (upd_reg r1 w conf)
+                 (* case where we actually load a word outside of the already *)
+                 (* mapped memory, in case of infinite memory*)
+                | None   when (b <= a
+                               && Infinite_z.z_lt a e
+                               && !Parameters.flags.max_addr = Inf)
+                  -> !> (upd_reg r1 (I Z.zero) conf)
                 | _ -> fail_state
               else fail_state
             | _ -> fail_state
@@ -277,7 +287,7 @@ let exec_single (conf : exec_conf) : mchn =
         | Store (r, c) -> begin
             let w = get_word conf c in
             match r @! conf with
-            | Sealable (Cap (p, _, b, e, a)) when (b <= a && a < e) ->
+            | Sealable (Cap (p, _, b, e, a)) when (b <= a && Infinite_z.z_lt a e) ->
               if can_write p then
                 (match w with
                  (* We consider that a Directed sealing capability is similar to Local *)
@@ -288,7 +298,7 @@ let exec_single (conf : exec_conf) : mchn =
                    else fail_state
                  | Sealed ( _, sb) | Sealable sb
                    when (get_locality_sealable sb = Directed && is_cap sb) ->
-                   if (is_WLperm p && (can_read_upto w <= a))
+                   if (is_WLperm p && Infinite_z.leq_z (can_read_upto w) a)
                    then !> (upd_mem a w conf)
                    else fail_state
                  | _ -> !> (upd_mem a w conf))
@@ -378,9 +388,9 @@ let exec_single (conf : exec_conf) : mchn =
                 let w2 = get_word conf c2 in
                 match w1, w2 with
                 | I z1, I z2 ->
-                  if b <= z1 && Z.(~$0 <= z2) && Z.(~$0 <= e) && p <> E
+                  if b <= z1 && Z.(~$0 <= z2) && (Infinite_z.z_leq Z.zero e) && p <> E
                   then
-                    let w = Sealable (Cap (p, g, z1, z2, a)) in
+                    let w = Sealable (Cap (p, g, z1, Int z2, a)) in
                     !> (upd_reg r w conf)
                   else fail_state
                 | _ -> fail_state
@@ -476,8 +486,10 @@ let exec_single (conf : exec_conf) : mchn =
           end
         | GetE (r1, r2) -> begin
             match r2 @! conf with
-            | Sealable (SealRange (_, _, _, e, _))
-            | Sealable (Cap (_, _, _, e, _)) -> !> (upd_reg r1 (I e) conf)
+            | Sealable (SealRange (_, _, _, e, _)) -> !> (upd_reg r1 (I e) conf)
+            | Sealable (Cap (_, _, _, e, _)) ->
+              let e' : Z.t = match e with | Inf -> Z.minus_one | Int z -> z in
+              !> (upd_reg r1 (I e') conf)
             | _ -> fail_state
           end
         | GetA (r1, r2) -> begin
@@ -527,7 +539,7 @@ let exec_single (conf : exec_conf) : mchn =
                    | I off when
                        (b <= a + off) &&
                        (a + off < a) &&
-                       (a <= e)
+                       (Infinite_z.z_leq a e)
                      -> (match (a+ off) @? conf with
                          | Some w -> !> (upd_reg r1 w conf)
                          | _ -> fail_state)
@@ -546,12 +558,14 @@ let exec_single (conf : exec_conf) : mchn =
                  | Sealable (Cap (p, g, b, e, a)) when
                      (b <= a + off) &&
                      (a + off <= a) &&
-                     (a <= e) ->
+                     (Infinite_z.z_leq a e)
+                   ->
                    if is_uperm p then
                      (match w with
                       | Sealable (Cap (_, g,_,_,_)) when g != Global && (not (is_WLperm p)) ->
                         fail_state
-                      | Sealable (Cap (_, Directed,_,_,_)) when (not (can_read_upto w <= a + off)) ->
+                      | Sealable (Cap (_, Directed,_,_,_)) when
+                          (not (Infinite_z.leq_z (can_read_upto w) (a + off))) ->
                         fail_state
                       | _ ->
                         let conf' =
@@ -570,7 +584,7 @@ let exec_single (conf : exec_conf) : mchn =
             (match p with
              | URW | URWL | URWX | URWLX ->
                let p' = promote_uperm p in
-               let e' = min e a in
+               let e' = Infinite_z.min_z e a in
                !> (upd_reg r (Sealable (Cap (p',g,b,e',a))) conf)
              | _ -> fail_state)
           | _ -> fail_state

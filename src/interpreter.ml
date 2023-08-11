@@ -1,9 +1,8 @@
 open Libinterp
 
 let () =
-  let addr_max = (Int32.to_int Int32.max_int)/4096 in
-  let (mode, filename_prog, regfile_name, size_mem) =
-    Cli_parser.parse_arguments addr_max
+  let (mode, filename_prog, regfile_name) =
+    Cli_parser.parse_arguments ()
   in
 
   (* Parse initial memory (program) *)
@@ -16,16 +15,21 @@ let () =
   in
 
   let stk_addr =
-    Z.(if !Parameters.flags.stack then (size_mem/ ~$2) else ~$0)
+    Z.(if !Parameters.flags.stack
+       then
+         match !Parameters.flags.max_addr with
+         | Int z -> (z/ ~$2)
+         | Inf -> (Parameters.max_addr/ ~$2)
+       else ~$0)
   in
 
   (* Parse initial register file *)
   let regfile =
-    let init_regfile = (Machine.init_reg_state size_mem) in
+    let init_regfile = (Machine.init_reg_state stk_addr) in
     if regfile_name = ""
     then init_regfile
     else
-      (match Program.parse_regfile regfile_name size_mem stk_addr with
+      (match Program.parse_regfile regfile_name stk_addr with
        | Ok regs ->
          (Machine.RegMap.fold
             (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
@@ -33,11 +37,11 @@ let () =
          Printf.eprintf "Regfile parse error: %s\n" msg;
          exit 1)
   in
-  let m_init = Program.init_machine prog (Some size_mem) regfile in
+  let m_init = Program.init_machine prog regfile in
 
   match mode with
   | Cli_parser.Interactive_mode ->
-    let module Cfg = struct let addr_max : Z.t = size_mem end in
+    let module Cfg = struct let addr_max : Z.t = Parameters.get_max_addr () end in
     let module Ui = Interactive_ui.MkUi (Cfg) in
     let prog_panel_start = ref Z.zero in
     let stk_panel_start = ref stk_addr in

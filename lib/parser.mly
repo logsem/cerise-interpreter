@@ -2,6 +2,7 @@
 %token PC STK
 %token <int> REG
 %token <int> INT
+%token INF
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
@@ -119,8 +120,9 @@ expr:
   | LPAREN; e = expr; RPAREN { e }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
-  | MINUS; e = expr %prec UMINUS { SubOp ((IntLit 0),e) }
-  | i = INT { IntLit i }
+  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Infinite_z.of_int 0),e) }
+  | i = INT { IntLit (Infinite_z.of_int i) }
+  | INF { IntLit (Infinite_z.Inf) }
   | lbl = LABEL { Label lbl }
 
 %%
