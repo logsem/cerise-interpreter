@@ -62,9 +62,13 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let width =
       2 * Addr.width + 1
 
-    let ui ?(attr = A.empty) (b, e) =
+    let ui ?(attr = A.empty) ((b, e) : Z.t * Infinite_z.t) =
       let bs = Addr.to_hex b in
-      let es = Addr.to_hex e in
+      let es =
+        match e with
+        | Inf -> "∞"
+        | Int e -> Addr.to_hex e
+      in
       (* determine whether we should use the XXXX-XXXX or XX[XX-XX] format *)
       let rec find_prefix i =
         if i = String.length bs then
@@ -78,7 +82,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       I.hsnap ~align:`Left width @@
       match find_prefix 0 with
       | None ->
-        Addr.ui ~attr b <|> I.string attr "-" <|> Addr.ui ~attr e
+        Addr.ui ~attr b <|> I.string attr "-" <|> (I.string attr es)
       | Some i ->
         let prefix = String.sub bs 0 i in
         let bs = String.sub bs i (Addr.width - i) in
@@ -152,7 +156,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
                  else (I.string A.empty " " <|> Locality.ui ~attr g)
                 )
             <|> I.string A.empty " "
-            <|> Addr_range.ui ~attr (b, e))
+            <|> Addr_range.ui ~attr (b, Int e))
          </>
          I.hsnap ~align:s_right width (Addr.ui ~attr a))
   end
@@ -237,9 +241,14 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
     let is_in_r_range r a =
       match r with
       | Ast.Sealable (Cap (_, _, b, e, _)) ->
-         if a >= b && a < e then (
+         if a >= b && (Infinite_z.z_lt a e)
+         then (
            if a = b then `AtStart
-           else if a = Z.(e- ~$1) then `AtLast
+           else if
+             (match e with
+              | Inf -> false
+              | Int e -> a = Z.(e- ~$1))
+           then `AtLast
            else `InRange
          ) else `No
       | _ -> `No
@@ -312,21 +321,25 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
         Z.(
         if r <= start_addr && start_addr > ~$0 then
           r - ~$off
-        else if r >= start_addr + ~$height - ~$1 && start_addr + ~$height < Cfg.addr_max then
-          r - ~$off
+        else if r >= start_addr + ~$height - ~$1
+             && ( !Parameters.flags.max_addr = Inf || start_addr + ~$height < Cfg.addr_max)
+        then r - ~$off
         else
           start_addr)
       | _ -> start_addr
     let next_page n (_ : Ast.word) height start_addr off  =
       Z.(let new_addr = start_addr + (~$n * ~$height) - ~$off in
-      if new_addr > Cfg.addr_max then start_addr else new_addr)
+         if (!Parameters.flags.max_addr = Inf)
+         then new_addr
+         else if (new_addr > Cfg.addr_max) then start_addr else new_addr)
     let previous_page n (_ : Ast.word) height start_addr off  =
       Z.(let new_addr = start_addr - (~$n * ~$height) + ~$off in
       if new_addr < ~$0 then ~$0 else new_addr)
     let next_addr (_ : Ast.word) (_:int) start_addr (_:int) =
       Z.(let new_addr = start_addr + ~$1 in
-      if new_addr > Cfg.addr_max
-      then start_addr else new_addr)
+         if (!Parameters.flags.max_addr = Inf)
+         then new_addr
+         else if (new_addr > Cfg.addr_max) then start_addr else new_addr)
     let previous_addr (_ : Ast.word) (_:int) start_addr (_:int) =
       Z.(let new_addr = start_addr - ~$1 in
       if new_addr < ~$0 then ~$0 else new_addr)
@@ -347,8 +360,15 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
       let addr_show (start_addr : Z.t) =
         let start_addr_int = Z.to_int start_addr in
         CCList.((start_addr_int --^ (start_addr_int+height)))
-        |> List.filter (fun a -> a >= 0 && a < (Z.to_int Cfg.addr_max))
-        |> List.map (fun a -> Z.( ~$a, Machine.MemMap.find ~$a mem)) in
+        |> List.filter (fun a ->
+            a >= 0 &&
+            ( !Parameters.flags.max_addr = Inf || a < (Z.to_int Cfg.addr_max)))
+        |> List.map (fun a ->
+            Z.( ~$a,
+                match Machine.MemMap.find_opt ~$a mem with
+                | Some w -> w
+                | None -> Ast.I Z.zero))
+      in
 
       let start_prog = upd_prog pc height start_prog 2 in
       let start_stk = upd_stk stk height start_stk 2 in

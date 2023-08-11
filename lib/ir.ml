@@ -1,10 +1,11 @@
 (* Type definitions for the syntax AST *)
 
 exception UnknownLabelException of string
+exception ExprException of string
 
 type regname = PC | STK | Reg of int
 type expr
-  = IntLit of int
+  = IntLit of Infinite_z.t
   | Label of string
   | AddOp of expr * expr
   | SubOp of expr * expr
@@ -69,16 +70,16 @@ let rec compute_env (i : int) (prog : t) (envr : env) : env =
   | (Lbl s) :: p -> compute_env (i+1) p ((s, i - (List.length envr)) :: envr)
   | _ :: p -> compute_env (i+1) p envr
 
-let rec eval_expr (envr : env) (e : expr) : Z.t =
+let rec eval_expr (envr : env) (e : expr) : Infinite_z.t =
   match e with
-  | IntLit i -> (Z.of_int i)
+  | IntLit i -> i
   | Label s -> begin
       match List.find_opt (fun p -> (fst p) = s) envr with
-      | Some (_,i) -> (Z.of_int i)
+      | Some (_,i) -> Int (Z.of_int i)
       | None -> raise (UnknownLabelException s)
     end
-  | AddOp (e1, e2) -> Z.((eval_expr envr e1) + (eval_expr envr e2))
-  | SubOp (e1, e2) -> Z.((eval_expr envr e1) - (eval_expr envr e2))
+  | AddOp (e1, e2) -> Infinite_z.((eval_expr envr e1) + (eval_expr envr e2))
+  | SubOp (e1, e2) -> Infinite_z.((eval_expr envr e1) - (eval_expr envr e2))
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -151,42 +152,48 @@ let check_ir_const (c : const_encoded) =
   | Wtype _
   | ConstExpr _ -> ()
 
+let eval_to_z (envr : env) (e : expr) (except_str : string) =
+  match (eval_expr envr e) with
+  | Int z -> z
+  | Inf -> raise @@ ExprException except_str
+
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | Const c ->
     check_ir_const c;
     Ast.Const
-    (match c with
-        | ConstExpr e -> (eval_expr envr e)
-        | Locality l -> Encode.encode_locality (translate_locality l)
-        | Perm p -> Encode.encode_perm (translate_perm p)
-        | SealPerm sp -> Encode.encode_seal_perm sp
-        | Wtype wt -> Encode.encode_wtype (translate_wt wt)
-        | PermLoc (p,l) -> Encode.encode_perm_loc_pair (translate_perm p) (translate_locality l)
-        | SealPermLoc (p,l) -> Encode.encode_seal_perm_loc_pair p (translate_locality l)
-    )
+      (match c with
+       | ConstExpr e -> eval_to_z envr e "Constants expressions cannot be ∞"
+       | Locality l -> Encode.encode_locality (translate_locality l)
+       | Perm p -> Encode.encode_perm (translate_perm p)
+       | SealPerm sp -> Encode.encode_seal_perm sp
+       | Wtype wt -> Encode.encode_wtype (translate_wt wt)
+       | PermLoc (p,l) -> Encode.encode_perm_loc_pair (translate_perm p) (translate_locality l)
+       | SealPermLoc (p,l) -> Encode.encode_seal_perm_loc_pair p (translate_locality l)
+      )
 
 let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
   match s with
   | Cap (p, l, b, e, a) ->
-    Ast.Cap ((translate_perm p),
-             (translate_locality l),
-             (eval_expr envr b),
-             (eval_expr envr e),
-             (eval_expr envr a))
+    let b' = eval_to_z envr b "Lower capability bound cannot be ∞" in
+    let a' = eval_to_z envr a "Current capability address cannot be ∞" in
+    Ast.Cap ((translate_perm p), (translate_locality l), b', (eval_expr envr e), a')
   | SealRange (p, l, b, e, a) ->
-    Ast.SealRange (p,
-                   (translate_locality l),
-                   (eval_expr envr b),
-                   (eval_expr envr e),
-                   (eval_expr envr a))
+    let b' = eval_to_z envr b "Lower otype bound cannot be ∞" in
+    let e' = eval_to_z envr e "Upper otype bound cannot be ∞" in
+    let a' = eval_to_z envr a "Current sealing otype cannot be ∞" in
+    Ast.SealRange (p, (translate_locality l), b', e', a')
 
 let translate_word (envr : env) (w : word) : Ast.statement =
   match w with
-  | I e -> Ast.Word (Ast.I (eval_expr envr e))
+  | I e ->
+    let z' = eval_to_z envr e "Integer machine word cannot be ∞" in
+    Ast.Word (Ast.I z')
   | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable envr sb))
-  | Sealed (o,sb) -> Ast.Word (Ast.Sealed (eval_expr envr o, (translate_sealable envr sb)))
+  | Sealed (o,sb) ->
+    let ot = eval_to_z envr o "OType of sealed word cannot be ∞" in
+    Ast.Word (Ast.Sealed (ot, (translate_sealable envr sb)))
 
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with

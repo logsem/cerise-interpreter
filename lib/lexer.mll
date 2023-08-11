@@ -24,6 +24,7 @@ rule token = parse
 | ';' { comment lexbuf }
 | ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
                                   with Failure _ -> error lexbuf ("Invalid integer '" ^ i ^ "'.")}
+| ("Inf" | "inf" | "∞") { INF }
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
