@@ -187,8 +187,7 @@ let encode_labeled_instr (i : labeled_instr) : Big_int_Z.big_int =
   | BInstr i' ->
     (Big_int_Z.big_int_of_int (0x1)) ^! Encode.encode_machine_op (translate_instr i')
   | Label n -> (Big_int_Z.big_int_of_int (0x2)) ^! (encode_label_name n)
-  | Br_Jmp (n,r) -> (Big_int_Z.big_int_of_int (0x3))
-                    ^! ( Encode.encode_int_int (encode_label_name n) r)
+  | Br_Jmp n -> (Big_int_Z.big_int_of_int (0x3)) ^! (encode_label_name n)
   | Br_Jnz (n,r) -> (Big_int_Z.big_int_of_int (0x4))
                     ^! ( Encode.encode_int_int (encode_label_name n) r)
 
@@ -220,9 +219,7 @@ let decode_labeled_instr (z : Big_int_Z.big_int) : labeled_instr =
     else
 
     if opc = (Big_int_Z.big_int_of_int 0x3)
-    then
-    let (l_enc, r) = Encode.decode_int payload in
-      Br_Jmp (decode_label_name l_enc, r)
+    then Br_Jmp (decode_label_name payload)
     else
 
     if opc = (Big_int_Z.big_int_of_int 0x4)

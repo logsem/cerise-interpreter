@@ -3351,7 +3351,7 @@ let wt_int =
 type labeled_instr =
 | Label of Big_int_Z.big_int list
 | BInstr of cerise_instruction
-| Br_Jmp of Big_int_Z.big_int list * Big_int_Z.big_int
+| Br_Jmp of Big_int_Z.big_int list
 | Br_Jnz of Big_int_Z.big_int list * Big_int_Z.big_int
 
 (** val instrs : cerise_instruction list -> labeled_instr list **)
@@ -3364,10 +3364,9 @@ type labeled_function = labeled_instr list
 (** val max_reg_instr0 : labeled_instr -> Big_int_Z.big_int **)
 
 let max_reg_instr0 = function
-| Label _ -> Big_int_Z.zero_big_int
 | BInstr i' -> max_reg_instr i'
-| Br_Jmp (_, r0) -> r0
 | Br_Jnz (_, r0) -> r0
+| _ -> Big_int_Z.zero_big_int
 
 (** val max_reg : labeled_instr list -> Big_int_Z.big_int **)
 
@@ -3544,11 +3543,15 @@ let call_instrs_prologue h rargs rtmp =
       ((StoreU (r_stk, (Inl (Z.opp offset_pc)), (Inr rtmp))) :: []))
 
 (** val call_instrs :
-    machineParameters -> regName -> regName list -> regName -> regName ->
-    regName -> regName -> regName -> cerise_instruction list **)
+    machineParameters -> regName -> regName list -> cerise_instruction list **)
 
-let call_instrs h r0 rargs tmp0 tmp1 tmp2 tmp3 tmp4 =
-  let len_act = Z.of_nat (length (activation_record h tmp0)) in
+let call_instrs h r0 rargs =
+  let len_act =
+    Z.of_nat
+      (length
+        (activation_record h (R (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int))))
+  in
   let len_args = Z.of_nat (length rargs) in
   let offset_ret_val =
     Z.add
@@ -3556,24 +3559,82 @@ let call_instrs h r0 rargs tmp0 tmp1 tmp2 tmp3 tmp4 =
         (Z.of_nat (length push_env_instrs))) (Big_int_Z.mult_int_big_int 2
       Big_int_Z.unit_big_int)
   in
-  app (call_instrs_prologue h rargs tmp0)
+  app
+    (call_instrs_prologue h rargs (R (Big_int_Z.succ_big_int
+      Big_int_Z.zero_big_int)))
     (app (push_instrs (map (fun x -> Inr x) (rev1 rargs)))
-      (app ((Mov (tmp4, (Inr r_stk))) :: ((GetA (tmp1, tmp4)) :: ((Sub (tmp1,
-        (Inr tmp1), (Inl (Z.of_nat (length rargs))))) :: ((GetA (tmp2,
-        tmp4)) :: ((Subseg (tmp4, (Inr tmp1), (Inr tmp2))) :: [])))))
-        (app ((Mov (tmp0, (Inr r_stk))) :: ((Lea (tmp0, (Inl
-          (Z.opp offset_ret_val)))) :: ((GetA (tmp1, tmp0)) :: ((GetA (tmp2,
-          tmp0)) :: ((Add (tmp2, (Inr tmp2), (Inl
-          Big_int_Z.unit_big_int))) :: ((Subseg (tmp0, (Inr tmp1), (Inr
-          tmp2))) :: []))))))
-          (app ((Mov (tmp1, (Inr r_stk))) :: ((PromoteU tmp1) :: ((Lea (tmp1,
-            (Inl (Z.opp (Z.add len_act len_args))))) :: ((Restrict (tmp1,
-            (Inl (h.encodePermPair (E, Directed))))) :: []))))
-            (app ((GetA (tmp3, r_stk)) :: ((GetE (tmp2, r_stk)) :: ((Subseg
-              (r_stk, (Inr tmp3), (Inr tmp2))) :: [])))
-              (app (push_instrs ((Inr tmp1) :: []))
-                (app (push_instrs ((Inr tmp0) :: []))
-                  (app (push_instrs ((Inr tmp4) :: []))
+      (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))), (Inr
+        r_stk))) :: ((GetA ((R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (R
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))) :: ((Sub ((R
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int))), (Inr (R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))), (Inl
+        (Z.of_nat (length rargs))))) :: ((GetA ((R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int)))), (R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int)))))))) :: ((Subseg ((R
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))), (Inr (R
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int))))))) :: [])))))
+        (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr
+          r_stk))) :: ((Lea ((R (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)), (Inl (Z.opp offset_ret_val)))) :: ((GetA
+          ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int))), (R (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)))) :: ((GetA ((R (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)))), (R (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)))) :: ((Add ((R (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)))), (Inr (R (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int))))), (Inl
+          Big_int_Z.unit_big_int))) :: ((Subseg ((R (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)), (Inr (R (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))), (Inr (R
+          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))) :: []))))))
+          (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int))), (Inr r_stk))) :: ((PromoteU (R
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int)))) :: ((Lea ((R (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inl
+            (Z.opp (Z.add len_act len_args))))) :: ((Restrict ((R
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int))), (Inl
+            (h.encodePermPair (E, Directed))))) :: []))))
+            (app ((GetA ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              Big_int_Z.zero_big_int))))), r_stk)) :: ((GetE ((R
+              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))),
+              r_stk)) :: ((Subseg (r_stk, (Inr (R (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))), (Inr (R
+              (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))) :: [])))
+              (app
+                (push_instrs ((Inr (R (Big_int_Z.succ_big_int
+                  (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: []))
+                (app
+                  (push_instrs ((Inr (R (Big_int_Z.succ_big_int
+                    Big_int_Z.zero_big_int))) :: []))
+                  (app
+                    (push_instrs ((Inr (R (Big_int_Z.succ_big_int
+                      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                      (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                      Big_int_Z.zero_big_int))))))) :: []))
                     (app
                       (rclear_instrs
                         (list_difference reg_eq_dec all_registers
@@ -4525,30 +4586,12 @@ let base_reg =
     Big_int_Z.zero_big_int)
 
 (** val call_template :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    labeled_instr list -> regName list -> result_type -> result_type ->
-    compilation_state -> (labeled_instr list * compilation_state) option **)
+    machineParameters -> regName -> regName -> labeled_instr list -> regName
+    list -> result_type -> result_type -> compilation_state -> (labeled_instr
+    list * compilation_state) option **)
 
-let call_template h reg_fun res prologue args _ ret_type new_state0 =
-  let tmp = fun i -> add r_tmp i in
-  let call =
-    instrs
-      (call_instrs h (R reg_fun) args (R
-        (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int)))) (R
-        (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) (R
-        (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int)))))) (R
-        (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))) (R
-        (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          Big_int_Z.zero_big_int)))))))))
-  in
+let call_template h r_fun r_res prologue args _ ret_type new_state0 =
+  let call = instrs (call_instrs h r_fun args) in
   let epilogue1 = (BInstr (Lea (r_stk0, (Inl (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int))))) :: []
   in
@@ -4564,25 +4607,10 @@ let call_template h reg_fun res prologue args _ ret_type new_state0 =
         | [] ->
           Some
             (Obj.magic instrs
-              (app ((LoadU ((R res), r_stk0, (Inl (Big_int_Z.minus_big_int
+              (app ((LoadU (r_res, r_stk0, (Inl (Big_int_Z.minus_big_int
                 Big_int_Z.unit_big_int)))) :: ((Lea (r_stk0, (Inl
                 (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: []))
-                (app ((Mov ((R
-                  (tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))),
-                  (r (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: ((Mov
-                  ((R
-                  (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                    Big_int_Z.zero_big_int)))),
-                  (r (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                    Big_int_Z.zero_big_int))))) :: []))
-                  (app (dyn_typecheck_instrs h (R res) ret_type0) ((Mov ((R
-                    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-                    (r (tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((Mov
-                    ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                    Big_int_Z.zero_big_int))),
-                    (r
-                      (tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                        Big_int_Z.zero_big_int)))))) :: []))))))
+                (dyn_typecheck_instrs h r_res ret_type0)))
         | _ :: _ -> None))
 
 (** val local_offset : Big_int_Z.big_int **)
@@ -4650,8 +4678,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
       let lbl_v1 = generate_label s1 Big_int_Z.zero_big_int in
       let lbl_v2 = generate_label s2 Big_int_Z.zero_big_int in
       Some (((Br_Jnz (lbl_v1, c)) :: ((BInstr (Mov ((R res), (Inr (R
-      v2))))) :: ((Br_Jmp (lbl_v2, r_tmp)) :: ((Label lbl_v1) :: ((BInstr
-      (Mov ((R res), (Inr (R v1))))) :: ((Label lbl_v2) :: [])))))),
+      v2))))) :: ((Br_Jmp lbl_v2) :: ((Label lbl_v1) :: ((BInstr (Mov ((R
+      res), (Inr (R v1))))) :: ((Label lbl_v2) :: [])))))),
       (sub_reg new_state0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         Big_int_Z.zero_big_int))))
     | I_block (rt, body) ->
@@ -4716,9 +4744,10 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
         mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat0 ->
           let (bodyT, end_state) = pat0 in
           mbind (Obj.magic (fun _ _ -> option_bind)) (fun new_state0 -> Some
-            ((app ((Br_Jnz (lbl_true, nreg)) :: [])
+            ((app ((Br_Jnz (lbl_true,
+               (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: [])
                (app bodyF
-                 (app ((Br_Jmp (lbl_end, nreg)) :: ((Label lbl_true) :: []))
+                 (app ((Br_Jmp lbl_end) :: ((Label lbl_true) :: []))
                    (app bodyT ((Label lbl_end) :: []))))), new_state0))
             (Obj.magic leave_scope end_state))
           (foldl (fun acc i0 ->
@@ -4742,7 +4771,7 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
       mbind (Obj.magic (fun _ _ -> option_bind)) (fun scopen ->
         let rt = scopen.scope_ret_type in
         (match rt with
-         | [] -> Some (((Br_Jmp (lbl, nreg)) :: []), s)
+         | [] -> Some (((Br_Jmp lbl) :: []), s)
          | _ :: l ->
            (match l with
             | [] ->
@@ -4750,10 +4779,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
                 sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
               in
               let base0 = scopen.scope_reg_base in
-              let code = (BInstr (Mov ((R r_tmp), (Inr (R
-                base0))))) :: ((BInstr (Mov ((R base0), (Inr (R
-                rval))))) :: ((Br_Jmp (lbl, nreg)) :: ((BInstr (Mov ((R
-                base0), (Inr (R r_tmp))))) :: [])))
+              let code = (BInstr (Mov ((R base0), (Inr (R
+                rval))))) :: ((Br_Jmp lbl) :: [])
               in
               Some (code, s)
             | _ :: _ -> None))) (Obj.magic getn_scope s.current_scope n0)
@@ -4763,7 +4790,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
         let rt = scopen.scope_ret_type in
         (match rt with
          | [] ->
-           Some (((Br_Jnz (lbl, nreg)) :: []),
+           Some (((Br_Jnz (lbl,
+             (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: []),
              (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
          | _ :: l ->
            (match l with
@@ -4775,8 +4803,9 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
               let base0 = scopen.scope_reg_base in
               let code = (BInstr (Mov ((R r_tmp), (Inr (R
                 base0))))) :: ((BInstr (Mov ((R base0), (Inr (R
-                rval))))) :: ((Br_Jnz (lbl, nreg)) :: ((BInstr (Mov ((R
-                base0), (Inr (R r_tmp))))) :: [])))
+                rval))))) :: ((Br_Jnz (lbl,
+                (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: ((BInstr
+                (Mov ((R base0), (Inr (R r_tmp))))) :: [])))
               in
               Some (code,
               (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
@@ -4809,7 +4838,10 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
         let Tf (arg_type, ret_type) = pat in
         let len_arg_type = length arg_type in
         let tmp_fun =
-          add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+          add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int))))))
         in
         let res = sub nreg len_arg_type in
         let args' = seq (sub nreg len_arg_type) len_arg_type in
@@ -4821,8 +4853,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
             tmp_fun))) :: [])))
         in
         let new_state0 = sub_reg (add_reg s (length ret_type)) len_arg_type in
-        call_template h tmp_fun res prologue args arg_type ret_type new_state0)
-        (Obj.magic get_function_type module0 i0)
+        call_template h (R tmp_fun) (R res) prologue args arg_type ret_type
+          new_state0) (Obj.magic get_function_type module0 i0)
     | I_call_indirect i0 ->
       mbind (Obj.magic (fun _ _ -> option_bind)) (fun pat ->
         let Tf (arg_type, ret_type) = pat in
@@ -4830,7 +4862,10 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
         let nfun = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
         let res = sub nfun len_arg_type in
         let tmp_fun =
-          add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+          add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int))))))
         in
         let args' = seq (sub nfun len_arg_type) len_arg_type in
         let args = map (fun x -> R x) args' in
@@ -4844,8 +4879,8 @@ let rec compile_basic_instr h module0 f_typeidx f_locals i s =
           sub_reg (add_reg s (length ret_type))
             (add len_arg_type (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
         in
-        call_template h tmp_fun res prologue args arg_type ret_type new_state0)
-        (Obj.magic get_type module0 i0)
+        call_template h (R tmp_fun) (R res) prologue args arg_type ret_type
+          new_state0) (Obj.magic get_type module0 i0)
     | I_get_local i0 ->
       let off = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
       Some
@@ -5399,31 +5434,33 @@ let compile_funcs mP m =
         (compiled_f :: acc)) (Obj.magic compile_func mP f m)) acc_opt) (Some
     []) m.mod_funcs
 
-(** val compile_lin_mem :
-    memory_type list -> Big_int_Z.big_int -> data list **)
+(** val compile_lin_mem : memory_type -> Big_int_Z.big_int -> data **)
 
 let compile_lin_mem m max_nb_page =
-  match m with
-  | [] -> []
-  | m0 :: _ ->
-    let size_min = mul m0.lim_min page_size0 in
-    let size_max =
-      mul
-        (match m0.lim_max with
-         | Some n0 -> min n0 max_nb_page
-         | None -> max_nb_page) page_size0
-    in
-    let m_b = Big_int_Z.zero_big_int in
-    let l_m =
-      add m_b (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int))
-    in
-    let l_a = add l_m size_min in
-    let m_e = add l_m size_max in
-    let full_cap = WSealable (SCap ((RW, Global), l_m, m_e, l_a)) in
-    let current_cap = WSealable (SCap ((RW, Global), l_m, l_a, l_m)) in
-    let linear_memory = allocate_data size_max Big_int_Z.zero_big_int in
-    (full_cap :: (current_cap :: linear_memory)) :: []
+  let size_min = mul m.lim_min page_size0 in
+  let size_max =
+    mul
+      (match m.lim_max with
+       | Some n0 -> min n0 max_nb_page
+       | None -> max_nb_page) page_size0
+  in
+  let m_b = Big_int_Z.zero_big_int in
+  let l_m =
+    add m_b (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+      Big_int_Z.zero_big_int))
+  in
+  let l_a = add l_m size_min in
+  let m_e = add l_m size_max in
+  let full_cap = WSealable (SCap ((RW, Global), l_m, m_e, l_a)) in
+  let current_cap = WSealable (SCap ((RW, Global), l_m, l_a, l_m)) in
+  let linear_memory = allocate_data size_max Big_int_Z.zero_big_int in
+  full_cap :: (current_cap :: linear_memory)
+
+(** val compile_lin_mems :
+    memory_type list -> Big_int_Z.big_int -> data list **)
+
+let compile_lin_mems llm max_nb_page =
+  map (fun m -> compile_lin_mem m max_nb_page) llm
 
 (** val compile_global : module_glob -> data **)
 
@@ -5456,20 +5493,21 @@ let compile_global g =
 let compile_globals lg =
   map compile_global lg
 
+(** val compile_indirect_table : module_table -> Big_int_Z.big_int -> data **)
+
+let compile_indirect_table it max_nb_entry =
+  let nb_entry =
+    match (tt_limits (modtab_type it)).lim_max with
+    | Some n0 -> min n0 max_nb_entry
+    | None -> max_nb_entry
+  in
+  allocate_data nb_entry Big_int_Z.zero_big_int
+
 (** val compile_indirect_tables :
     module_table list -> Big_int_Z.big_int -> data list **)
 
-let compile_indirect_tables m max_nb_entry =
-  match m with
-  | [] -> []
-  | it :: _ ->
-    let nb_entry =
-      match (tt_limits (modtab_type it)).lim_max with
-      | Some n0 -> min n0 max_nb_entry
-      | None -> max_nb_entry
-    in
-    let indirect_table = allocate_data nb_entry Big_int_Z.zero_big_int in
-    indirect_table :: []
+let compile_indirect_tables lit max_nb_entry =
+  map (fun it -> compile_indirect_table it max_nb_entry) lit
 
 (** val import_function : module_import -> symbols option **)
 
@@ -5484,10 +5522,10 @@ let import_function imp =
 let rec imports_functions = function
 | [] -> []
 | imp :: imps' ->
-  let rec0 = imports_functions imps' in
+  let acc = imports_functions imps' in
   (match import_function imp with
-   | Some s -> s :: rec0
-   | None -> rec0)
+   | Some s -> s :: acc
+   | None -> acc)
 
 (** val import_lin_mem : module_import -> symbols option **)
 
@@ -5497,14 +5535,15 @@ let import_lin_mem imp =
    | ID_mem _ -> Some symbol
    | _ -> None)
 
-(** val imports_lin_mem : module_import list -> symbols list **)
+(** val imports_lin_mems : module_import list -> symbols list **)
 
-let rec imports_lin_mem = function
+let rec imports_lin_mems = function
 | [] -> []
 | imp :: imps' ->
+  let acc = imports_lin_mems imps' in
   (match import_lin_mem imp with
-   | Some s -> s :: []
-   | None -> imports_lin_mem imps')
+   | Some s -> app (s :: []) acc
+   | None -> acc)
 
 (** val import_global : module_import -> symbols option **)
 
@@ -5519,10 +5558,10 @@ let import_global imp =
 let rec imports_globals = function
 | [] -> []
 | imp :: imps' ->
-  let rec0 = imports_globals imps' in
+  let acc = imports_globals imps' in
   (match import_global imp with
-   | Some s -> app (s :: []) rec0
-   | None -> rec0)
+   | Some s -> app (s :: []) acc
+   | None -> acc)
 
 (** val import_itable : module_import -> symbols option **)
 
@@ -5532,14 +5571,15 @@ let import_itable imp =
    | ID_table _ -> Some symbol
    | _ -> None)
 
-(** val imports_itable : module_import list -> symbols list **)
+(** val imports_itables : module_import list -> symbols list **)
 
-let rec imports_itable = function
+let rec imports_itables = function
 | [] -> []
 | imp :: imps' ->
+  let acc = imports_itables imps' in
   (match import_itable imp with
-   | Some s -> s :: []
-   | None -> imports_itable imps')
+   | Some s -> app (s :: []) acc
+   | None -> acc)
 
 (** val compile_frame : ws_module -> frame -> name -> cerise_frame option **)
 
@@ -5552,7 +5592,7 @@ let compile_frame m frm module_name =
       (seq frm.idx_defined_functions (len_defined_functions m))
   in
   let imported_lin_mem =
-    map (fun s -> Imports s) (imports_lin_mem m.mod_imports)
+    map (fun s -> Imports s) (imports_lin_mems m.mod_imports)
   in
   let defined_lin_mem =
     map (fun i -> Define (module_name, i))
@@ -5566,7 +5606,7 @@ let compile_frame m frm module_name =
       (seq frm.idx_defined_globals (len_defined_globals m))
   in
   let imported_itable =
-    map (fun s -> Imports s) (imports_itable m.mod_imports)
+    map (fun s -> Imports s) (imports_itables m.mod_imports)
   in
   let defined_itable =
     map (fun i -> Define (module_name, i))
@@ -5662,7 +5702,7 @@ let compile_module mP m module_name =
   let frm = define_module_frame m in
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_frame ->
     mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_functions ->
-      let lin_mem = compile_lin_mem m.mod_mems mAX_LIN_MEM in
+      let lin_mem = compile_lin_mems m.mod_mems mAX_LIN_MEM in
       let indirect_table =
         compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
       in
@@ -5723,14 +5763,15 @@ let rec branch_labels' il label_map addr0 =
          (i :: next))
          (branch_labels' il' label_map
            (add addr0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-     | Br_Jmp (lbl, _) ->
-       let reg_tmp = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
+     | Br_Jmp lbl ->
        mbind (Obj.magic (fun _ _ -> option_bind)) (fun o ->
          mbind (Obj.magic (fun _ _ -> option_bind)) (fun next ->
            let off = Z.sub (Z.of_nat o) (Z.of_nat addr0) in
            Some
-           (app ((Mov ((R reg_tmp), (Inr PC))) :: ((Lea ((R reg_tmp), (Inl
-             off))) :: ((Jmp (R reg_tmp)) :: []))) next))
+           (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+             (Inr PC))) :: ((Lea ((R (Big_int_Z.succ_big_int
+             Big_int_Z.zero_big_int)), (Inl off))) :: ((Jmp (R
+             (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) :: []))) next))
            (branch_labels' il' label_map
              (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
@@ -5740,14 +5781,13 @@ let rec branch_labels' il label_map addr0 =
      | Br_Jnz (lbl, reg_cond) ->
        mbind (Obj.magic (fun _ _ -> option_bind)) (fun o ->
          mbind (Obj.magic (fun _ _ -> option_bind)) (fun next ->
-           let reg_tmp = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
-           let reg_cond0 =
-             sub reg_cond (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-           in
            let off = Z.sub (Z.of_nat o) (Z.of_nat addr0) in
            Some
-           (app ((Mov ((R reg_tmp), (Inr PC))) :: ((Lea ((R reg_tmp), (Inl
-             off))) :: ((Jnz ((R reg_tmp), (R reg_cond0))) :: []))) next))
+           (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+             (Inr PC))) :: ((Lea ((R (Big_int_Z.succ_big_int
+             Big_int_Z.zero_big_int)), (Inl off))) :: ((Jnz ((R
+             (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (R
+             reg_cond))) :: []))) next))
            (branch_labels' il' label_map
              (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
@@ -6096,14 +6136,11 @@ let spill_instruction = function
 (** val spill_labeled_instr : labeled_instr -> labeled_instr list **)
 
 let spill_labeled_instr = function
-| Label l -> (Label l) :: []
 | BInstr i0 -> instrs (spill_instruction i0)
-| Br_Jmp (lbl, reg0) ->
-  let (il, r0) = load_spilled reg0 r_tmp in
-  app (instrs il) ((Br_Jmp (lbl, r0)) :: [])
 | Br_Jnz (lbl, reg0) ->
   let (il, r0) = load_spilled reg0 r_tmp in
   app (instrs il) ((Br_Jnz (lbl, r0)) :: [])
+| x -> x :: []
 
 (** val spilling : labeled_instr list -> labeled_instr list **)
 
@@ -6298,28 +6335,38 @@ let rec globals_entry_points globals offset_globals ot_g =
     let new_offset = add offset_globals (length g) in
     sealed_entry :: (globals_entry_points globals' new_offset ot_g)
 
-(** val lin_mem_entry_points :
+(** val lin_mem_entry_point : data -> Big_int_Z.big_int -> oType -> word **)
+
+let lin_mem_entry_point lin_mem offset0 ot_lm =
+  let e = add offset0 (length lin_mem) in
+  WSealed (ot_lm, (SCap ((RW, Global), offset0, e, offset0)))
+
+(** val lin_mems_entry_points :
     data list -> Big_int_Z.big_int -> oType -> word list **)
 
-let lin_mem_entry_points lin_mems offset_lin_mem ot_lm =
+let rec lin_mems_entry_points lin_mems offset_lin_mems ot_lm =
   match lin_mems with
   | [] -> []
-  | m :: _ ->
-    let e_lin_mem = add offset_lin_mem (length m) in
-    let sealed_entry = WSealed (ot_lm, (SCap ((RW, Global), offset_lin_mem,
-      e_lin_mem, offset_lin_mem)))
-    in
-    sealed_entry :: []
+  | m :: lin_mems' ->
+    let sealed_entry = lin_mem_entry_point m offset_lin_mems ot_lm in
+    let new_offset = add offset_lin_mems (length m) in
+    sealed_entry :: (lin_mems_entry_points lin_mems' new_offset ot_lm)
 
-(** val itable_entry_points : data list -> Big_int_Z.big_int -> word list **)
+(** val itable_entry_point : data -> Big_int_Z.big_int -> word **)
 
-let itable_entry_points itables offset_indirect_table =
+let itable_entry_point itable offset0 =
+  let e = add offset0 (length itable) in
+  WSealable (SCap ((RO, Global), offset0, e, offset0))
+
+(** val itables_entry_points : data list -> Big_int_Z.big_int -> word list **)
+
+let rec itables_entry_points itables offset0 =
   match itables with
   | [] -> []
-  | t0 :: _ ->
-    let e_indirect_table = add offset_indirect_table (length t0) in
-    (WSealable (SCap ((RO, Global), offset_indirect_table, e_indirect_table,
-    offset_indirect_table))) :: []
+  | it :: itables' ->
+    let entry = itable_entry_point it offset0 in
+    let new_offset = add offset0 (length it) in
+    entry :: (itables_entry_points itables' new_offset)
 
 type aword =
 | Abstract of id0 * Big_int_Z.big_int
@@ -6410,7 +6457,8 @@ let preload_cerise_subcomponent_in_memory mP s offset_code offset_frame offset_l
   let len_imported_functions = length s.c_frame.cframe_functions_imported in
   let offset_local_ftable = add offset_frame len_imported_functions in
   let local_ftable_section = list_to_mem local_ftable offset_local_ftable in
-  let lin_mem_table = lin_mem_entry_points s.c_lin_mem offset_lin_mem ot_lm in
+  let lin_mem_table = lin_mems_entry_points s.c_lin_mem offset_lin_mem ot_lm
+  in
   let offset_lin_mem_table =
     let len_imported_lin_mem = length s.c_frame.cframe_lin_mem_imported in
     add (add offset_local_ftable (length local_ftable)) len_imported_lin_mem
@@ -6425,7 +6473,7 @@ let preload_cerise_subcomponent_in_memory mP s offset_code offset_frame offset_l
   let globals_table_section = list_to_mem globals_table offset_globals_table
   in
   let indirection_table_cap =
-    itable_entry_points s.c_indirect_table offset_indirect_table
+    itables_entry_points s.c_indirect_table offset_indirect_table
   in
   let offset_indirection_table_cap =
     let len_imported_itables = length s.c_frame.cframe_itable_imported in
