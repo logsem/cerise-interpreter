@@ -2587,6 +2587,16 @@ let list_opt l_opt =
       mbind (Obj.magic (fun _ _ -> option_bind)) (fun acc -> Some (e :: acc))
         acc_opt) (Obj.magic e_opt)) (Some []) l_opt
 
+type nbar =
+| Finite of Big_int_Z.big_int
+| P_infty
+
+(** val nat_ : nbar -> Big_int_Z.big_int **)
+
+let nat_ = function
+| Finite n1 -> n1
+| P_infty -> Big_int_Z.zero_big_int
+
 type regName =
 | PC
 | STK
@@ -2858,7 +2868,7 @@ type addr = Big_int_Z.big_int
 type oType = Big_int_Z.big_int
 
 type sealable =
-| SCap of (perm * locality) * addr * addr * addr
+| SCap of (perm * locality) * addr * nbar * addr
 | SSealRange of (sealPerms * locality) * oType * oType * oType
 
 type word =
@@ -3054,7 +3064,8 @@ let rec sort = function
 
 let shift_cap c n0 =
   match c with
-  | SCap (p0, b, e, a) -> SCap (p0, (add b n0), (add e n0), (add a n0))
+  | SCap (p0, b, e, a) ->
+    SCap (p0, (add b n0), (Finite (add (nat_ e) n0)), (add a n0))
   | SSealRange (_, _, _, _) -> c
 
 (** val shift_word : word -> Big_int_Z.big_int -> word **)
@@ -3328,8 +3339,8 @@ let encodeInstrsW h =
 (** val wt_cap : word **)
 
 let wt_cap =
-  WSealable (SCap ((O, Global), Big_int_Z.zero_big_int,
-    Big_int_Z.zero_big_int, Big_int_Z.zero_big_int))
+  WSealable (SCap ((O, Global), Big_int_Z.zero_big_int, (Finite
+    Big_int_Z.zero_big_int), Big_int_Z.zero_big_int))
 
 (** val wt_sealrange : word **)
 
@@ -3341,7 +3352,8 @@ let wt_sealrange =
 
 let wt_sealed =
   WSealed (Big_int_Z.zero_big_int, (SCap ((O, Global),
-    Big_int_Z.zero_big_int, Big_int_Z.zero_big_int, Big_int_Z.zero_big_int)))
+    Big_int_Z.zero_big_int, (Finite Big_int_Z.zero_big_int),
+    Big_int_Z.zero_big_int)))
 
 (** val wt_int : word **)
 
@@ -5451,8 +5463,8 @@ let compile_lin_mem m max_nb_page =
   in
   let l_a = add l_m size_min in
   let m_e = add l_m size_max in
-  let full_cap = WSealable (SCap ((RW, Global), l_m, m_e, l_a)) in
-  let current_cap = WSealable (SCap ((RW, Global), l_m, l_a, l_m)) in
+  let full_cap = WSealable (SCap ((RW, Global), l_m, (Finite m_e), l_a)) in
+  let current_cap = WSealable (SCap ((RW, Global), l_m, (Finite l_a), l_m)) in
   let linear_memory = allocate_data size_max Big_int_Z.zero_big_int in
   full_cap :: (current_cap :: linear_memory)
 
@@ -5473,8 +5485,8 @@ let compile_global g =
        | Val_int z0 -> WInt z0
        | Val_handle _ -> WInt Big_int_Z.zero_big_int)
     | T_handle ->
-      WSealable (SCap ((RW, Global), Big_int_Z.zero_big_int,
-        Big_int_Z.zero_big_int, Big_int_Z.zero_big_int))
+      WSealable (SCap ((RW, Global), Big_int_Z.zero_big_int, (Finite
+        Big_int_Z.zero_big_int), Big_int_Z.zero_big_int))
   in
   let type_val =
     match gtype.tg_t with
@@ -6315,14 +6327,14 @@ let rec functions_entry_points functions b e entry_point =
   | [] -> []
   | f :: functions' ->
     let next_entry_point = add entry_point (length f) in
-    (WSealable (SCap ((E, Global), b, e,
+    (WSealable (SCap ((E, Global), b, (Finite e),
     entry_point))) :: (functions_entry_points functions' b e next_entry_point)
 
 (** val global_entry_point : data -> Big_int_Z.big_int -> oType -> word **)
 
 let global_entry_point global offset0 ot_g =
   let e = add offset0 (length global) in
-  WSealed (ot_g, (SCap ((RW, Global), offset0, e, offset0)))
+  WSealed (ot_g, (SCap ((RW, Global), offset0, (Finite e), offset0)))
 
 (** val globals_entry_points :
     data list -> Big_int_Z.big_int -> oType -> word list **)
@@ -6339,7 +6351,7 @@ let rec globals_entry_points globals offset_globals ot_g =
 
 let lin_mem_entry_point lin_mem offset0 ot_lm =
   let e = add offset0 (length lin_mem) in
-  WSealed (ot_lm, (SCap ((RW, Global), offset0, e, offset0)))
+  WSealed (ot_lm, (SCap ((RW, Global), offset0, (Finite e), offset0)))
 
 (** val lin_mems_entry_points :
     data list -> Big_int_Z.big_int -> oType -> word list **)
@@ -6356,7 +6368,7 @@ let rec lin_mems_entry_points lin_mems offset_lin_mems ot_lm =
 
 let itable_entry_point itable offset0 =
   let e = add offset0 (length itable) in
-  WSealable (SCap ((RO, Global), offset0, e, offset0))
+  WSealable (SCap ((RO, Global), offset0, (Finite e), offset0))
 
 (** val itables_entry_points : data list -> Big_int_Z.big_int -> word list **)
 
@@ -6439,8 +6451,8 @@ let rec instantiate_data datas offset0 =
     Big_int_Z.big_int -> word -> word -> oType -> oType -> preMem **)
 
 let preload_cerise_subcomponent_in_memory mP s offset_code offset_frame offset_lin_mem offset_globals offset_indirect_table cap_safe_mem cap_linking_table ot_g ot_lm =
-  let frame_capability = SCap ((RO, Global), offset_frame, offset_lin_mem,
-    offset_frame)
+  let frame_capability = SCap ((RO, Global), offset_frame, (Finite
+    offset_lin_mem), offset_frame)
   in
   let code = (WSealable
     frame_capability) :: (encodeInstrsW mP (concat s.c_functions))
@@ -6703,8 +6715,8 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
       size_safe_mem
   in
   let safe_mem =
-    let free_space_malloc_cap = SCap ((RW, Global), offset_safe_mem,
-      offset_linking_table,
+    let free_space_malloc_cap = SCap ((RW, Global), offset_safe_mem, (Finite
+      offset_linking_table),
       (add offset_safe_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
     in
     app ((WSealable free_space_malloc_cap) :: [])
@@ -6747,13 +6759,13 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
       add offset_safe_mem_malloc0 (length malloc_safe_mem)
     in
     let lin_mem_sentry = fun offset_entry -> WSealable (SCap ((E, Global),
-      offset_trusted_macros, offset_global_macros, offset_entry))
+      offset_trusted_macros, (Finite offset_global_macros), offset_entry))
     in
     let global_sentry = fun offset_entry -> WSealable (SCap ((E, Global),
-      offset_global_macros, offset_safe_mem_macros, offset_entry))
+      offset_global_macros, (Finite offset_safe_mem_macros), offset_entry))
     in
     let safe_mem_sentry = fun offset_entry -> WSealable (SCap ((E, Global),
-      offset_safe_mem_macros, offset_safe_mem_end, offset_entry))
+      offset_safe_mem_macros, (Finite offset_safe_mem_end), offset_entry))
     in
     (lin_mem_sentry offset_lin_mem_load0) :: ((lin_mem_sentry
                                                 offset_lin_mem_store0) :: (
@@ -6772,11 +6784,11 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
   let linking_table_section = list_to_mem linking_table offset_linking_table
   in
   let cap_safe_mem = WSealed (ot_sm, (SCap ((RW, Global), offset_safe_mem,
-    offset_linking_table, offset_safe_mem)))
+    (Finite offset_linking_table), offset_safe_mem)))
   in
   let e_linking_table = add offset_linking_table (length linking_table) in
   let cap_linking_table = WSealable (SCap ((RO, Global),
-    offset_linking_table, e_linking_table, offset_linking_table))
+    offset_linking_table, (Finite e_linking_table), offset_linking_table))
   in
   let (loaded_subcomp, offset_submodules_frame) =
     load_cerise_subcomponents_in_memory mP subcomp offset_code offset_frames
@@ -6814,10 +6826,9 @@ let boot_code_section h =
   list_to_mem (boot_code h) Big_int_Z.zero_big_int
 
 (** val init_state :
-    machineParameters -> cerise_program -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> reg * mem **)
+    machineParameters -> cerise_program -> Big_int_Z.big_int -> reg * mem **)
 
-let init_state h prog start_stack end_stack =
+let init_state h prog start_stack =
   let len_boot = length (boot_code h) in
   let pre_heap =
     union0
@@ -6833,15 +6844,15 @@ let init_state h prog start_stack end_stack =
     list_to_mem end_code
       (add len_pre_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
   in
-  let pc_cap = WSealable (SCap ((RX, Global), Big_int_Z.zero_big_int,
-    len_boot, Big_int_Z.zero_big_int))
+  let pc_cap = WSealable (SCap ((RX, Global), Big_int_Z.zero_big_int, (Finite
+    len_boot), Big_int_Z.zero_big_int))
   in
-  let end_cap = WSealable (SCap ((RX, Global), len_pre_heap,
-    (add len_pre_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+  let end_cap = WSealable (SCap ((RX, Global), len_pre_heap, (Finite
+    (add len_pre_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))),
     len_pre_heap))
   in
   let main_cap = shift_word prog.main len_boot in
-  let stk_cap = WSealable (SCap ((URWLX, Directed), start_stack, end_stack,
+  let stk_cap = WSealable (SCap ((URWLX, Directed), start_stack, P_infty,
     start_stack))
   in
   let regfile =
@@ -6931,6 +6942,77 @@ let env_module =
     mod_elem = []; mod_start = None; mod_imports = []; mod_exports =
     ({ modexp_name = ('a'::('d'::('v'::[]))); modexp_desc = (MED_func
     Big_int_Z.zero_big_int) } :: []) }
+
+(** val bank_unsafe_prog : ws_basic_instruction list **)
+
+let bank_unsafe_prog =
+  let account_ptr = Big_int_Z.zero_big_int in
+  let account_id = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
+  let account_balance = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)
+  in
+  let adv_fun = Big_int_Z.zero_big_int in
+  (I_const (Val_int Big_int_Z.unit_big_int)) :: (I_grow_memory :: ((I_const
+  (Val_int Big_int_Z.zero_big_int)) :: ((I_set_local
+  account_ptr) :: ((I_get_local account_ptr) :: ((I_set_local
+  account_id) :: ((I_const (Val_int (Big_int_Z.mult_int_big_int 2
+  (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))) :: ((I_get_local
+  account_ptr) :: ((I_binop (T_int, BOI_add)) :: ((I_set_local
+  account_balance) :: ((I_get_local account_balance) :: ((I_const (Val_int
+  Big_int_Z.zero_big_int)) :: ((I_store T_int) :: ((I_get_local
+  account_id) :: ((I_call adv_fun) :: ((I_get_local
+  account_balance) :: ((I_load T_int) :: (I_drop :: [])))))))))))))))))
+
+(** val adv_unsafe_tf : function_type **)
+
+let adv_unsafe_tf =
+  Tf ((T_int :: []), [])
+
+(** val bank_unsafe_module : ws_module **)
+
+let bank_unsafe_module =
+  { mod_types = (bank_tf :: (adv_unsafe_tf :: [])); mod_funcs =
+    ({ modfunc_type = Big_int_Z.zero_big_int; modfunc_locals =
+    (T_int :: (T_int :: (T_int :: []))); modfunc_body =
+    bank_unsafe_prog } :: []); mod_tables = []; mod_mems = []; mod_globals =
+    []; mod_elem = []; mod_start = (Some (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)); mod_imports = ({ imp_module =
+    ('E'::('n'::('v'::[]))); imp_name =
+    ('a'::('d'::('v'::('_'::('u'::('n'::('s'::('a'::('f'::('e'::[]))))))))));
+    imp_desc = (ID_func (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)) } :: ({ imp_module = ('E'::('n'::('v'::[])));
+    imp_name = ('m'::('e'::('m'::[]))); imp_desc = (ID_mem { lim_min =
+    Big_int_Z.zero_big_int; lim_max = None }) } :: [])); mod_exports = [] }
+
+(** val env_adv_unsafe_prog : ws_basic_instruction list **)
+
+let env_adv_unsafe_prog =
+  let account_id_ptr = Big_int_Z.zero_big_int in
+  let account_balance_ptr = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
+  (I_get_local account_id_ptr) :: ((I_const (Val_int
+  (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
+  Big_int_Z.unit_big_int)))) :: ((I_binop (T_int, BOI_add)) :: ((I_set_local
+  account_balance_ptr) :: ((I_get_local account_balance_ptr) :: ((I_const
+  (Val_int (Big_int_Z.mult_int_big_int 2
+  ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+  (Big_int_Z.mult_int_big_int 2
+  ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+  (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))))) :: ((I_store
+  T_int) :: []))))))
+
+(** val env_unsafe_module : ws_module **)
+
+let env_unsafe_module =
+  { mod_types = (adv_unsafe_tf :: []); mod_funcs = ({ modfunc_type =
+    Big_int_Z.zero_big_int; modfunc_locals = []; modfunc_body =
+    env_adv_unsafe_prog } :: []); mod_tables = []; mod_mems = ({ lim_min =
+    Big_int_Z.zero_big_int; lim_max = None } :: []); mod_globals = [];
+    mod_elem = []; mod_start = None; mod_imports = []; mod_exports =
+    ({ modexp_name =
+    ('a'::('d'::('v'::('_'::('u'::('n'::('s'::('a'::('f'::('e'::[]))))))))));
+    modexp_desc = (MED_func Big_int_Z.zero_big_int) } :: ({ modexp_name =
+    ('m'::('e'::('m'::[]))); modexp_desc = (MED_mem
+    Big_int_Z.zero_big_int) } :: [])) }
 
 (** val new_stack : ws_basic_instruction list **)
 
@@ -7368,14 +7450,14 @@ let compile_list mP ml =
 
 (** val load_test :
     machineParameters -> Big_int_Z.big_int -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> (ws_module * name) list ->
-    (regName * word) list * (addr * word) list **)
+    Big_int_Z.big_int -> (ws_module * name) list -> (regName * word)
+    list * (addr * word) list **)
 
-let load_test mP size_safe_mem ot_g ot_lm ot_sm start_stack end_stack modules =
+let load_test mP size_safe_mem ot_g ot_lm ot_sm start_stack modules =
   match mbind (Obj.magic (fun _ _ -> option_bind)) (fun comps ->
           mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked ->
             mbind (Obj.magic (fun _ _ -> option_bind)) (fun inst ->
-              let (regs, mem0) = init_state mP inst start_stack end_stack in
+              let (regs, mem0) = init_state mP inst start_stack in
               Some
               (Obj.magic ((gmap_to_list reg_eq_dec reg_countable regs),
                 (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0)))))
@@ -7386,10 +7468,10 @@ let load_test mP size_safe_mem ot_g ot_lm ot_sm start_stack end_stack modules =
   | None -> ([], [])
 
 (** val loaded_bank_example :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (regName * word) list * (addr * word) list **)
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
 
-let loaded_bank_example mP start_stack end_stack =
+let loaded_bank_example mP start_stack =
   load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7404,15 +7486,15 @@ let loaded_bank_example mP start_stack end_stack =
     Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
     Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack end_stack ((bank_module,
+    start_stack ((bank_module,
     ('B'::('a'::('n'::('k'::[]))))) :: ((env_module,
     ('E'::('n'::('v'::[])))) :: []))
 
-(** val loaded_stack_example :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (regName * word) list * (addr * word) list **)
+(** val loaded_bank_unsafe_example :
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
 
-let loaded_stack_example mP start_stack end_stack =
+let loaded_bank_unsafe_example mP start_stack =
   load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7427,15 +7509,38 @@ let loaded_stack_example mP start_stack end_stack =
     Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
     Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack end_stack ((client_module,
+    start_stack ((bank_unsafe_module,
+    ('B'::('a'::('n'::('k'::[]))))) :: ((env_unsafe_module,
+    ('E'::('n'::('v'::[])))) :: []))
+
+(** val loaded_stack_example :
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
+
+let loaded_stack_example mP start_stack =
+  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
+    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+    start_stack ((client_module,
     ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: ((stack_module,
     ('S'::('t'::('a'::('c'::('k'::[])))))) :: []))
 
 (** val loaded_dummy_example :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (regName * word) list * (addr * word) list **)
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
 
-let loaded_dummy_example mP start_stack end_stack =
+let loaded_dummy_example mP start_stack =
   load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7450,15 +7555,15 @@ let loaded_dummy_example mP start_stack end_stack =
     Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
     Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack end_stack ((dummy_module_client,
+    start_stack ((dummy_module_client,
     ('d'::('u'::('m'::('m'::('y'::[])))))) :: ((dummy_module_lib,
     ('e'::('n'::('v'::[])))) :: []))
 
 (** val loaded_reg_alloc_example :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (regName * word) list * (addr * word) list **)
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
 
-let loaded_reg_alloc_example mP start_stack end_stack =
+let loaded_reg_alloc_example mP start_stack =
   load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7473,14 +7578,14 @@ let loaded_reg_alloc_example mP start_stack end_stack =
     Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
     Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack end_stack ((reg_alloc_module_client,
+    start_stack ((reg_alloc_module_client,
     ('m'::('a'::('i'::('n'::[]))))) :: [])
 
 (** val loaded_incr_example :
-    machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (regName * word) list * (addr * word) list **)
+    machineParameters -> Big_int_Z.big_int -> (regName * word)
+    list * (addr * word) list **)
 
-let loaded_incr_example mP start_stack end_stack =
+let loaded_incr_example mP start_stack =
   load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7495,5 +7600,4 @@ let loaded_incr_example mP start_stack end_stack =
     Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
     Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack end_stack ((incr_module,
-    ('i'::('n'::('c'::('r'::[]))))) :: [])
+    start_stack ((incr_module, ('i'::('n'::('c'::('r'::[]))))) :: [])

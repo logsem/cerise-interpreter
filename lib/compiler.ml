@@ -14,7 +14,7 @@ let pp_sealable (sb : Ast.sealable) =
     Printf.sprintf "(%s, %s, %s, %s, %s)" (Pretty_printer.string_of_perm p)
       (Pretty_printer.string_of_locality g)
       (Big_int_Z.string_of_big_int b)
-      (Big_int_Z.string_of_big_int e)
+      (Infinite_z.to_string e)
       (Big_int_Z.string_of_big_int a)
   | SealRange (p, g, b, e, a) ->
     Printf.sprintf "[%s, %s, %s, %s, %s]" (Pretty_printer.string_of_seal_perm p)
@@ -44,11 +44,10 @@ let pp_regname (r : Extract.regName) =
 let machine_compile
     ?(addr_max = (Int32.to_int Int32.max_int)/4096 )
     ?(start_stack = Big_int_Z.big_int_of_int (addr_max/2) )
-    ?(end_stack = Big_int_Z.big_int_of_int addr_max)
     program
   : (regName * Ast.word) list * (addr * Ast.word) list
   =
-  let (regs, compiled_prog) = program Convert.machine_param start_stack end_stack in
+  let (regs, compiled_prog) = program Convert.machine_param start_stack in
   let prog =
     List.map
       (fun w -> (fst w, Convert.translate_word (snd w)))

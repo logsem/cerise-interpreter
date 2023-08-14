@@ -3,9 +3,8 @@
 type cli_mode = Interactive_mode | Interpreter_mode
 
 (** Initialize the Cerise version and returns
-   (mode, program_filename, register_filename, size_mem) *)
-let parse_arguments addr_max :
-  (cli_mode * string * string * Z.t)
+    (mode, program_filename, register_filename, size_mem) *)
+let parse_arguments () : (cli_mode * string * string)
   =
   let usage_msg =
     "interpreter [-I] [--interactive] [--version version] [--locality locality] [--sealing | --no-sealing]  [--stack | --no-stack] [--uperms | --no-uperms] [--mem-size size] <file>"
@@ -19,7 +18,7 @@ let parse_arguments addr_max :
   let uperms_option = ref false in
   let no_uperms_option = ref false in
   let locality_option = ref "" in
-  let mem_size_option = ref addr_max in
+  let mem_size_option = ref "" in
   let regfile_name_option = ref "" in
   let input_files = ref [] in
 
@@ -36,7 +35,7 @@ let parse_arguments addr_max :
       ("--uperms", Arg.Set uperms_option, "Enable the U-permission");
       ("--no-uperms", Arg.Set no_uperms_option, "Disable the U-permission");
       ("--locality", Arg.Set_string locality_option, "Choose the minimum locality: Global, Local, Directed");
-      ("--mem-size", Arg.Set_int mem_size_option, "Size of the memory, as an integer");
+      ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory, Inf or integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
     ] in
   Arg.parse speclist anon_fun usage_msg;
@@ -89,6 +88,18 @@ let parse_arguments addr_max :
     | _ -> raise @@ Arg.Help "The --locality option requires one of the following values: Global, Local or Directed"
   in
 
+  let _ =
+      match !mem_size_option with
+       | "inf"
+       | "Inf" -> Parameters.set_max_addr Infinite_z.Inf
+       | "" -> ()
+       | s ->
+         let n = (Z.of_string s) in
+         if Z.(n < ~$0)
+         then (Printf.eprintf "Size of memory must be positive (%s)" s; exit 1)
+         else Parameters.set_max_addr (Infinite_z.Int n)
+  in
+
   let filename_prog =
     match !input_files with
     | [filename] -> filename
@@ -97,12 +108,4 @@ let parse_arguments addr_max :
       exit 1
   in
 
-  let size_mem : Z.t =
-    Z.(
-    let s = ~$ !mem_size_option in
-    if s < ~$0
-    then (Printf.eprintf "Size of memory must be positive (%s)" (Z.to_string s); exit 1)
-    else s)
-  in
-
-  (mode, filename_prog, !regfile_name_option, size_mem)
+  (mode, filename_prog, !regfile_name_option)

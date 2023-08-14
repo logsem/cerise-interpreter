@@ -247,9 +247,13 @@ let machine_param = {
   decodeWordType = (function wt -> tr_wtype (Encode.decode_wtype wt));
 }
 
+let translate_nbar (nb : Extract.nbar) =
+  match nb with | Finite z -> Infinite_z.Int z | P_infty -> Infinite_z.Inf
+
 let translate_sealable (sb : Extract.sealable) =
   match sb with
-  | SCap ((p,l), b, e, a) -> Ast.Cap (translate_perm p, translate_locality l, b, e, a)
+  | SCap ((p,l), b, e, a) ->
+    Ast.Cap (translate_perm p, translate_locality l, b, translate_nbar e, a)
   | SSealRange ((p,l), b, e, a) -> Ast.SealRange (p, translate_locality l, b, e, a)
 
 

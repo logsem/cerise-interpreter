@@ -32,9 +32,9 @@ let run_prog (filename : string) : mchn  =
 
   let _ = (Parameters.flags := Parameters.full_cerise) in
 
-  let addr_max = Z.(~$10000) in
-  let init_regs = Machine.init_reg_state addr_max in
-  let init_mems = Machine.init_mem_state Z.(~$0) addr_max parse_res in
+  let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
+  let init_regs = Machine.init_reg_state stk_addr in
+  let init_mems = Machine.init_mem_state Z.(~$0) parse_res in
   let m = Machine.init init_regs init_mems in
 
   run m

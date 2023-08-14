@@ -2,6 +2,7 @@
 %token PC STK
 %token <int> REG
 %token <int> INT
+%token INF
 %token MAX_ADDR STK_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS AFFECT COMMA COLON
@@ -31,18 +32,14 @@ word:
   | s = sealed_def {s}
 
 sealable_def:
-  | LPAREN; p = perm; COMMA; g = locality ; COMMA ; b = addr; COMMA; e = addr; COMMA; a = addr; RPAREN;
+  | LPAREN; p = perm; COMMA; g = locality ; COMMA ; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
     { WCap (p, g, b, e, a) }
-  | LSBRK; p = seal_perm; COMMA; g = locality ; COMMA ; b = addr; COMMA; e = addr; COMMA; a = addr; RSBRK;
+  | LSBRK; p = seal_perm; COMMA; g = locality ; COMMA ; b = expr; COMMA; e = expr; COMMA; a = expr; RSBRK;
     { WSealRange (p, g, b, e, a) }
 
 sealed_def:
-  | LCBRK; o = addr; COLON; sb = sealable_def ; RCBRK
+  | LCBRK; o = expr; COLON; sb = sealable_def ; RCBRK
     { WSealed (o, sb) }
-
-addr:
-  | e = expr %prec EXPR { Addr (e) }
-(* TODO support hexa addresses *)
 
 locality:
   | LOCAL; { Local }
@@ -75,7 +72,8 @@ expr:
   | STK_ADDR { StkAddr }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
-  | MINUS; e = expr %prec UMINUS { SubOp ((IntLit 0),e) }
-  | i = INT { IntLit i }
+  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Infinite_z.of_int 0),e) }
+  | i = INT { IntLit (Infinite_z.of_int i) }
+  | INF { IntLit (Infinite_z.Inf) }
 
 %%

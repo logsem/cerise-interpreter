@@ -1,65 +1,74 @@
 open Ast
 type machineFlags =
   {
-    version : string; (* Name of the version of Cerise *)
-    sealing : bool; (* Are sealing/sealed capabilities supported ? *)
-    stack : bool; (* Is there a stack register ? *)
-    locality : Ast.locality; (* Minimum locality supported *)
-    unitialized : bool; (* Are uninitialized capabilities supported ? *)
+    version     : string;       (* Name of the version of Cerise *)
+    sealing     : bool;         (* Are sealing/sealed capabilities supported ? *)
+    stack       : bool;         (* Is there a stack register ? *)
+    locality    : locality;     (* Minimum locality supported *)
+    unitialized : bool;         (* Are uninitialized capabilities supported ? *)
+    max_addr    : Infinite_z.t; (* Maximum memory address (can be infinite) *)
   }
+
+let max_addr = Z.of_int ((Int32.to_int Int32.max_int)/4096) (* (2^31 - 1) / 2^12 *)
 
 let vanilla_cerise : machineFlags =
   {
-    sealing = false;
-    stack  = false;
-    locality  = Global;
-    unitialized  = false;
-    version = "vanilla-cerise";
+    version     = "vanilla-cerise";
+    sealing     = false;
+    stack       = false;
+    locality    = Global;
+    unitialized = false;
+    max_addr    = Int max_addr ;
   }
 
 let stack_cerise : machineFlags =
   {
-    sealing = false;
-    stack  = true;
-    locality  = Local;
-    unitialized  = true;
-    version = "stack-cerise";
+    version     = "stack-cerise";
+    sealing     = false;
+    stack       = true;
+    locality    = Local;
+    unitialized = true;
+    max_addr    = Int max_addr ;
   }
 
 let mcerise : machineFlags =
   {
-    sealing = false;
-    stack  = true;
-    locality  = Directed;
-    unitialized  = true;
-    version = "mcerise";
+    version     = "mcerise";
+    sealing     = false;
+    stack       = true;
+    locality    = Directed;
+    unitialized = true;
+    max_addr    = Int max_addr ;
   }
 
 let sealing_cerise : machineFlags =
   {
-    sealing = true;
-    stack  = false;
-    locality  = Global;
-    unitialized  = false;
-    version = "sealing-cerise";
+    version     = "sealing-cerise";
+    sealing     = true;
+    stack       = false;
+    locality    = Global;
+    unitialized = false;
+    max_addr    = Int max_addr ;
   }
 
 let full_cerise : machineFlags =
   {
-    sealing = true;
-    stack  = true;
-    locality  = Directed;
-    unitialized  = true;
-    version = "cerise";
+    version     = "cerise";
+    sealing     = true;
+    stack       = true;
+    locality    = Directed;
+    unitialized = true;
+    max_addr    = Inf ;
   }
 
 let custom_cerise : machineFlags =
   {
-    sealing = false;
-    stack  = false;
-    locality  = Global;
-    unitialized  = false;
-    version = "custom";
+    version     = "custom";
+    sealing     = false;
+    stack       = false;
+    locality    = Global;
+    unitialized = false;
+    max_addr    = Int max_addr ;
   }
 
 
@@ -79,11 +88,12 @@ let set_sealing s =
     stack  = !flags.stack;
     locality  = !flags.locality;
     unitialized  = !flags.unitialized;
+    max_addr = !flags.max_addr;
     version =
-      match !flags.sealing, s with
+      (match !flags.sealing, s with
       | (false, true) -> (Printf.sprintf "%s +sealing" !flags.version)
       | (true, false) -> (Printf.sprintf "%s -sealing" !flags.version)
-      | _ -> !flags.version;
+      | _ -> !flags.version);
     }
 
 let set_stack t =
@@ -93,6 +103,7 @@ let set_stack t =
     stack  = t;
     locality  = !flags.locality;
     unitialized  = !flags.unitialized;
+    max_addr = !flags.max_addr;
     version =
       match !flags.stack, t with
       | (false, true) -> (Printf.sprintf "%s +stack" !flags.version)
@@ -107,6 +118,7 @@ let set_locality l =
     stack  = !flags.stack;
     locality  = l;
     unitialized  = !flags.unitialized;
+    max_addr = !flags.max_addr;
     version =
       if !flags.locality = l
       then !flags.version
@@ -126,12 +138,34 @@ let set_uperms u =
     stack  = !flags.stack;
     locality  = !flags.locality;
     unitialized  = u;
+    max_addr = !flags.max_addr;
     version =
       match !flags.unitialized, u with
       | (false, true) -> (Printf.sprintf "%s +uperms" !flags.version)
       | (true, false) -> (Printf.sprintf "%s -uperms" !flags.version)
       | _ -> !flags.version;
     }
+
+let set_max_addr a =
+  flags :=
+    {
+    sealing = !flags.sealing;
+    stack  = !flags.stack;
+    locality  = !flags.locality;
+    unitialized  = !flags.unitialized;
+    max_addr = a;
+    version =
+      match !flags.unitialized, a with
+      | (false, Infinite_z.Inf) -> (Printf.sprintf "%s +Inf" !flags.version)
+      | (true, Infinite_z.Int z) -> (Printf.sprintf "%s +Int(%s)"
+                                       !flags.version (Z.to_string z))
+      | _ -> !flags.version;
+    }
+
+let get_max_addr () : Z.t =
+  match !flags.max_addr with
+  | Inf -> max_addr
+  | Int z -> z
 
 exception NotSupported of string
 let not_supported s = raise @@ NotSupported (Printf.sprintf "%s (%s)" s !flags.version)

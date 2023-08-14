@@ -5,7 +5,7 @@ type locality = Global | Local | Directed
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 type seal_perm = bool * bool
 type reg_or_const = Register of regname | Const of Z.t
-type sealable = Cap of perm * locality * Z.t * Z.t * Z.t
+type sealable = Cap of perm * locality * Z.t * Infinite_z.t * Z.t
               | SealRange of seal_perm * locality* Z.t * Z.t * Z.t
 type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
 type machine_op
