@@ -392,6 +392,10 @@ let exec_single (conf : exec_conf) : mchn =
                   then
                     let w = Sealable (Cap (p, g, z1, Int z2, a)) in
                     !> (upd_reg r w conf)
+                    (* Special case: SubSeg (p,g,b,+∞,a) z1 (-1) , ie. the upper-bound is still infinity *)
+                  else if (b <= z1 && Z.(z2 == ~$(-1)) && (Infinite_z.eq Inf e) && p <> E)
+                  then let w = Sealable (Cap (p, g, z1, Inf, a)) in
+                    !> (upd_reg r w conf)
                   else fail_state
                 | _ -> fail_state
               end
