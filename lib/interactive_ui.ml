@@ -556,7 +556,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             begin
               match history with
               | [] -> loop show_stack m history
-              | m'::h' -> loop show_stack m' h'
+              | m'::h' -> loop ~update_prog:Program_panel.follow_addr show_stack m' h'
             end
           | `Resize (_, _) -> loop show_stack m history
           | _ -> process_events ()
