@@ -14,6 +14,10 @@ let () =
     "asm-toys/bank_loaded.s"
     Extract.loaded_bank_example;
   full_compile
+    "asm-toys/bank_unsafe_loaded.reg"
+    "asm-toys/bank_unsafe_loaded.s"
+    Extract.loaded_bank_unsafe_example;
+  full_compile
     "asm-toys/dummy_loaded.reg"
     "asm-toys/dummy_loaded.s"
     Extract.loaded_dummy_example;

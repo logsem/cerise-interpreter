@@ -33,16 +33,6 @@ let fst = function
 let snd = function
 | (_, y) -> y
 
-(** val uncurry : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
-
-let uncurry f = function
-| (x, y) -> f x y
-
-(** val prod_curry_subdef : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
-
-let prod_curry_subdef =
-  uncurry
-
 (** val length : 'a1 list -> Big_int_Z.big_int **)
 
 let rec length = function
@@ -1789,18 +1779,6 @@ let shift = fun b c -> Char.chr (((Char.code c) lsl 1) land 255 + if b then 1 el
 
 
 
-(** val eqb0 : char list -> char list -> bool **)
-
-let rec eqb0 s1 s2 =
-  match s1 with
-  | [] -> (match s2 with
-           | [] -> true
-           | _::_ -> false)
-  | c1::s1' ->
-    (match s2 with
-     | [] -> false
-     | c2::s2' -> if (=) c1 c2 then eqb0 s1' s2' else false)
-
 (** val append : char list -> char list -> char list **)
 
 let rec append s1 s2 =
@@ -2374,13 +2352,6 @@ let kmap h h0 h1 f m =
     (fmap (Obj.magic (fun _ _ -> list_fmap)) (prod_map f id)
       (map_to_list (h1 __) m))
 
-(** val map_fold :
-    ('a1, 'a2, 'a3) finMapToList -> ('a1 -> 'a2 -> 'a4 -> 'a4) -> 'a4 -> 'a3
-    -> 'a4 **)
-
-let map_fold h f b =
-  compose (fold_right (prod_curry_subdef f) b) (map_to_list h)
-
 type 'a pmap_raw =
 | PLeaf
 | PNode of 'a option * 'a pmap_raw * 'a pmap_raw
@@ -2591,11 +2562,27 @@ type nbar =
 | Finite of Big_int_Z.big_int
 | P_infty
 
-(** val nat_ : nbar -> Big_int_Z.big_int **)
+(** val nbar_leb : nbar -> nbar -> bool **)
 
-let nat_ = function
-| Finite n1 -> n1
-| P_infty -> Big_int_Z.zero_big_int
+let nbar_leb x y =
+  match x with
+  | Finite x0 ->
+    (match y with
+     | Finite y0 -> Coq_Nat.leb x0 y0
+     | P_infty -> true)
+  | P_infty -> (match y with
+                | Finite _ -> false
+                | P_infty -> true)
+
+(** val nbar_plus : nbar -> nbar -> nbar **)
+
+let nbar_plus x y =
+  match x with
+  | Finite x' ->
+    (match y with
+     | Finite y' -> Finite (add x' y')
+     | P_infty -> P_infty)
+  | P_infty -> P_infty
 
 type regName =
 | PC
@@ -3001,42 +2988,12 @@ let symbols_encode module_name symbol_name =
 
 type cerise_function = cerise_instruction list
 
-type data = word list
+type cerise_linkable_object = { c_code : (word, symbols) sum list;
+                                c_data : (word, symbols) sum list;
+                                c_main : Big_int_Z.big_int option;
+                                c_exports : (symbols, Big_int_Z.big_int) gmap }
 
-type id0 = char list
-
-type common_frame_entry =
-| SafeMem
-| LinkTbl
-
-type frame_entry =
-| Define of id0 * Big_int_Z.big_int
-| Imports of symbols
-| Common of common_frame_entry
-
-type cerise_frame = { cframe_functions_imported : frame_entry list;
-                      cframe_functions_defined : frame_entry list;
-                      cframe_lin_mem_imported : frame_entry list;
-                      cframe_lin_mem_defined : frame_entry list;
-                      cframe_globals_imported : frame_entry list;
-                      cframe_globals_defined : frame_entry list;
-                      cframe_itable_imported : frame_entry list;
-                      cframe_itable_defined : frame_entry list;
-                      cframe_safe_mem : frame_entry list;
-                      cframe_link_tbl : frame_entry list }
-
-type cerise_subcomponent = { c_id : id0; c_functions : cerise_function list;
-                             c_frame : cerise_frame; c_lin_mem : data list;
-                             c_globals : data list;
-                             c_indirect_table : data list;
-                             c_elements : (Big_int_Z.big_int, frame_entry)
-                                          gmap;
-                             c_exports : (symbols, Big_int_Z.big_int) gmap }
-
-type cerise_component = { c_subcomp : cerise_subcomponent list;
-                          c_main : (id0 * Big_int_Z.big_int) option }
-
-type cerise_program = { segment : (addr, word) gmap; main : word }
+type cerise_executable_object = { segment : word list; main : word }
 
 (** val list_to_mem : 'a1 list -> addr -> (addr, 'a1) gmap **)
 
@@ -3065,7 +3022,7 @@ let rec sort = function
 let shift_cap c n0 =
   match c with
   | SCap (p0, b, e, a) ->
-    SCap (p0, (add b n0), (Finite (add (nat_ e) n0)), (add a n0))
+    SCap (p0, (add b n0), (nbar_plus e (Finite n0)), (add a n0))
   | SSealRange (_, _, _, _) -> c
 
 (** val shift_word : word -> Big_int_Z.big_int -> word **)
@@ -3096,16 +3053,11 @@ let shift_segment m n0 =
   fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
     (fun w -> shift_word w n0) (Obj.magic shift_addr)
 
-(** val shift_data : data -> Big_int_Z.big_int -> data **)
-
-let shift_data d n0 =
-  map (fun w -> shift_word w n0) d
-
 type immediate = Big_int_Z.big_int
 
 type handle = { base : Big_int_Z.big_int; offset : Big_int_Z.big_int;
                 bound : Big_int_Z.big_int; valid : bool;
-                id1 : Big_int_Z.big_int }
+                id0 : Big_int_Z.big_int }
 
 type value =
 | Val_int of Big_int_Z.big_int
@@ -3306,6 +3258,51 @@ let get_function_type module0 i =
          get_type module0 module_func0.modfunc_type)
          (nth_error (Obj.magic module0.mod_funcs) i0)
 
+type labeled_instr =
+| Label of Big_int_Z.big_int list
+| BInstr of cerise_instruction
+| Br_Jmp of Big_int_Z.big_int list
+| Br_Jnz of Big_int_Z.big_int list * Big_int_Z.big_int
+
+(** val instrs : cerise_instruction list -> labeled_instr list **)
+
+let instrs li =
+  map (fun i -> BInstr i) li
+
+type labeled_function = labeled_instr list
+
+(** val max_reg_instr0 : labeled_instr -> Big_int_Z.big_int **)
+
+let max_reg_instr0 = function
+| BInstr i' -> max_reg_instr i'
+| Br_Jnz (_, r0) -> r0
+| _ -> Big_int_Z.zero_big_int
+
+(** val max_reg : labeled_instr list -> Big_int_Z.big_int **)
+
+let rec max_reg = function
+| [] -> Big_int_Z.zero_big_int
+| i :: p' -> max (max_reg_instr0 i) (max_reg p')
+
+type labeled_cerise_frame = { l_frame_imported_functions : symbols list;
+                              l_frame_defined_functions : word list;
+                              l_frame_data : (word, symbols) sum list }
+
+(** val len_labeled_cerise_frame :
+    labeled_cerise_frame -> Big_int_Z.big_int **)
+
+let len_labeled_cerise_frame frm =
+  add
+    (add (length frm.l_frame_imported_functions)
+      (length frm.l_frame_defined_functions)) (length frm.l_frame_data)
+
+type labeled_cerise_component = { l_code : (word * labeled_function list);
+                                  l_data_frame : labeled_cerise_frame;
+                                  l_data : (word, symbols) sum list;
+                                  l_main : Big_int_Z.big_int option;
+                                  l_exports : (symbols, Big_int_Z.big_int)
+                                              gmap }
+
 type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
                                          cerise_instruction);
                            encodeInstr : (cerise_instruction ->
@@ -3359,46 +3356,6 @@ let wt_sealed =
 
 let wt_int =
   WInt Big_int_Z.zero_big_int
-
-type labeled_instr =
-| Label of Big_int_Z.big_int list
-| BInstr of cerise_instruction
-| Br_Jmp of Big_int_Z.big_int list
-| Br_Jnz of Big_int_Z.big_int list * Big_int_Z.big_int
-
-(** val instrs : cerise_instruction list -> labeled_instr list **)
-
-let instrs li =
-  map (fun i -> BInstr i) li
-
-type labeled_function = labeled_instr list
-
-(** val max_reg_instr0 : labeled_instr -> Big_int_Z.big_int **)
-
-let max_reg_instr0 = function
-| BInstr i' -> max_reg_instr i'
-| Br_Jnz (_, r0) -> r0
-| _ -> Big_int_Z.zero_big_int
-
-(** val max_reg : labeled_instr list -> Big_int_Z.big_int **)
-
-let rec max_reg = function
-| [] -> Big_int_Z.zero_big_int
-| i :: p' -> max (max_reg_instr0 i) (max_reg p')
-
-type labeled_cerise_subcomponent = { l_id : id0;
-                                     l_functions : labeled_function list;
-                                     l_frame : cerise_frame;
-                                     l_lin_mem : data list;
-                                     l_globals : data list;
-                                     l_indirect_table : data list;
-                                     l_elements : (Big_int_Z.big_int,
-                                                  frame_entry) gmap;
-                                     l_exports : (symbols, Big_int_Z.big_int)
-                                                 gmap }
-
-type labeled_cerise_component = { l_subcomp : labeled_cerise_subcomponent list;
-                                  l_main : (id0 * Big_int_Z.big_int) option }
 
 (** val r_stk : regName **)
 
@@ -5387,16 +5344,11 @@ let prologue_function mP tf size_locals max_spilled_reg =
               (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) rt))))
     (instrs (prepare_stack_pointer (add size_locals max_spilled_reg)))
 
-(** val allocate_data : Big_int_Z.big_int -> Big_int_Z.big_int -> data **)
+(** val allocate_data :
+    Big_int_Z.big_int -> Big_int_Z.big_int -> word list **)
 
 let allocate_data size z0 =
   repeat (WInt z0) size
-
-(** val get_start : ws_module -> name -> (id0 * Big_int_Z.big_int) option **)
-
-let get_start m mod_name =
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some (mod_name,
-    (modstart_func mstart))) (Obj.magic m.mod_start)
 
 (** val compile_func :
     machineParameters -> module_func -> ws_module -> labeled_instr list option **)
@@ -5446,9 +5398,11 @@ let compile_funcs mP m =
         (compiled_f :: acc)) (Obj.magic compile_func mP f m)) acc_opt) (Some
     []) m.mod_funcs
 
-(** val compile_lin_mem : memory_type -> Big_int_Z.big_int -> data **)
+(** val compile_lin_mem :
+    memory_type -> Big_int_Z.big_int -> Big_int_Z.big_int -> (word, symbols)
+    sum list **)
 
-let compile_lin_mem m max_nb_page =
+let compile_lin_mem m max_nb_page m_b =
   let size_min = mul m.lim_min page_size0 in
   let size_max =
     mul
@@ -5456,7 +5410,6 @@ let compile_lin_mem m max_nb_page =
        | Some n0 -> min n0 max_nb_page
        | None -> max_nb_page) page_size0
   in
-  let m_b = Big_int_Z.zero_big_int in
   let l_m =
     add m_b (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
       Big_int_Z.zero_big_int))
@@ -5466,15 +5419,23 @@ let compile_lin_mem m max_nb_page =
   let full_cap = WSealable (SCap ((RW, Global), l_m, (Finite m_e), l_a)) in
   let current_cap = WSealable (SCap ((RW, Global), l_m, (Finite l_a), l_m)) in
   let linear_memory = allocate_data size_max Big_int_Z.zero_big_int in
-  full_cap :: (current_cap :: linear_memory)
+  map (fun x -> Inl x) (full_cap :: (current_cap :: linear_memory))
 
 (** val compile_lin_mems :
-    memory_type list -> Big_int_Z.big_int -> data list **)
+    memory_type list -> Big_int_Z.big_int -> Big_int_Z.big_int -> (word,
+    symbols) sum list list **)
 
-let compile_lin_mems llm max_nb_page =
-  map (fun m -> compile_lin_mem m max_nb_page) llm
+let compile_lin_mems llm max_nb_page offset_init =
+  let (_, l) =
+    foldl (fun acc m ->
+      let (mb, l_lin_mem) = acc in
+      let lin_mem = compile_lin_mem m max_nb_page mb in
+      ((add mb (length lin_mem)), (lin_mem :: l_lin_mem))) (offset_init, [])
+      llm
+  in
+  l
 
-(** val compile_global : module_glob -> data **)
+(** val compile_global : module_glob -> (word, symbols) sum list **)
 
 let compile_global g =
   let gtype = g.modglob_type in
@@ -5498,14 +5459,16 @@ let compile_global g =
     | MUT_immut -> WInt Big_int_Z.zero_big_int
     | MUT_mut -> WInt Big_int_Z.unit_big_int
   in
-  init_value :: (type_val :: (mut_val :: []))
+  map (fun x -> Inl x) (init_value :: (type_val :: (mut_val :: [])))
 
-(** val compile_globals : module_glob list -> data list **)
+(** val compile_globals :
+    module_glob list -> (word, symbols) sum list list **)
 
 let compile_globals lg =
   map compile_global lg
 
-(** val compile_indirect_table : module_table -> Big_int_Z.big_int -> data **)
+(** val compile_indirect_table :
+    module_table -> Big_int_Z.big_int -> (word, symbols) sum list **)
 
 let compile_indirect_table it max_nb_entry =
   let nb_entry =
@@ -5513,10 +5476,17 @@ let compile_indirect_table it max_nb_entry =
     | Some n0 -> min n0 max_nb_entry
     | None -> max_nb_entry
   in
-  allocate_data nb_entry Big_int_Z.zero_big_int
+  let indirect_table =
+    allocate_data nb_entry
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+      Big_int_Z.unit_big_int)))
+  in
+  map (fun x -> Inl x) indirect_table
 
 (** val compile_indirect_tables :
-    module_table list -> Big_int_Z.big_int -> data list **)
+    module_table list -> Big_int_Z.big_int -> (word, symbols) sum list list **)
 
 let compile_indirect_tables lit max_nb_entry =
   map (fun it -> compile_indirect_table it max_nb_entry) lit
@@ -5593,77 +5563,116 @@ let rec imports_itables = function
    | Some s -> app (s :: []) acc
    | None -> acc)
 
-(** val compile_frame : ws_module -> frame -> name -> cerise_frame option **)
+(** val compile_frame :
+    ws_module -> labeled_function list -> (word, symbols) sum list list ->
+    (word, symbols) sum list list -> (word, symbols) sum list list -> oType
+    -> oType -> labeled_cerise_frame **)
 
-let compile_frame m frm module_name =
-  let imported_functions =
-    map (fun s -> Imports s) (imports_functions m.mod_imports)
+let compile_frame m functions lin_mems globals itables oT_LM oT_G =
+  let imported_functions = imports_functions m.mod_imports in
+  let imported_lin_mems =
+    map (fun x -> Inr x) (imports_lin_mems m.mod_imports)
+  in
+  let imported_globals = map (fun x -> Inr x) (imports_globals m.mod_imports)
+  in
+  let imported_itables = map (fun x -> Inr x) (imports_itables m.mod_imports)
+  in
+  let commons =
+    let safe_memory =
+      '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('s'::('a'::('f'::('e'::('_'::('m'::('e'::('m'::[])))))))))))))))
+    in
+    let link_tbl =
+      '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('l'::('i'::('n'::('k'::('_'::('t'::('b'::('l'::[])))))))))))))))
+    in
+    map (fun x -> Inr x) (safe_memory :: (link_tbl :: []))
+  in
+  let len_frame =
+    add
+      (add
+        (add
+          (add
+            (add
+              (add
+                (add (add (length imported_functions) (length functions))
+                  (length imported_lin_mems)) (length lin_mems))
+              (length imported_globals)) (length globals))
+          (length imported_itables)) (length itables)) (length commons)
   in
   let defined_functions =
-    map (fun i -> Define (module_name, i))
-      (seq frm.idx_defined_functions (len_defined_functions m))
+    let entry_points =
+      let (_, entry_points) =
+        foldl (fun acc f ->
+          let (offset0, fl) = acc in
+          let next_offset = add offset0 (length f) in
+          (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int,
+          []) functions
+      in
+      entry_points
+    in
+    let b = Big_int_Z.zero_big_int in
+    let e =
+      add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+        (length (concat functions))
+    in
+    map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
+      (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
+      entry_points
   in
-  let imported_lin_mem =
-    map (fun s -> Imports s) (imports_lin_mems m.mod_imports)
+  let offset_frame =
+    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+      (length (concat functions))
   in
-  let defined_lin_mem =
-    map (fun i -> Define (module_name, i))
-      (seq frm.idx_defined_lin_mem (len_defined_lin_mem m))
+  let offset_lin_mems = add offset_frame len_frame in
+  let defined_lin_mems =
+    let (_, sealeds) =
+      foldl (fun acc m0 ->
+        let (offset0, sealed_lin_mems) = acc in
+        let e = add offset0 (length m0) in
+        let sealed_lin_mem = WSealed (oT_LM, (SCap ((RW, Global), offset0,
+          (Finite e), offset0)))
+        in
+        (e, (app sealed_lin_mems (sealed_lin_mem :: [])))) (offset_lin_mems,
+        []) lin_mems
+    in
+    map (fun x -> Inl x) sealeds
   in
-  let imported_globals =
-    map (fun s -> Imports s) (imports_globals m.mod_imports)
-  in
+  let offset_globals = add offset_lin_mems (length (concat lin_mems)) in
   let defined_globals =
-    map (fun i -> Define (module_name, i))
-      (seq frm.idx_defined_globals (len_defined_globals m))
+    let (_, sealeds) =
+      foldl (fun acc g ->
+        let (offset0, sealed_globals) = acc in
+        let e = add offset0 (length g) in
+        let sealed_global = WSealed (oT_G, (SCap ((RW, Global), offset0,
+          (Finite e), offset0)))
+        in
+        (e, (app sealed_globals (sealed_global :: [])))) (offset_globals, [])
+        globals
+    in
+    map (fun x -> Inl x) sealeds
   in
-  let imported_itable =
-    map (fun s -> Imports s) (imports_itables m.mod_imports)
+  let offset_itables = add offset_globals (length (concat globals)) in
+  let defined_itables =
+    let (_, ro_itables) =
+      foldl (fun acc it ->
+        let (offset0, ro_itables) = acc in
+        let e = add offset0 (length it) in
+        let ro_itable = WSealable (SCap ((RO, Global), offset0, (Finite e),
+          offset0))
+        in
+        (e, (app ro_itables (ro_itable :: [])))) (offset_itables, []) itables
+    in
+    map (fun x -> Inl x) ro_itables
   in
-  let defined_itable =
-    map (fun i -> Define (module_name, i))
-      (seq frm.idx_defined_itable (len_defined_itable m))
-  in
-  let safe_memory = (Common SafeMem) :: [] in
-  let link_tbl = (Common LinkTbl) :: [] in
-  Some { cframe_functions_imported = imported_functions;
-  cframe_functions_defined = defined_functions; cframe_lin_mem_imported =
-  imported_lin_mem; cframe_lin_mem_defined = defined_lin_mem;
-  cframe_globals_imported = imported_globals; cframe_globals_defined =
-  defined_globals; cframe_itable_imported = imported_itable;
-  cframe_itable_defined = defined_itable; cframe_safe_mem = safe_memory;
-  cframe_link_tbl = link_tbl }
-
-(** val compile_element :
-    funcidx list -> Big_int_Z.big_int -> frame -> name -> (Big_int_Z.big_int,
-    frame_entry) gmap **)
-
-let rec compile_element fidxs offset0 frm module_name =
-  match fidxs with
-  | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
-  | f :: fidxs' ->
-    insert0 (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-      offset0 (Define (module_name, f))
-      (compile_element fidxs'
-        (add offset0 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)) frm
-        module_name)
-
-(** val compile_elements :
-    module_element list -> frame -> name -> (Big_int_Z.big_int, frame_entry)
-    gmap **)
-
-let rec compile_elements ele frm module_name =
-  match ele with
-  | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
-  | e :: ele' ->
-    union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (compile_element e.modelem_init e.modelem_offset frm module_name)
-      (compile_elements ele' frm module_name)
+  { l_frame_imported_functions = imported_functions;
+  l_frame_defined_functions = defined_functions; l_frame_data =
+  (app imported_lin_mems
+    (app defined_lin_mems
+      (app imported_globals
+        (app defined_globals
+          (app imported_itables (app defined_itables commons)))))) }
 
 (** val compile_export :
-    module_export -> frame -> id0 -> (symbols, Big_int_Z.big_int) gmap **)
+    module_export -> frame -> char list -> (symbols, Big_int_Z.big_int) gmap **)
 
 let compile_export exp frm module_name =
   let s = symbols_encode module_name exp.modexp_name in
@@ -5701,34 +5710,46 @@ let rec compile_exports exps frm module_name =
       (compile_export exp frm module_name)
       (compile_exports exps' frm module_name)
 
-(** val compile_module :
-    machineParameters -> ws_module -> name -> labeled_cerise_component option **)
+(** val get_start : ws_module -> Big_int_Z.big_int option **)
 
-let compile_module mP m module_name =
-  let mAX_LIN_MEM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-  in
-  let mAX_INDIRECT_TABLE = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-  in
+let get_start m =
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some
+    (modstart_func mstart)) (Obj.magic m.mod_start)
+
+(** val compile_module :
+    machineParameters -> ws_module -> name -> oType -> oType ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> labeled_cerise_component option **)
+
+let compile_module mP m module_name oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
   let frm = define_module_frame m in
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_frame ->
-    mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_functions ->
-      let lin_mem = compile_lin_mems m.mod_mems mAX_LIN_MEM in
-      let indirect_table =
-        compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
-      in
-      let globals = compile_globals m.mod_globals in
-      let initial_elements = compile_elements m.mod_elem frm module_name in
-      let exports = compile_exports m.mod_exports frm module_name in
-      let subcomp = { l_id = module_name; l_functions = compiled_functions;
-        l_frame = compiled_frame; l_lin_mem = lin_mem; l_globals = globals;
-        l_indirect_table = indirect_table; l_elements = initial_elements;
-        l_exports = exports }
-      in
-      Some { l_subcomp = (subcomp :: []); l_main = (get_start m module_name) })
-      (Obj.magic compile_funcs mP m))
-    (Obj.magic compile_frame m frm module_name)
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_functions ->
+    let lin_mem_section = compile_lin_mems m.mod_mems mAX_LIN_MEM in
+    let globals_section = compile_globals m.mod_globals in
+    let uninit_itables =
+      compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
+    in
+    let exports = compile_exports m.mod_exports frm module_name in
+    let data_frame =
+      compile_frame m compiled_functions
+        (lin_mem_section Big_int_Z.zero_big_int) globals_section
+        uninit_itables oT_LM oT_G
+    in
+    let b_frm =
+      add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+        (length (concat compiled_functions))
+    in
+    let len_frm = len_labeled_cerise_frame data_frame in
+    let e_frm = add b_frm len_frm in
+    let frame_cap = WSealable (SCap ((RO, Global), b_frm, (Finite e_frm),
+      b_frm))
+    in
+    let data_section =
+      app (concat (lin_mem_section e_frm))
+        (app (concat globals_section) (concat uninit_itables))
+    in
+    Some { l_code = (frame_cap, compiled_functions); l_data_frame =
+    data_frame; l_data = data_section; l_main = (get_start m); l_exports =
+    exports }) (Obj.magic compile_funcs mP m)
 
 (** val addresses_labels' :
     labeled_instr list -> Big_int_Z.big_int -> (label, Big_int_Z.big_int) gmap **)
@@ -5823,28 +5844,60 @@ let compile_functions progs =
         (compiled_prog :: acc)) (Obj.magic branch_labels p)) acc_opt) (Some
     []) progs
 
-(** val compile_subcomponent :
-    labeled_cerise_subcomponent -> cerise_subcomponent option **)
+(** val relocate_defined_functions : cerise_function list -> word list **)
 
-let compile_subcomponent m =
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_functions -> Some
-    { c_id = m.l_id; c_functions = compiled_functions; c_frame = m.l_frame;
-    c_lin_mem = m.l_lin_mem; c_globals = m.l_globals; c_indirect_table =
-    m.l_indirect_table; c_elements = m.l_elements; c_exports = m.l_exports })
-    (Obj.magic compile_functions m.l_functions)
+let relocate_defined_functions functions =
+  let entry_points =
+    let (_, entry_points) =
+      foldl (fun acc f ->
+        let (offset0, fl) = acc in
+        let next_offset = add offset0 (length f) in
+        (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int, [])
+        functions
+    in
+    entry_points
+  in
+  let b = Big_int_Z.zero_big_int in
+  let e =
+    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+      (length (concat functions))
+  in
+  map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
+    (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
+    entry_points
 
 (** val compile_component :
-    labeled_cerise_component -> cerise_component option **)
+    machineParameters -> labeled_cerise_component -> cerise_linkable_object
+    option **)
 
-let compile_component m =
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun subcomp -> Some
-    { c_subcomp = subcomp; c_main = m.l_main })
-    (foldl (fun acc_opt s ->
-      mbind (Obj.magic (fun _ _ -> option_bind)) (fun acc ->
-        mbind (Obj.magic (fun _ _ -> option_bind)) (fun compiled_subcomp ->
-          Some (Obj.magic (compiled_subcomp :: acc)))
-          (Obj.magic compile_subcomponent s)) acc_opt) (Some (Obj.magic []))
-      m.l_subcomp)
+let compile_component mP m =
+  let (frm_cap, code) = m.l_code in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun lbl_erased_code ->
+    let reloc_shift =
+      sub (length (concat lbl_erased_code)) (length (concat code))
+    in
+    let relocated_frm_cap = shift_word frm_cap reloc_shift in
+    let relocate = fun data n0 ->
+      map (fun w ->
+        match w with
+        | Inl w0 -> Inl (shift_word w0 n0)
+        | Inr s -> Inr s) data
+    in
+    let relocated_frame =
+      let frame_imported_functions = m.l_data_frame.l_frame_imported_functions
+      in
+      let frame_defined_functions = relocate_defined_functions lbl_erased_code
+      in
+      let frame_data = relocate m.l_data_frame.l_frame_data reloc_shift in
+      app (map (fun x -> Inr x) frame_imported_functions)
+        (app (map (fun x -> Inl x) frame_defined_functions) frame_data)
+    in
+    let relocated_data = relocate m.l_data reloc_shift in
+    Some { c_code =
+    (map (fun x -> Inl x)
+      (relocated_frm_cap :: (encodeInstrsW mP (concat lbl_erased_code))));
+    c_data = (app relocated_frame relocated_data); c_main = m.l_main;
+    c_exports = m.l_exports }) (Obj.magic compile_functions code)
 
 (** val get_spilling_offset :
     Big_int_Z.big_int -> Big_int_Z.big_int option **)
@@ -6160,94 +6213,222 @@ let rec spilling = function
 | [] -> []
 | i :: il' -> app (spill_labeled_instr i) (spilling il')
 
-(** val reg_alloc_subcomponent :
-    labeled_cerise_subcomponent -> labeled_cerise_subcomponent **)
+(** val relocate_defined_functions0 : labeled_function list -> word list **)
 
-let reg_alloc_subcomponent m =
-  { l_id = m.l_id; l_functions = (map spilling m.l_functions); l_frame =
-    m.l_frame; l_lin_mem = m.l_lin_mem; l_globals = m.l_globals;
-    l_indirect_table = m.l_indirect_table; l_elements = m.l_elements;
-    l_exports = m.l_exports }
+let relocate_defined_functions0 functions =
+  let entry_points =
+    let (_, entry_points) =
+      foldl (fun acc f ->
+        let (offset0, fl) = acc in
+        let next_offset = add offset0 (length f) in
+        (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int, [])
+        functions
+    in
+    entry_points
+  in
+  let b = Big_int_Z.zero_big_int in
+  let e =
+    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+      (length (concat functions))
+  in
+  map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
+    (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
+    entry_points
 
 (** val register_allocation :
     labeled_cerise_component -> labeled_cerise_component **)
 
-let register_allocation c =
-  { l_subcomp = (map reg_alloc_subcomponent c.l_subcomp); l_main = c.l_main }
-
-(** val resolve_import :
-    frame_entry -> (symbols, id0 * Big_int_Z.big_int) gmap -> frame_entry **)
-
-let resolve_import e exports =
-  match e with
-  | Imports s ->
-    (match lookup0 (gmap_lookup string_eq_dec string_countable) s exports with
-     | Some y -> let (m, idx) = y in Define (m, idx)
-     | None -> e)
-  | _ -> e
-
-(** val resolve_frame_link :
-    cerise_frame -> (symbols, id0 * Big_int_Z.big_int) gmap -> cerise_frame **)
-
-let resolve_frame_link frm exports =
-  let resolve = fun sf -> map (fun e -> resolve_import e exports) sf in
-  { cframe_functions_imported = (resolve frm.cframe_functions_imported);
-  cframe_functions_defined = (resolve frm.cframe_functions_defined);
-  cframe_lin_mem_imported = (resolve frm.cframe_lin_mem_imported);
-  cframe_lin_mem_defined = (resolve frm.cframe_lin_mem_defined);
-  cframe_globals_imported = (resolve frm.cframe_globals_imported);
-  cframe_globals_defined = (resolve frm.cframe_globals_defined);
-  cframe_itable_imported = (resolve frm.cframe_itable_imported);
-  cframe_itable_defined = (resolve frm.cframe_itable_defined);
-  cframe_safe_mem = (resolve frm.cframe_safe_mem); cframe_link_tbl =
-  (resolve frm.cframe_link_tbl) }
-
-(** val resolve_frame_link_map :
-    cerise_frame -> cerise_subcomponent list -> cerise_frame **)
-
-let rec resolve_frame_link_map frm = function
-| [] -> frm
-| l :: l' ->
-  let lib_exports =
-    fmap (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
-      (fun n0 -> (l.c_id, n0)) l.c_exports
+let register_allocation m =
+  let (frm_cap, code) = m.l_code in
+  let opt_code = map spilling code in
+  let reloc_shift = sub (length (concat opt_code)) (length (concat code)) in
+  let relocated_frm_cap = shift_word frm_cap reloc_shift in
+  let relocate = fun data n0 ->
+    map (fun w ->
+      match w with
+      | Inl w0 -> Inl (shift_word w0 n0)
+      | Inr s -> Inr s) data
   in
-  let frm' = resolve_frame_link_map frm l' in
-  resolve_frame_link frm' (Obj.magic lib_exports)
+  { l_code = (relocated_frm_cap, opt_code); l_data_frame =
+  { l_frame_imported_functions = m.l_data_frame.l_frame_imported_functions;
+  l_frame_defined_functions = (relocate_defined_functions0 opt_code);
+  l_frame_data = (relocate m.l_data_frame.l_frame_data reloc_shift) };
+  l_data = (relocate m.l_data reloc_shift); l_main = m.l_main; l_exports =
+  m.l_exports }
 
-(** val link_subcomps :
-    cerise_subcomponent list -> cerise_subcomponent list ->
-    cerise_subcomponent list **)
+(** val relocate_lib :
+    ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
+    -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
 
-let link_subcomps p_lib p_client =
-  app
-    (map (fun c -> { c_id = c.c_id; c_functions = c.c_functions; c_frame =
-      (resolve_frame_link_map c.c_frame p_lib); c_lin_mem = c.c_lin_mem;
-      c_globals = c.c_globals; c_indirect_table = c.c_indirect_table;
-      c_elements = c.c_elements; c_exports = c.c_exports }) p_client) p_lib
+let relocate_lib rel add0 y p_lib p_client =
+  let a = length p_client.c_code in
+  let b = length p_client.c_data in
+  let c = length p_lib.c_code in
+  if rel y c then add0 y a else add0 y (add a b)
+
+(** val relocate_client :
+    ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
+    -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
+
+let relocate_client rel add0 y p_lib p_client =
+  let a = length p_client.c_code in
+  let c = length p_lib.c_code in if rel y a then y else add0 y c
+
+(** val relocate_addr_lib :
+    Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
+    Big_int_Z.big_int **)
+
+let relocate_addr_lib =
+  relocate_lib Coq_Nat.ltb add
+
+(** val relocate_eaddr_lib :
+    nbar -> cerise_linkable_object -> cerise_linkable_object -> nbar **)
+
+let relocate_eaddr_lib =
+  relocate_lib (fun x y -> nbar_leb x (Finite y)) (fun x y ->
+    nbar_plus x (Finite y))
+
+(** val relocate_addr_client :
+    Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
+    Big_int_Z.big_int **)
+
+let relocate_addr_client =
+  relocate_client Coq_Nat.ltb add
+
+(** val relocate_eaddr_client :
+    nbar -> cerise_linkable_object -> cerise_linkable_object -> nbar **)
+
+let relocate_eaddr_client =
+  relocate_client (fun x y -> nbar_leb x (Finite y)) (fun x y ->
+    nbar_plus x (Finite y))
+
+(** val relocate_word :
+    (Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
+    Big_int_Z.big_int) -> (nbar -> cerise_linkable_object ->
+    cerise_linkable_object -> nbar) -> (word, symbols) sum ->
+    cerise_linkable_object -> cerise_linkable_object -> (word, symbols) sum **)
+
+let relocate_word relocate_addr relocate_eaddr w p_lib p_client =
+  match w with
+  | Inl w0 ->
+    Inl
+      (match w0 with
+       | WInt z0 -> WInt z0
+       | WSealable sb ->
+         (match sb with
+          | SCap (p0, b, e, a) ->
+            let b0 = relocate_addr b p_lib p_client in
+            let e0 = relocate_eaddr e p_lib p_client in
+            let a0 = relocate_addr a p_lib p_client in
+            WSealable (SCap (p0, b0, e0, a0))
+          | SSealRange (p0, b, e, a) -> WSealable (SSealRange (p0, b, e, a)))
+       | WSealed (ot, s) ->
+         (match s with
+          | SCap (p0, b, e, a) ->
+            let b0 = relocate_addr b p_lib p_client in
+            let e0 = relocate_eaddr e p_lib p_client in
+            let a0 = relocate_addr a p_lib p_client in
+            WSealed (ot, (SCap (p0, b0, e0, a0)))
+          | SSealRange (p0, b, e, a) ->
+            WSealed (ot, (SSealRange (p0, b, e, a)))))
+  | Inr s -> Inr s
+
+(** val relocate_word_lib :
+    (word, symbols) sum -> cerise_linkable_object -> cerise_linkable_object
+    -> (word, symbols) sum **)
+
+let relocate_word_lib =
+  relocate_word relocate_addr_lib relocate_eaddr_lib
+
+(** val relocate_word_client :
+    (word, symbols) sum -> cerise_linkable_object -> cerise_linkable_object
+    -> (word, symbols) sum **)
+
+let relocate_word_client =
+  relocate_word relocate_addr_client relocate_eaddr_client
 
 (** val resolve_main :
-    cerise_component -> cerise_component -> (id0 * Big_int_Z.big_int) option
-    option **)
+    cerise_linkable_object -> cerise_linkable_object -> Big_int_Z.big_int
+    option option **)
 
 let resolve_main p_lib p_client =
   match p_lib.c_main with
   | Some m ->
     (match p_client.c_main with
      | Some _ -> None
-     | None -> Some (Some m))
-  | None -> Some p_client.c_main
+     | None -> Some (Some (relocate_addr_lib m p_lib p_client)))
+  | None ->
+    (match p_client.c_main with
+     | Some m -> Some (Some (relocate_addr_client m p_lib p_client))
+     | None -> Some None)
+
+(** val resolve_data :
+    (word, symbols) sum list -> (word, symbols) sum list -> (symbols,
+    Big_int_Z.big_int) gmap -> (word, symbols) sum list option **)
+
+let rec resolve_data client_data lib_data exports =
+  match client_data with
+  | [] -> Some []
+  | s0 :: data' ->
+    (match s0 with
+     | Inl w ->
+       mbind (Obj.magic (fun _ _ -> option_bind)) (fun solved_data -> Some
+         ((Inl w) :: solved_data)) (resolve_data data' lib_data exports)
+     | Inr s ->
+       mbind (Obj.magic (fun _ _ -> option_bind)) (fun solved_data ->
+         match lookup0 (gmap_lookup string_eq_dec string_countable) s exports with
+         | Some n0 ->
+           mbind (Obj.magic (fun _ _ -> option_bind)) (fun w -> Some
+             (w :: solved_data)) (nth_error (Obj.magic lib_data) n0)
+         | None -> Some ((Inr s) :: solved_data))
+         (resolve_data data' lib_data exports))
 
 (** val link_seq :
-    cerise_component -> cerise_component -> cerise_component option **)
+    cerise_linkable_object -> cerise_linkable_object ->
+    cerise_linkable_object option **)
 
 let link_seq p_lib p_client =
-  let subcomps = link_subcomps p_lib.c_subcomp p_client.c_subcomp in
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
-    { c_subcomp = subcomps; c_main = main_word })
-    (Obj.magic resolve_main p_lib p_client)
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word ->
+    let relocated_lib_code =
+      map (fun w -> relocate_word_lib w p_lib p_client) p_lib.c_code
+    in
+    let relocated_lib_data =
+      map (fun w -> relocate_word_lib w p_lib p_client) p_lib.c_data
+    in
+    let relocated_client_code =
+      map (fun w -> relocate_word_client w p_lib p_client) p_client.c_code
+    in
+    let relocated_client_data =
+      map (fun w -> relocate_word_client w p_lib p_client) p_client.c_data
+    in
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked_code_client ->
+      mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked_data_client ->
+        let relocated_lib_exports =
+          fmap
+            (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+            (fun w -> relocate_addr_lib w p_lib p_client) p_lib.c_exports
+        in
+        let relocated_client_exports =
+          fmap
+            (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+            (fun w -> relocate_addr_client w p_lib p_client)
+            p_client.c_exports
+        in
+        Some { c_code = (app linked_code_client relocated_lib_code); c_data =
+        (app linked_data_client relocated_lib_data); c_main = main_word;
+        c_exports =
+        (union0
+          (map_union
+            (Obj.magic (fun _ _ _ ->
+              gmap_merge string_eq_dec string_countable)))
+          relocated_lib_exports relocated_client_exports) })
+        (Obj.magic resolve_data relocated_client_data relocated_lib_data
+          p_lib.c_exports))
+      (Obj.magic resolve_data relocated_client_code relocated_lib_data
+        p_lib.c_exports)) (Obj.magic resolve_main p_lib p_client)
 
-(** val instantiation : cerise_component list -> cerise_component option **)
+(** val instantiation :
+    cerise_linkable_object list -> cerise_linkable_object option **)
 
 let rec instantiation = function
 | [] -> None
@@ -6258,421 +6439,23 @@ let rec instantiation = function
      mbind (Obj.magic (fun _ _ -> option_bind)) (fun p_lib ->
        link_seq p_lib p_client) (instantiation p_lib'))
 
-(** val len_frame_cerise_subcomponent :
-    cerise_subcomponent -> Big_int_Z.big_int **)
+(** val common_module :
+    machineParameters -> oType -> oType -> oType -> Big_int_Z.big_int ->
+    cerise_linkable_object **)
 
-let len_frame_cerise_subcomponent s =
-  add
-    (add
-      (add
-        (add
-          (add
-            (add
-              (add
-                (add
-                  (add (length s.c_frame.cframe_functions_imported)
-                    (length s.c_frame.cframe_functions_defined))
-                  (length s.c_frame.cframe_lin_mem_imported))
-                (length s.c_frame.cframe_lin_mem_defined))
-              (length s.c_frame.cframe_globals_imported))
-            (length s.c_frame.cframe_globals_defined))
-          (length s.c_frame.cframe_itable_imported))
-        (length s.c_frame.cframe_itable_defined))
-      (length s.c_frame.cframe_safe_mem)) (length s.c_frame.cframe_link_tbl)
-
-(** val len_code_cerise_subcomponent :
-    cerise_subcomponent -> Big_int_Z.big_int **)
-
-let len_code_cerise_subcomponent s =
-  foldl (fun acc f -> add acc (length f)) (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int) s.c_functions
-
-(** val len_code : cerise_subcomponent list -> Big_int_Z.big_int **)
-
-let len_code cerise_subcomponent_list =
-  foldl (fun acc s -> add acc (len_code_cerise_subcomponent s))
-    Big_int_Z.zero_big_int cerise_subcomponent_list
-
-(** val len_frames : cerise_subcomponent list -> Big_int_Z.big_int **)
-
-let len_frames cerise_subcomponent_list =
-  foldl (fun acc s -> add acc (len_frame_cerise_subcomponent s))
-    Big_int_Z.zero_big_int cerise_subcomponent_list
-
-(** val len_linear_memories :
-    cerise_subcomponent list -> Big_int_Z.big_int **)
-
-let len_linear_memories cerise_subcomponent_list =
-  foldl (fun acc s -> add acc (length (concat s.c_lin_mem)))
-    Big_int_Z.zero_big_int cerise_subcomponent_list
-
-(** val len_globals : cerise_subcomponent list -> Big_int_Z.big_int **)
-
-let len_globals cerise_subcomponent_list =
-  foldl (fun acc s -> add acc (length (concat s.c_globals)))
-    Big_int_Z.zero_big_int cerise_subcomponent_list
-
-(** val len_indirect_table : cerise_subcomponent list -> Big_int_Z.big_int **)
-
-let len_indirect_table cerise_subcomponent_list =
-  foldl (fun acc s -> add acc (length (concat s.c_indirect_table)))
-    Big_int_Z.zero_big_int cerise_subcomponent_list
-
-(** val functions_entry_points :
-    cerise_function list -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> word list **)
-
-let rec functions_entry_points functions b e entry_point =
-  match functions with
-  | [] -> []
-  | f :: functions' ->
-    let next_entry_point = add entry_point (length f) in
-    (WSealable (SCap ((E, Global), b, (Finite e),
-    entry_point))) :: (functions_entry_points functions' b e next_entry_point)
-
-(** val global_entry_point : data -> Big_int_Z.big_int -> oType -> word **)
-
-let global_entry_point global offset0 ot_g =
-  let e = add offset0 (length global) in
-  WSealed (ot_g, (SCap ((RW, Global), offset0, (Finite e), offset0)))
-
-(** val globals_entry_points :
-    data list -> Big_int_Z.big_int -> oType -> word list **)
-
-let rec globals_entry_points globals offset_globals ot_g =
-  match globals with
-  | [] -> []
-  | g :: globals' ->
-    let sealed_entry = global_entry_point g offset_globals ot_g in
-    let new_offset = add offset_globals (length g) in
-    sealed_entry :: (globals_entry_points globals' new_offset ot_g)
-
-(** val lin_mem_entry_point : data -> Big_int_Z.big_int -> oType -> word **)
-
-let lin_mem_entry_point lin_mem offset0 ot_lm =
-  let e = add offset0 (length lin_mem) in
-  WSealed (ot_lm, (SCap ((RW, Global), offset0, (Finite e), offset0)))
-
-(** val lin_mems_entry_points :
-    data list -> Big_int_Z.big_int -> oType -> word list **)
-
-let rec lin_mems_entry_points lin_mems offset_lin_mems ot_lm =
-  match lin_mems with
-  | [] -> []
-  | m :: lin_mems' ->
-    let sealed_entry = lin_mem_entry_point m offset_lin_mems ot_lm in
-    let new_offset = add offset_lin_mems (length m) in
-    sealed_entry :: (lin_mems_entry_points lin_mems' new_offset ot_lm)
-
-(** val itable_entry_point : data -> Big_int_Z.big_int -> word **)
-
-let itable_entry_point itable offset0 =
-  let e = add offset0 (length itable) in
-  WSealable (SCap ((RO, Global), offset0, (Finite e), offset0))
-
-(** val itables_entry_points : data list -> Big_int_Z.big_int -> word list **)
-
-let rec itables_entry_points itables offset0 =
-  match itables with
-  | [] -> []
-  | it :: itables' ->
-    let entry = itable_entry_point it offset0 in
-    let new_offset = add offset0 (length it) in
-    entry :: (itables_entry_points itables' new_offset)
-
-type aword =
-| Abstract of id0 * Big_int_Z.big_int
-| Concrete of word
-
-type preMem = (addr, aword) gmap
-
-(** val frame_entry_to_word :
-    frame_entry -> id0 -> mem -> Big_int_Z.big_int -> word -> word -> aword **)
-
-let frame_entry_to_word entry comp_id frame_inst offset_frame cap_safe_mem cap_linking_table =
-  match entry with
-  | Define (module0, idx) ->
-    if eqb0 comp_id module0
-    then Concrete
-           (match lookup0 (gmap_lookup Coq0_Nat.eq_dec nat_countable)
-                    (add offset_frame idx) frame_inst with
-            | Some w -> w
-            | None ->
-              WInt
-                ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-                ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-                (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))
-    else Abstract (module0, idx)
-  | Imports _ ->
-    Concrete (WInt (Big_int_Z.mult_int_big_int 2
-      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-      (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))
-  | Common c ->
-    (match c with
-     | SafeMem -> Concrete cap_safe_mem
-     | LinkTbl -> Concrete cap_linking_table)
-
-(** val cerise_frame_to_data :
-    cerise_frame -> id0 -> mem -> Big_int_Z.big_int -> word -> word -> aword
-    list **)
-
-let cerise_frame_to_data frm comp_id frame_inst offset_frame cap_safe_mem cap_linking_table =
-  let subframe_to_data = fun sf ->
-    map (fun e ->
-      frame_entry_to_word e comp_id frame_inst offset_frame cap_safe_mem
-        cap_linking_table) sf
-  in
-  app (subframe_to_data frm.cframe_functions_imported)
-    (app (subframe_to_data frm.cframe_functions_defined)
-      (app (subframe_to_data frm.cframe_lin_mem_imported)
-        (app (subframe_to_data frm.cframe_lin_mem_defined)
-          (app (subframe_to_data frm.cframe_globals_imported)
-            (app (subframe_to_data frm.cframe_globals_defined)
-              (app (subframe_to_data frm.cframe_itable_imported)
-                (app (subframe_to_data frm.cframe_itable_defined)
-                  (app (subframe_to_data frm.cframe_safe_mem)
-                    (subframe_to_data frm.cframe_link_tbl)))))))))
-
-(** val instantiate_data : data list -> Big_int_Z.big_int -> preMem **)
-
-let rec instantiate_data datas offset0 =
-  match datas with
-  | [] -> gmap_empty Coq0_Nat.eq_dec nat_countable
-  | d :: datas' ->
-    union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (list_to_mem (map (fun x -> Concrete x) (shift_data d offset0)) offset0)
-      (instantiate_data datas' (add offset0 (length d)))
-
-(** val preload_cerise_subcomponent_in_memory :
-    machineParameters -> cerise_subcomponent -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> word -> word -> oType -> oType -> preMem **)
-
-let preload_cerise_subcomponent_in_memory mP s offset_code offset_frame offset_lin_mem offset_globals offset_indirect_table cap_safe_mem cap_linking_table ot_g ot_lm =
-  let frame_capability = SCap ((RO, Global), offset_frame, (Finite
-    offset_lin_mem), offset_frame)
-  in
-  let code = (WSealable
-    frame_capability) :: (encodeInstrsW mP (concat s.c_functions))
-  in
-  let code_section = list_to_mem (map (fun x -> Concrete x) code) offset_code
-  in
-  let local_ftable =
-    let e_code = add offset_code (length code) in
-    let a_code_init =
-      add offset_code (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    in
-    functions_entry_points s.c_functions offset_code e_code a_code_init
-  in
-  let len_imported_functions = length s.c_frame.cframe_functions_imported in
-  let offset_local_ftable = add offset_frame len_imported_functions in
-  let local_ftable_section = list_to_mem local_ftable offset_local_ftable in
-  let lin_mem_table = lin_mems_entry_points s.c_lin_mem offset_lin_mem ot_lm
-  in
-  let offset_lin_mem_table =
-    let len_imported_lin_mem = length s.c_frame.cframe_lin_mem_imported in
-    add (add offset_local_ftable (length local_ftable)) len_imported_lin_mem
-  in
-  let lin_mem_table_section = list_to_mem lin_mem_table offset_lin_mem_table
-  in
-  let globals_table = globals_entry_points s.c_globals offset_globals ot_g in
-  let offset_globals_table =
-    let len_globals_imports = length s.c_frame.cframe_globals_imported in
-    add (add offset_lin_mem_table (length lin_mem_table)) len_globals_imports
-  in
-  let globals_table_section = list_to_mem globals_table offset_globals_table
-  in
-  let indirection_table_cap =
-    itables_entry_points s.c_indirect_table offset_indirect_table
-  in
-  let offset_indirection_table_cap =
-    let len_imported_itables = length s.c_frame.cframe_itable_imported in
-    add (add offset_globals_table (length globals_table)) len_imported_itables
-  in
-  let indirection_table_cap_section =
-    list_to_mem indirection_table_cap offset_indirection_table_cap
-  in
-  let frame_inst =
-    union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (union0
-        (map_union
-          (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-        (union0
-          (map_union
-            (Obj.magic (fun _ _ _ ->
-              gmap_merge Coq0_Nat.eq_dec nat_countable)))
-          local_ftable_section lin_mem_table_section) globals_table_section)
-      indirection_table_cap_section
-  in
-  let frame_data =
-    cerise_frame_to_data s.c_frame s.c_id frame_inst offset_frame
-      cap_safe_mem cap_linking_table
-  in
-  let frame0 = list_to_mem frame_data offset_frame in
-  let lin_mem = instantiate_data s.c_lin_mem offset_lin_mem in
-  let globals = instantiate_data s.c_globals offset_globals in
-  let indirect_table =
-    instantiate_data s.c_indirect_table offset_indirect_table
-  in
-  let itable =
-    foldl (fun acc ele ->
-      let (fidx, entry) = ele in
-      (match entry with
-       | Define (m, idx) ->
-         insert0
-           (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-           (add offset_indirect_table fidx) (Abstract (m, idx)) acc
-       | _ ->
-         insert0
-           (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-           (add offset_indirect_table fidx) (Concrete (WInt
-           ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-           Big_int_Z.unit_big_int))) acc)) indirect_table
-      (map_to_list (gmap_to_list Coq0_Nat.eq_dec nat_countable) s.c_elements)
-  in
-  union0
-    (map_union
-      (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-    (union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (union0
-        (map_union
-          (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-        (union0
-          (map_union
-            (Obj.magic (fun _ _ _ ->
-              gmap_merge Coq0_Nat.eq_dec nat_countable))) code_section frame0)
-        lin_mem) globals) itable
-
-(** val preload_cerise_subcomponents_in_memory :
-    machineParameters -> cerise_subcomponent list -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> word -> word -> oType -> oType -> preMem * (id0,
-    Big_int_Z.big_int) gmap **)
-
-let rec preload_cerise_subcomponents_in_memory mP cerise_subcomponent_list offset_code offset_frame offset_lin_mem offset_globals offset_indirect_table cap_safe_mem cap_linking_table ot_g ot_lm =
-  match cerise_subcomponent_list with
-  | [] ->
-    ((gmap_empty Coq0_Nat.eq_dec nat_countable),
-      (gmap_empty string_eq_dec string_countable))
-  | s :: cerise_subcomponent_list' ->
-    let offset_code' = add offset_code (len_code_cerise_subcomponent s) in
-    let offset_frame' = add offset_frame (len_frame_cerise_subcomponent s) in
-    let offset_lin_mem' = add offset_lin_mem (length s.c_lin_mem) in
-    let offset_globals' = add offset_globals (length s.c_globals) in
-    let offset_indirect_table' =
-      add offset_indirect_table (length s.c_indirect_table)
-    in
-    let new_module =
-      preload_cerise_subcomponent_in_memory mP s offset_code offset_frame
-        offset_lin_mem offset_globals offset_indirect_table cap_safe_mem
-        cap_linking_table ot_g ot_lm
-    in
-    let (instantiated, offset_frames_modules) =
-      preload_cerise_subcomponents_in_memory mP cerise_subcomponent_list'
-        offset_code' offset_frame' offset_lin_mem' offset_globals'
-        offset_indirect_table' cap_safe_mem cap_linking_table ot_g ot_lm
-    in
-    ((union0
-       (map_union
-         (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-       new_module instantiated),
-    (insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
-      s.c_id offset_frame offset_frames_modules))
-
-(** val solve_undefined :
-    aword -> (id0, Big_int_Z.big_int) gmap -> preMem -> aword **)
-
-let solve_undefined e offset_submodules_frames premem =
-  match e with
-  | Abstract (module0, idx) ->
-    (match lookup0 (gmap_lookup string_eq_dec string_countable) module0
-             offset_submodules_frames with
-     | Some idx_frame ->
-       (match lookup0 (gmap_lookup Coq0_Nat.eq_dec nat_countable)
-                (add idx_frame idx) premem with
-        | Some y ->
-          (match y with
-           | Abstract (_, _) ->
-             Concrete (WInt
-               ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-               ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-               Big_int_Z.unit_big_int)))
-           | Concrete w -> Concrete w)
-        | None ->
-          Concrete (WInt (Big_int_Z.mult_int_big_int 2
-            ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-            Big_int_Z.unit_big_int))))
-     | None ->
-       Concrete (WInt
-         ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-         (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))
-  | Concrete w -> Concrete w
-
-(** val load_cerise_subcomponents_in_memory :
-    machineParameters -> cerise_subcomponent list -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> word -> word -> oType -> oType -> mem * (id0,
-    Big_int_Z.big_int) gmap **)
-
-let load_cerise_subcomponents_in_memory mP cerise_subcomponent_list offset_code offset_frame offset_lin_mem offset_globals offset_indirect_table cap_safe_mem cap_linking_table ot_g ot_lm =
-  let (premem, offset_cerise_subcomponents_frame) =
-    preload_cerise_subcomponents_in_memory mP cerise_subcomponent_list
-      offset_code offset_frame offset_lin_mem offset_globals
-      offset_indirect_table cap_safe_mem cap_linking_table ot_g ot_lm
-  in
-  let solved_premem =
-    map_fold (gmap_to_list Coq0_Nat.eq_dec nat_countable)
-      (fun k w acc_premem ->
-      insert0 (map_insert (gmap_partial_alter Coq0_Nat.eq_dec nat_countable))
-        k (solve_undefined w offset_cerise_subcomponents_frame acc_premem)
-        acc_premem) premem premem
-  in
-  let mem0 =
-    fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
-      (fun w ->
-      match w with
-      | Abstract (_, _) ->
-        WInt (Big_int_Z.mult_int_big_int 2
-          ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-          (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))
-      | Concrete w0 -> w0) solved_premem
-  in
-  ((Obj.magic mem0), offset_cerise_subcomponents_frame)
-
-(** val get_main_word :
-    cerise_component -> (id0, Big_int_Z.big_int) gmap -> mem -> word option **)
-
-let get_main_word comp offset_frames memory =
-  match comp.c_main with
-  | Some p ->
-    let (module0, idx) = p in
-    mbind (Obj.magic (fun _ _ -> option_bind)) (fun offset_module_frame ->
-      mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
-        main_word)
-        (lookup0 (gmap_lookup Coq0_Nat.eq_dec nat_countable)
-          (add offset_module_frame idx) memory))
-      (lookup0 (Obj.magic gmap_lookup string_eq_dec string_countable) module0
-        offset_frames)
-  | None -> None
-
-(** val load_in_memory :
-    machineParameters -> cerise_component -> Big_int_Z.big_int -> oType ->
-    oType -> oType -> cerise_program option **)
-
-let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
+let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
   let allocate_mem = fun z0 n0 -> repeat (WInt z0) n0 in
-  let subcomp = comp.c_subcomp in
-  let trusted_macros =
+  let safe_mem_sym =
+    '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('s'::('a'::('f'::('e'::('_'::('m'::('e'::('m'::[])))))))))))))))
+  in
+  let link_tbl_sym =
+    '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('l'::('i'::('n'::('k'::('_'::('t'::('b'::('l'::[])))))))))))))))
+  in
+  let trusted_macros_code =
     let lin_mem_macros =
       let sealing_lin_mem = WSealable (SSealRange (((true, true), Global),
-        ot_lm, (add ot_lm (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        ot_lm))
+        oT_LM, (add oT_LM (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+        oT_LM))
       in
       app (sealing_lin_mem :: [])
         (app (encodeInstrsW mP load_lin_mem)
@@ -6682,8 +6465,8 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
     in
     let global_macros =
       let sealing_global = WSealable (SSealRange (((true, true), Global),
-        ot_g, (add ot_g (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        ot_g))
+        oT_G, (add oT_G (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+        oT_G))
       in
       app (sealing_global :: [])
         (app (encodeInstrsW mP load_global)
@@ -6693,47 +6476,26 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
     in
     let safe_mem_macros =
       let sealing_safe_mem = WSealable (SSealRange (((true, true), Global),
-        ot_sm, (add ot_sm (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        ot_sm))
+        oT_SM, (add oT_SM (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+        oT_SM))
       in
       app (sealing_safe_mem :: []) (encodeInstrsW mP malloc_safe_mem)
     in
     app lin_mem_macros (app global_macros safe_mem_macros)
   in
-  let len_trusted_macros = length trusted_macros in
-  let offset_code = Big_int_Z.zero_big_int in
-  let offset_trusted_macros = add offset_code (len_code subcomp) in
-  let offset_frames = add offset_trusted_macros len_trusted_macros in
-  let offset_lin_mems = add offset_frames (len_frames subcomp) in
-  let offset_globals = add offset_lin_mems (len_linear_memories subcomp) in
-  let offset_indirect_tables = add offset_globals (len_globals subcomp) in
-  let offset_safe_mem =
-    add offset_indirect_tables (len_indirect_table subcomp)
-  in
-  let offset_linking_table =
-    add (add offset_safe_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-      size_safe_mem
-  in
-  let safe_mem =
-    let free_space_malloc_cap = SCap ((RW, Global), offset_safe_mem, (Finite
-      offset_linking_table),
-      (add offset_safe_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-    in
-    app ((WSealable free_space_malloc_cap) :: [])
-      (allocate_mem Big_int_Z.zero_big_int size_safe_mem)
-  in
   let linking_table =
+    let offset_lin_mem_macros = Big_int_Z.zero_big_int in
     let offset_lin_mem_load0 =
-      add offset_trusted_macros entry_point_load_lin_mem
+      add offset_lin_mem_macros entry_point_load_lin_mem
     in
     let offset_lin_mem_store0 =
-      add offset_trusted_macros entry_point_store_lin_mem
+      add offset_lin_mem_macros entry_point_store_lin_mem
     in
     let offset_lin_mem_grow0 =
-      add offset_trusted_macros (entry_point_grow_lin_mem mP)
+      add offset_lin_mem_macros (entry_point_grow_lin_mem mP)
     in
     let offset_lin_mem_current0 =
-      add offset_trusted_macros (entry_point_current_lin_mem mP)
+      add offset_lin_mem_macros (entry_point_current_lin_mem mP)
     in
     let offset_global_macros =
       add offset_lin_mem_current0 (length (current_lin_mem mP))
@@ -6759,7 +6521,7 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
       add offset_safe_mem_malloc0 (length malloc_safe_mem)
     in
     let lin_mem_sentry = fun offset_entry -> WSealable (SCap ((E, Global),
-      offset_trusted_macros, (Finite offset_global_macros), offset_entry))
+      offset_lin_mem_macros, (Finite offset_global_macros), offset_entry))
     in
     let global_sentry = fun offset_entry -> WSealable (SCap ((E, Global),
       offset_global_macros, (Finite offset_safe_mem_macros), offset_entry))
@@ -6777,39 +6539,70 @@ let load_in_memory mP comp size_safe_mem ot_g ot_lm ot_sm =
                                                  offset_global_get_mut) :: (
     (safe_mem_sentry offset_safe_mem_malloc0) :: []))))))))
   in
-  let safe_mem_section = list_to_mem safe_mem offset_safe_mem in
-  let trusted_macros_section =
-    list_to_mem trusted_macros offset_trusted_macros
+  let start_link_tbl = length trusted_macros_code in
+  let start_safe_mem = add start_link_tbl (length linking_table) in
+  let end_safe_mem =
+    add start_safe_mem
+      (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) sIZE_SAFE_MEM)
   in
-  let linking_table_section = list_to_mem linking_table offset_linking_table
+  let safe_mem =
+    let free_space_malloc_cap = WSealable (SCap ((RW, Global),
+      start_safe_mem, (Finite end_safe_mem),
+      (add start_safe_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))
+    in
+    free_space_malloc_cap :: (allocate_mem Big_int_Z.zero_big_int
+                               sIZE_SAFE_MEM)
   in
-  let cap_safe_mem = WSealed (ot_sm, (SCap ((RW, Global), offset_safe_mem,
-    (Finite offset_linking_table), offset_safe_mem)))
+  let link_tbl_ro = WSealable (SCap ((RO, Global), start_link_tbl, (Finite
+    start_safe_mem), start_link_tbl))
   in
-  let e_linking_table = add offset_linking_table (length linking_table) in
-  let cap_linking_table = WSealable (SCap ((RO, Global),
-    offset_linking_table, (Finite e_linking_table), offset_linking_table))
+  let safe_mem_sealed = WSealed (oT_SM, (SCap ((RW, Global), start_safe_mem,
+    (Finite end_safe_mem), start_safe_mem)))
   in
-  let (loaded_subcomp, offset_submodules_frame) =
-    load_cerise_subcomponents_in_memory mP subcomp offset_code offset_frames
-      offset_lin_mems offset_globals offset_indirect_tables cap_safe_mem
-      cap_linking_table ot_g ot_lm
-  in
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
-    { segment =
-    (union0
-      (map_union
-        (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (union0
-        (map_union
-          (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-        (union0
-          (map_union
-            (Obj.magic (fun _ _ _ ->
-              gmap_merge Coq0_Nat.eq_dec nat_countable))) loaded_subcomp
-          safe_mem_section) trusted_macros_section) linking_table_section);
-    main = main_word })
-    (Obj.magic get_main_word comp offset_submodules_frame loaded_subcomp)
+  let exports_data = link_tbl_ro :: (safe_mem_sealed :: []) in
+  let offset_exports_data = length (app linking_table safe_mem) in
+  { c_code = (map (fun x -> Inl x) trusted_macros_code); c_data =
+  (map (fun x -> Inl x) (app linking_table (app safe_mem exports_data)));
+  c_main = None; c_exports =
+  (insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
+    link_tbl_sym offset_exports_data
+    (singletonM0
+      (map_singleton (gmap_partial_alter string_eq_dec string_countable)
+        (gmap_empty string_eq_dec string_countable)) safe_mem_sym
+      (add offset_exports_data (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int)))) }
+
+(** val get_word : (word, symbols) sum -> word option **)
+
+let get_word = function
+| Inl w -> Some w
+| Inr _ -> None
+
+(** val loadable : (word, symbols) sum list -> word list option **)
+
+let rec loadable = function
+| [] -> Some []
+| ws :: l' ->
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun acc ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun w -> Some (w :: acc))
+      (Obj.magic get_word ws)) (loadable l')
+
+(** val linkable_to_executable :
+    machineParameters -> cerise_linkable_object -> oType -> oType -> oType ->
+    Big_int_Z.big_int -> cerise_executable_object option **)
+
+let linkable_to_executable mP cerise_obj oT_LM oT_G oT_SM sIZE_SAFE_MEM =
+  let common_obj = common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM in
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked_obj ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun code ->
+      mbind (Obj.magic (fun _ _ -> option_bind)) (fun data ->
+        mbind (Obj.magic (fun _ _ -> option_bind)) (fun main_word -> Some
+          { segment = (app code (Obj.magic data)); main = main_word })
+          (match linked_obj.c_main with
+           | Some idx -> nth_error data idx
+           | None -> None)) (Obj.magic loadable linked_obj.c_data))
+      (Obj.magic loadable linked_obj.c_code))
+    (Obj.magic link_seq common_obj cerise_obj)
 
 (** val boot_code : machineParameters -> word list **)
 
@@ -6826,24 +6619,23 @@ let boot_code_section h =
   list_to_mem (boot_code h) Big_int_Z.zero_big_int
 
 (** val init_state :
-    machineParameters -> cerise_program -> Big_int_Z.big_int -> reg * mem **)
+    machineParameters -> cerise_executable_object -> Big_int_Z.big_int ->
+    reg * mem **)
 
 let init_state h prog start_stack =
+  let loaded_prog = list_to_mem prog.segment Big_int_Z.zero_big_int in
   let len_boot = length (boot_code h) in
   let pre_heap =
     union0
       (map_union
         (Obj.magic (fun _ _ _ -> gmap_merge Coq0_Nat.eq_dec nat_countable)))
-      (boot_code_section h) (shift_segment prog.segment len_boot)
+      (boot_code_section h) (shift_segment loaded_prog len_boot)
   in
   let len_pre_heap =
     length (gmap_to_list Coq0_Nat.eq_dec nat_countable pre_heap)
   in
   let end_code = encodeInstrsW h (Halt :: []) in
-  let end_code_section =
-    list_to_mem end_code
-      (add len_pre_heap (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-  in
+  let end_code_section = list_to_mem end_code len_pre_heap in
   let pc_cap = WSealable (SCap ((RX, Global), Big_int_Z.zero_big_int, (Finite
     len_boot), Big_int_Z.zero_big_int))
   in
@@ -6869,6 +6661,40 @@ let init_state h prog start_stack =
       pre_heap end_code_section
   in
   (regfile, heap)
+
+(** val compile :
+    machineParameters -> ws_module -> name -> oType -> oType ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_linkable_object option **)
+
+let compile mP m n0 oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun labeled ->
+    compile_component mP (register_allocation labeled))
+    (Obj.magic compile_module mP m n0 oT_LM oT_G mAX_LIN_MEM
+      mAX_INDIRECT_TABLE)
+
+(** val compile_list :
+    machineParameters -> (ws_module * name) list -> oType -> oType ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_linkable_object option
+    list **)
+
+let compile_list mP ml oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
+  map (fun m ->
+    compile mP (fst m) (snd m) oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE) ml
+
+(** val load_in_memory :
+    machineParameters -> Big_int_Z.big_int -> (ws_module * name) list ->
+    oType -> oType -> oType -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> (reg * mem) option **)
+
+let load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun comps ->
+    mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked ->
+      mbind (Obj.magic (fun _ _ -> option_bind)) (fun inst -> Some
+        (init_state mP inst start_stack))
+        (Obj.magic linkable_to_executable mP linked oT_LM oT_G oT_SM
+          sIZE_SAFE_MEM)) (Obj.magic instantiation comps))
+    (Obj.magic list_opt
+      (compile_list mP modules oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE))
 
 (** val bank_prog : ws_basic_instruction list **)
 
@@ -7433,60 +7259,61 @@ let incr_module =
     mod_elem = []; mod_start = (Some Big_int_Z.zero_big_int); mod_imports =
     []; mod_exports = [] }
 
-(** val compile :
-    machineParameters -> ws_module -> name -> cerise_component option **)
-
-let compile mP m n0 =
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun labeled ->
-    compile_component (register_allocation labeled))
-    (Obj.magic compile_module mP m n0)
-
-(** val compile_list :
-    machineParameters -> (ws_module * name) list -> cerise_component option
-    list **)
-
-let compile_list mP ml =
-  map (fun m -> compile mP (fst m) (snd m)) ml
-
 (** val load_test :
-    machineParameters -> Big_int_Z.big_int -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> (ws_module * name) list -> (regName * word)
-    list * (addr * word) list **)
+    machineParameters -> Big_int_Z.big_int -> (ws_module * name) list ->
+    oType -> oType -> oType -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    Big_int_Z.big_int -> (regName * word) list * (addr * word) list **)
 
-let load_test mP size_safe_mem ot_g ot_lm ot_sm start_stack modules =
-  match mbind (Obj.magic (fun _ _ -> option_bind)) (fun comps ->
-          mbind (Obj.magic (fun _ _ -> option_bind)) (fun linked ->
-            mbind (Obj.magic (fun _ _ -> option_bind)) (fun inst ->
-              let (regs, mem0) = init_state mP inst start_stack in
-              Some
-              (Obj.magic ((gmap_to_list reg_eq_dec reg_countable regs),
-                (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0)))))
-              (Obj.magic load_in_memory mP linked size_safe_mem ot_g ot_lm
-                ot_sm)) (Obj.magic instantiation comps))
-          (list_opt (compile_list mP modules)) with
-  | Some p -> Obj.magic p
-  | None -> ([], [])
+let load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
+  let loaded_mods =
+    load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
+      mAX_INDIRECT_TABLE sIZE_SAFE_MEM
+  in
+  (match loaded_mods with
+   | Some p ->
+     let (regs, mem0) = p in
+     ((gmap_to_list reg_eq_dec reg_countable regs),
+     (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0)))
+   | None -> ([], []))
+
+(** val load_example :
+    machineParameters -> (ws_module * name) list -> Big_int_Z.big_int ->
+    (regName * word) list * (addr * word) list **)
+
+let load_example mP modules start_stack =
+  let oT_LM = Big_int_Z.zero_big_int in
+  let oT_G = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
+  let oT_SM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)
+  in
+  let mAX_LIN_MEM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+  in
+  let mAX_INDIRECT_TABLE = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
+  in
+  let sIZE_SAFE_MEM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))
+  in
+  load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
+    mAX_INDIRECT_TABLE sIZE_SAFE_MEM
 
 (** val loaded_bank_example :
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_bank_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((bank_module,
+let loaded_bank_example mP =
+  load_example mP ((bank_module,
     ('B'::('a'::('n'::('k'::[]))))) :: ((env_module,
     ('E'::('n'::('v'::[])))) :: []))
 
@@ -7494,22 +7321,8 @@ let loaded_bank_example mP start_stack =
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_bank_unsafe_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((bank_unsafe_module,
+let loaded_bank_unsafe_example mP =
+  load_example mP ((bank_unsafe_module,
     ('B'::('a'::('n'::('k'::[]))))) :: ((env_unsafe_module,
     ('E'::('n'::('v'::[])))) :: []))
 
@@ -7517,22 +7330,8 @@ let loaded_bank_unsafe_example mP start_stack =
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_stack_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((client_module,
+let loaded_stack_example mP =
+  load_example mP ((client_module,
     ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: ((stack_module,
     ('S'::('t'::('a'::('c'::('k'::[])))))) :: []))
 
@@ -7540,22 +7339,8 @@ let loaded_stack_example mP start_stack =
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_dummy_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((dummy_module_client,
+let loaded_dummy_example mP =
+  load_example mP ((dummy_module_client,
     ('d'::('u'::('m'::('m'::('y'::[])))))) :: ((dummy_module_lib,
     ('e'::('n'::('v'::[])))) :: []))
 
@@ -7563,41 +7348,13 @@ let loaded_dummy_example mP start_stack =
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_reg_alloc_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((reg_alloc_module_client,
+let loaded_reg_alloc_example mP =
+  load_example mP ((reg_alloc_module_client,
     ('m'::('a'::('i'::('n'::[]))))) :: [])
 
 (** val loaded_incr_example :
     machineParameters -> Big_int_Z.big_int -> (regName * word)
     list * (addr * word) list **)
 
-let loaded_incr_example mP start_stack =
-  load_test mP (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))))))))))))))))))))))))))))))
-    Big_int_Z.zero_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-    start_stack ((incr_module, ('i'::('n'::('c'::('r'::[]))))) :: [])
+let loaded_incr_example mP =
+  load_example mP ((incr_module, ('i'::('n'::('c'::('r'::[]))))) :: [])
