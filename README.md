@@ -1,6 +1,9 @@
 # Cerise interpreter
 This repository contains an interpreter of [Cerise](https://github.com/logsem/cerise), a model of a capability machine.
 
+## Compiler branch
+This branch is used for experimental purposes.
+
 ## Build the interpreter
 
 Dependencies: opam
