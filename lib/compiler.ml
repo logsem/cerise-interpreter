@@ -1,6 +1,7 @@
 open Convert
 open Extract
 
+exception CompilationException of string
 let rec pp_of_instrs l =
   match l with
   | [] -> Printf.printf ""
@@ -47,18 +48,20 @@ let machine_compile
     program
   : (regName * Ast.word) list * (addr * Ast.word) list
   =
-  let (regs, compiled_prog) = program Convert.machine_param start_stack in
-  let prog =
-    List.map
-      (fun w -> (fst w, Convert.translate_word (snd w)))
-      compiled_prog
-  in
-  let regs =
-    List.map
-      (fun w -> (fst w, Convert.translate_word (snd w)))
-      regs
-  in
-  (regs, prog)
+  match program Convert.machine_param start_stack with
+  | Extract.Error m -> raise @@ CompilationException (Convert.convert_error_msg m)
+  | Extract.Ok (regs, compiled_prog) ->
+    let prog =
+      List.map
+        (fun w -> (fst w, Convert.translate_word (snd w)))
+        compiled_prog
+    in
+    let regs =
+      List.map
+        (fun w -> (fst w, Convert.translate_word (snd w)))
+        regs
+    in
+    (regs, prog)
 
 let output_machine regfile_output_name asm_output_name regs prog  =
   let oc = open_out regfile_output_name in
