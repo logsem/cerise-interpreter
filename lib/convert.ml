@@ -262,3 +262,5 @@ let translate_word (w : Extract.word) =
   | WInt z -> Ast.I z
   | WSealable sb -> Ast.Sealable (translate_sealable sb)
   | WSealed (ot, sb) -> Ast.Sealed (ot, translate_sealable sb)
+
+let convert_error_msg (m : errorMsg) = (String.concat "" (List.map (String.make 1) m))
