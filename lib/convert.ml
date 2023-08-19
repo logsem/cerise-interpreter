@@ -264,3 +264,14 @@ let translate_word (w : Extract.word) =
   | WSealed (ot, sb) -> Ast.Sealed (ot, translate_sealable sb)
 
 let convert_error_msg (m : errorMsg) = (String.concat "" (List.map (String.make 1) m))
+
+let compile (l : (Ir_wasm.ws_module * string) list)
+    mp start_stack ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
+  =
+  let mods =
+    List.map
+      (fun m -> let (m, s) = m in (Ir_wasm.extract_module m,Ir_wasm.explode_string s))
+      l
+  in
+  Extract.load_test
+    mp start_stack mods [] ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem

@@ -11,10 +11,6 @@
 
 let digit = ['0'-'9']
 let hex = (digit | ['a'-'f'] | ['A'-'F'])
-let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
-let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
-let addr = ("MAX_ADDR" | "STK_ADDR")
-let locality = ("LOCAL" | "GLOBAL" | "DIRECTED" | "Local" | "Global" | "Directed")
 let letter = ['a'-'z' 'A'-'Z']
 
 rule token = parse
@@ -24,7 +20,6 @@ rule token = parse
 | ";;" { comment lexbuf }
 | ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
                                   with Failure _ -> error lexbuf ("Invalid integer '" ^ i ^ "'.")}
-| (letter+) as name { STR name }
 
 (* single-character tokens *)
 | '(' { LPAR }
@@ -32,6 +27,7 @@ rule token = parse
 | '$' { DOLLAR }
 
 (* keywords *)
+| "module" { MODULE }
 | "type" { TYPE }
 | "func" { FUNC }
 | "param" { PARAM }
@@ -140,6 +136,9 @@ rule token = parse
 | "i64.le_s" { I64_LE_S }
 | "i64.ge_u" { I64_GE_U }
 | "i64.ge_s" { I64_GE_S }
+
+
+| (( '_' | letter)+) as name { STR name }
 
 and comment = parse
 | eof { EOF }

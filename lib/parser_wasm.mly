@@ -24,8 +24,8 @@
 
 %%
 
-main:
-    | m = modul ; EOF { m }
+main: | m = modul ; EOF { m }
+
 modul:
   | LPAR ; MODULE ; i = id ; m = mod_fields ; RPAR { m }
 
@@ -59,7 +59,6 @@ mod_type:
     | LPAR ; TYPE ; i = id ; t = fun_type ; RPAR { t }
 
 fun_type:
-    /* | LPAR ; FUNC ; p = param_list ; r = result_list ; RPAR { Tf (p,r) } */
     | LPAR ; FUNC ; p = param_result_list ; RPAR { let (p,r) = p in Tf (p,r) }
 
 param_result_list:
