@@ -20,7 +20,7 @@
 %token <string> STR
 
 %start <ws_module> main
-%{ open! Ir_wasm %}
+%{ open Ir_wasm %}
 
 %%
 
@@ -147,9 +147,9 @@ import_desc:
     | LPAR ; GLOBAL ;  i = id ; gt = global_type ; RPAR { ID_global gt }
 
 
-/* Func TODO  */
+/* Func  */
 mod_func:
-    | LPAR ; i = id ; tidx = type_idx ; lis = locals_instrs_list ; RPAR
+    | LPAR ; FUNC ; i = id ; tidx = type_idx ; lis = locals_instrs_list ; RPAR
     { let (locals, e) = lis in
       { modfunc_type = tidx ; modfunc_locals = locals ; modfunc_body = e } }
 
