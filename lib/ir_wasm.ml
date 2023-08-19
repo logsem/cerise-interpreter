@@ -174,7 +174,8 @@ type ws_module = { mod_types : function_type list;
                    mod_elem : module_element list;
                    mod_start : module_start option;
                    mod_imports : module_import list;
-                   mod_exports : module_export list }
+                   mod_exports : module_export list;
+                   mod_name : string}
 
 exception ParserException of string
 let compose_ws_modules (m1 : ws_module) (m2 : ws_module) : ws_module =
@@ -196,6 +197,7 @@ let compose_ws_modules (m1 : ws_module) (m2 : ws_module) : ws_module =
       end;
     mod_imports = m1.mod_imports @ m2.mod_imports;
     mod_exports = m1.mod_exports @ m2.mod_exports;
+    mod_name = String.(m1.mod_name ^ m2.mod_name);
     }
 
 let null_module : ws_module =
@@ -207,7 +209,8 @@ let null_module : ws_module =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_type (t : function_type) =
  { mod_types = [t];
@@ -218,7 +221,8 @@ let mono_module_type (t : function_type) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_func (f : module_func) =
  { mod_types = [];
@@ -229,7 +233,8 @@ let mono_module_func (f : module_func) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_table (t : module_table) =
  { mod_types = [];
@@ -240,7 +245,8 @@ let mono_module_table (t : module_table) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_mem (m : memory_type) =
  { mod_types = [];
@@ -251,7 +257,8 @@ let mono_module_mem (m : memory_type) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_global (g : module_glob) =
  { mod_types = [];
@@ -262,7 +269,8 @@ let mono_module_global (g : module_glob) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_elem (e : module_element) =
  { mod_types = [];
@@ -273,7 +281,8 @@ let mono_module_elem (e : module_element) =
    mod_elem = [e];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_start (s : module_start) =
  { mod_types = [];
@@ -284,7 +293,8 @@ let mono_module_start (s : module_start) =
    mod_elem = [];
    mod_start = Some s;
    mod_imports = [];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
 let mono_module_export (e : module_export) =
  { mod_types = [];
@@ -295,7 +305,8 @@ let mono_module_export (e : module_export) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [];
-   mod_exports = [e] }
+   mod_exports = [e];
+   mod_name = ""}
 
 let mono_module_import (i : module_import) =
  { mod_types = [];
@@ -306,8 +317,20 @@ let mono_module_import (i : module_import) =
    mod_elem = [];
    mod_start = None;
    mod_imports = [i];
-   mod_exports = [] }
+   mod_exports = [];
+   mod_name = ""}
 
+let set_module_name (m : ws_module) (s : string) =
+ { mod_types = m.mod_types;
+   mod_funcs = m.mod_funcs;
+   mod_tables = m.mod_tables;
+   mod_mems = m.mod_mems;
+   mod_globals = m.mod_globals;
+   mod_elem = m.mod_elem;
+   mod_start = m.mod_start;
+   mod_imports = m.mod_imports;
+   mod_exports = m.mod_exports;
+   mod_name = s}
 
 let extract_value_type (vt : value_type) : Extract.value_type =
   match vt with | T_int -> Extract.T_int | T_handle -> Extract.T_handle
@@ -379,7 +402,7 @@ let extract_import_desc (d : import_desc) : Extract.import_desc =
    | ID_global gt -> Extract.ID_global (extract_global_type gt))
 
 let extract_mod_import (imp : module_import ) : Extract.module_import =
-  { Extract.imp_module = explode_string imp.imp_name;
+  { Extract.imp_module = explode_string imp.imp_module;
     Extract.imp_name = explode_string imp.imp_name;
     Extract.imp_desc = extract_import_desc imp.imp_desc }
 
@@ -436,7 +459,7 @@ let rec extract_ws_binstr (i : ws_basic_instruction) : Extract.ws_basic_instruct
    | I_return -> Extract.I_return
    | I_call i -> Extract.I_call i
    | I_call_indirect i -> Extract.I_call_indirect i
-   | I_get_local i -> Extract.I_get_global i
+   | I_get_local i -> Extract.I_get_local i
    | I_set_local i -> Extract.I_set_local i
    | I_tee_local i -> Extract.I_tee_local i
    | I_get_global i -> Extract.I_get_global i

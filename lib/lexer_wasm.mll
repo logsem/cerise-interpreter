@@ -24,7 +24,6 @@ rule token = parse
 (* single-character tokens *)
 | '(' { LPAR }
 | ')' { RPAR }
-| '$' { DOLLAR }
 
 (* keywords *)
 | "module" { MODULE }
@@ -37,7 +36,7 @@ rule token = parse
 | "global" { GLOBAL }
 | "module" { MODULE }
 | "offset" { OFFSET }
-| "mem" { MEM }
+| "memory" { MEM }
 | "mut" { MUT }
 | "start" { START }
 | "elem" { ELEM }
@@ -138,7 +137,8 @@ rule token = parse
 | "i64.ge_s" { I64_GE_S }
 
 
-| (( '_' | letter)+) as name { STR name }
+| '$' ((( '_' | letter | '.')+) as name) { SYMB name }
+| '"' ((letter+) as str) '"' { STR str }
 
 and comment = parse
 | eof { EOF }

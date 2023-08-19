@@ -1,5 +1,5 @@
 %token EOF
-%token LPAR RPAR DOLLAR
+%token LPAR RPAR
 %token TYPE FUNC PARAM RESULT I32 I64 HANDLE
 %token TABLE GLOBAL MODULE OFFSET MEM MUT START ELEM IMPORT EXPORT LOCAL
 %token NOP UNREACHABLE DROP SELECT
@@ -17,17 +17,22 @@
 %token I64_EQZ I64_EQ I64_NE
 %token I64_LT_U I64_LT_S I64_GT_U I64_GT_S I64_LE_U I64_LE_S I64_GE_U I64_GE_S
 %token <int> INT
-%token <string> STR
+%token <string> STR SYMB
 
 %start <ws_module> main
 %{ open Ir_wasm %}
 
 %%
+name: s = STR { s }
+
+id:
+  | i = SYMB { Some i }
+  | { None }
 
 main: | m = modul ; EOF { m }
 
 modul:
-  | LPAR ; MODULE ; i = id ; m = mod_fields ; RPAR { m }
+  | LPAR ; MODULE ; n = SYMB ; m = mod_fields ; RPAR { set_module_name m n }
 
 mod_fields:
   | m1 = mod_field ; m2 = mod_fields { compose_ws_modules m1 m2 }
@@ -44,8 +49,6 @@ mod_field:
   | mimport = mod_import { mono_module_import mimport }
   | mexport = mod_export { mono_module_export mexport }
 
-id: | DOLLAR ; i = STR { Some i } | { None }
-name: s = STR { s }
 
 limit:
     | n = INT { {lim_min = (Big_int_Z.big_int_of_int n) ;
@@ -102,7 +105,7 @@ value:
 
 /* Elem  */
 mod_elem:
-  | LPAR ; ELEM ; tidx = table_idx ; LPAR ; OFFSET ; i = INT ; RPAR ; fidxs = list_fun_idx ; RPAR
+  | LPAR ; ELEM ; tidx = table_idx ; LPAR ; OFFSET ; i = INT ; RPAR ; fidxs = list(fun_idx) ; RPAR
     { { modelem_table = tidx ;
         modelem_offset = (Big_int_Z.big_int_of_int i) ;
         modelem_init = fidxs }
@@ -123,10 +126,6 @@ export_desc:
     | LPAR ; MEM    ; midx = mem_idx    ; RPAR { MED_mem midx }
     | LPAR ; GLOBAL ; gidx = global_idx ; RPAR { MED_global gidx }
 
-list_fun_idx:
-  | f = fun_idx ; l = list_fun_idx { f::l }
-  | { [] }
-
 table_idx:  | i = INT { Big_int_Z.big_int_of_int i }
 fun_idx:    | i = INT { Big_int_Z.big_int_of_int i }
 global_idx: | i = INT { Big_int_Z.big_int_of_int i }
@@ -134,13 +133,16 @@ mem_idx:    | i = INT { Big_int_Z.big_int_of_int i }
 type_idx:   | i = INT { Big_int_Z.big_int_of_int i }
 
 
+typeuse:
+| LPAR ; TYPE ; tidx = type_idx; RPAR { tidx }
+
 /* Imports */
 mod_import:
-    | LPAR ; IMPORT ; modname = name ; sym = name ; d = import_desc ; RPAR
-    { {imp_module = modname ; imp_name = sym ; imp_desc = d} }
+    | LPAR ; IMPORT ; mod_name = name ; import_name = name ; d = import_desc ; RPAR
+    { {imp_module = mod_name ; imp_name = import_name ; imp_desc = d} }
 
 import_desc:
-    | LPAR ; FUNC ;  i = id ; tidx = type_idx ; RPAR { ID_func tidx }
+    | LPAR ; FUNC ;  i = id ; tidx = typeuse ; RPAR { ID_func tidx }
     | LPAR ; TABLE ;  i = id ; tt = table_type ; RPAR { ID_table tt }
     | LPAR ; MEM ;  i = id ; mt = mem_type ; RPAR { ID_mem mt }
     | LPAR ; GLOBAL ;  i = id ; gt = global_type ; RPAR { ID_global gt }
@@ -148,19 +150,18 @@ import_desc:
 
 /* Func  */
 mod_func:
-    | LPAR ; FUNC ; i = id ; tidx = type_idx ; lis = locals_instrs_list ; RPAR
+    | LPAR ; FUNC ; i = id ; tidx = typeuse ; lis = locals_instrs_list ; RPAR
     { let (locals, e) = lis in
       { modfunc_type = tidx ; modfunc_locals = locals ; modfunc_body = e } }
 
 locals_instrs_list:
   | LPAR ; LOCAL ; i = id ; t = val_type ; RPAR ; lis = locals_instrs_list
     { let (l,e) = lis in (t::l, e) }
-  | e = instrs_list { ([], e) }
+  | e = list(instrs) { ([], e) }
 
-instrs_list:
-    | i = plain_instr ; il = instrs_list { i::il }
-    | i = block_instr ; il = instrs_list { i::il }
-    | { [] }
+instrs:
+    | i = plain_instr { i }
+    | i = block_instr { i }
 
 immediate:
     i = INT { Big_int_Z.big_int_of_int i }
@@ -253,17 +254,17 @@ plain_instr:
   | I64_GE_S { I_relop (T_int, (ROI_ge SX_S)) }
 
 block_instr:
-  | BLOCK ; lbl = label ; rt = result_type ; e = instrs_list ; END ; i = id
+  | BLOCK ; lbl = label ; rt = result_type ; e = list(instrs) ; END ; i = id
     { I_block (rt, e) }
-  | LPAR ; BLOCK ; lbl = label ; rt = result_type ; e = instrs_list ; RPAR
+  | LPAR ; BLOCK ; lbl = label ; rt = result_type ; e = list(instrs) ; RPAR
     { I_block (rt, e) }
 
-  | LOOP ; lbl = label ; rt = result_type ; e = instrs_list ; END ; i = id
+  | LOOP ; lbl = label ; rt = result_type ; e = list(instrs) ; END ; i = id
     { I_loop (rt, e) }
-  | LPAR ; LOOP ; lbl = label ; rt = result_type ; e = instrs_list ; RPAR
+  | LPAR ; LOOP ; lbl = label ; rt = result_type ; e = list(instrs) ; RPAR
     { I_loop (rt, e) }
 
-  | IF ; lbl  = label ; rt = result_type ; e1 = instrs_list; ELSE ; i1 = id ; e2 = instrs_list ; END ; i2 = id
+  | IF ; lbl  = label ; rt = result_type ; e1 = list(instrs); ELSE ; i1 = id ; e2 = list(instrs) ; END ; i2 = id
     { I_if (rt, e1, e2) }
 
 result_type:

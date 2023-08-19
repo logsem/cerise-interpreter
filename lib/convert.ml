@@ -265,12 +265,14 @@ let translate_word (w : Extract.word) =
 
 let convert_error_msg (m : errorMsg) = (String.concat "" (List.map (String.make 1) m))
 
-let compile (l : (Ir_wasm.ws_module * string) list)
+let compile (l : Ir_wasm.ws_module list)
     mp start_stack ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
   =
+  let open Ir_wasm in
   let mods =
     List.map
-      (fun m -> let (m, s) = m in (Ir_wasm.extract_module m,Ir_wasm.explode_string s))
+      (fun m ->
+         (extract_module m, Ir_wasm.explode_string m.mod_name))
       l
   in
   Extract.load_test

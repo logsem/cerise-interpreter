@@ -80,7 +80,7 @@ let output_machine regfile_output_name asm_output_name regs prog  =
 let default_compiler
     ?(addr_max = (Int32.to_int Int32.max_int)/4096 )
     ?(start_stack = Big_int_Z.big_int_of_int (addr_max/2) )
-    (l : (Ir_wasm.ws_module * string) list)
+    (l : Ir_wasm.ws_module list)
   =
   let ot_lm = Big_int_Z.big_int_of_int 0 in
   let ot_g = Big_int_Z.big_int_of_int 1 in
