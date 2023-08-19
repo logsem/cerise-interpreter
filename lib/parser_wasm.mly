@@ -269,6 +269,7 @@ block_instr:
 
 result_type:
   | vt = val_type { [vt] }
+  | { [] }
 
 label:
   | i = id { i }

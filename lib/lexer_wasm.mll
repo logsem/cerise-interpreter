@@ -18,7 +18,7 @@ rule token = parse
 | [' ' '\t'] { token lexbuf }
 | '\n' { Lexing.new_line lexbuf; token lexbuf }
 | ";;" { comment lexbuf }
-| ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
+| '-'? ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
                                   with Failure _ -> error lexbuf ("Invalid integer '" ^ i ^ "'.")}
 
 (* single-character tokens *)
@@ -138,7 +138,7 @@ rule token = parse
 
 
 | '$' ((( '_' | letter | '.')+) as name) { SYMB name }
-| '"' ((letter+) as str) '"' { STR str }
+| '"' ((( '_' | letter)+) as str) '"' { STR str }
 
 and comment = parse
 | eof { EOF }
