@@ -50,14 +50,6 @@ let () =
   Compiler.output_machine !regfile_name !asmfile_name regs mem;
 
   full_compile
-      "asm-toys/stack_loaded.reg"
-      "asm-toys/stack_loaded.s"
-      Extract.loaded_stack_example;
-  full_compile
-    "asm-toys/bank_unsafe_loaded.reg"
-    "asm-toys/bank_unsafe_loaded.s"
-    Extract.loaded_bank_unsafe_example;
-  full_compile
     "asm-toys/dummy_loaded.reg"
     "asm-toys/dummy_loaded.s"
     Extract.loaded_dummy_example;
