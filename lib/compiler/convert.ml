@@ -410,8 +410,18 @@ module ConvertLinkableExtract = struct
   open Ir_linkable_object
 
   let extract_export_map (exports : int ExportMap.t) :
-        (Extract.symbols, Big_int_Z.big_int) Extract.gmap =
-    Extract.gmap_empty () ()
+    (Extract.symbols, Big_int_Z.big_int) Extract.gmap =
+    let gmap : (((Extract.symbols, Big_int_Z.big_int) Extract.gmap) ref) =
+      ref (Extract.gmap_empty () ())
+    in
+    let update_gmap m s o =
+      m := (Extract.exports_insert !m s o) ; ()
+    in
+    ExportMap.iter
+      (fun sym off ->
+         update_gmap gmap (Misc.Utils.explode_string sym) (Big_int_Z.big_int_of_int off))
+      exports;
+    !gmap
 
   let extract_word (w : Ir.machine_op) : Extract.word =
     let extract_machine_op op =
@@ -445,13 +455,13 @@ end
 
 type extract_compiled_program = (((Extract.regName * Extract.word) list) * ((Extract.addr * Extract.word) list)) Extract.error
 type compiled_prog =  (Ast.regname * Ast.word) list * (Z.t * Ast.word) list
+type linkable_unit_type = CeriseObj of Ir_linkable_object.t | WasmModule of Ir_wasm.ws_module
 
 (** Interface for utilies function *)
 module ConvertInterface
   : sig
     val compile : Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t
-      -> Ir_wasm.ws_module list -> Ir_linkable_object.t list
-      -> compiled_prog
+      -> linkable_unit_type list -> compiled_prog
   end
 = struct
   (** Machine parameters *)
@@ -465,28 +475,26 @@ module ConvertInterface
       (max_lin_mem : Z.t)
       (max_indirect_table : Z.t)
       (size_safe_mem : Z.t)
-      (wasm_mods : Ir_wasm.ws_module list)
-      (cerise_obj : Ir_linkable_object.t list)
+      (modules : linkable_unit_type list)
     : compiled_prog
     =
     let open Ir_wasm in
     (* Convert the Ir_wasm.modules into Extract.modules *)
-    let extracted_wasm_mods =
+    let extracted_modules =
       List.map
         (fun m ->
-           (ConvertWasmExtract.extract_module m, Utils.explode_string m.mod_name))
-        wasm_mods
-    in
-
-    let extract_cerise_link_obj =
-      List.map ConvertLinkableExtract.extract_object cerise_obj
+           match m with
+           | CeriseObj o -> Extract.Inr (ConvertLinkableExtract.extract_object o)
+           | WasmModule m -> Extract.Inl
+             (ConvertWasmExtract.extract_module m, Utils.explode_string m.mod_name))
+        modules
     in
 
     (* Compile, link and load the *)
     let compiled : extract_compiled_program  =
       Extract.load_test
         machine_param start_stack
-        extracted_wasm_mods extract_cerise_link_obj
+        extracted_modules
         ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
     in
 

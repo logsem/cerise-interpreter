@@ -4534,6 +4534,14 @@ let leave_scope st =
 
 type cfg = labeled_instr list * compilation_state
 
+(** val error_msg : char list -> 'a1 error **)
+
+let error_msg s =
+  Error
+    (append
+      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('a'::('b'::('e'::('l'::('e'::('d'::('_'::('g'::('e'::('n'::[]))))))))))))))))))
+      s)
+
 (** val r_stk0 : regName **)
 
 let r_stk0 =
@@ -4590,8 +4598,8 @@ let call_template h r_fun r_res prologue args _ ret_type new_state0 =
                 (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: []))
                 (dyn_typecheck_instrs h r_res ret_type0)))
         | _ :: _ ->
-          Error
-            ('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))
+          error_msg
+            ('c'::('a'::('l'::('l'::('_'::('t'::('e'::('m'::('p'::('l'::('a'::('t'::('e'::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val local_offset : Big_int_Z.big_int **)
 
@@ -4615,8 +4623,8 @@ let prologue_return f_type _ ret off tmp =
           r_stk0, (r off))) :: ((StoreU ((R tmp), (Inl
           Big_int_Z.zero_big_int), (r ret))) :: []))))))
       | _ :: _ ->
-        Error
-          ('R'::('e'::('t'::('u'::('r'::('n'::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('o'::('n'::('l'::('y'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))))
+        error_msg
+          ('p'::('r'::('o'::('l'::('o'::('g'::('u'::('e'::('_'::('r'::('e'::('t'::('u'::('r'::('n'::(' '::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val compile_binstr :
     machineParameters -> ws_module -> function_type -> ws_basic_instruction
@@ -4625,6 +4633,12 @@ let prologue_return f_type _ ret off tmp =
 let rec compile_binstr h module0 f_type i s =
   let nreg = s.regidx in
   let module_frame = define_module_frame module0 in
+  let error_msg3 = fun i0 e ->
+    error_msg
+      (append
+        ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('i'::('n'::('s'::('t'::('r'::(' '::('['::[]))))))))))))))))
+        (append i0 (append (']'::(':'::(' '::[]))) e)))
+  in
   (match i with
    | I_unreachable -> Ok ((instrs (Fail :: [])), s)
    | I_nop -> Ok ((instrs (nop :: [])), s)
@@ -4674,8 +4688,8 @@ let rec compile_binstr h module0 f_type i s =
         | Some new_state0 ->
           Ok ((app compiled_body ((Label lbl_loop) :: [])), new_state0)
         | None ->
-          Error
-            ('I'::('_'::('b'::('l'::('o'::('c'::('k'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[]))))))))))))))))))))))))))))))))))
+          error_msg3 ('I'::('_'::('b'::('l'::('o'::('c'::('k'::[])))))))
+            ('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[])))))))))))))))))))))))))
        (foldl (fun acc i0 ->
          mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat ->
            let (instrs_acc, state_acc) = pat in
@@ -4695,8 +4709,8 @@ let rec compile_binstr h module0 f_type i s =
         | Some new_state0 ->
           Ok (((Label lbl_loop) :: compiled_body), new_state0)
         | None ->
-          Error
-            ('I'::('_'::('b'::('l'::('o'::('c'::('k'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[]))))))))))))))))))))))))))))))))))
+          error_msg3 ('I'::('_'::('l'::('o'::('o'::('p'::[]))))))
+            ('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[])))))))))))))))))))))))))
        (foldl (fun acc i0 ->
          mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat ->
            let (instrs_acc, state_acc) = pat in
@@ -4739,8 +4753,8 @@ let rec compile_binstr h module0 f_type i s =
                    (app ((Br_Jmp lbl_end) :: ((Label lbl_true) :: []))
                      (app bodyT ((Label lbl_end) :: []))))), new_state0)
           | None ->
-            Error
-              ('I'::('_'::('i'::('f'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[])))))))))))))))))))))))))))))))
+            error_msg3 ('I'::('_'::('i'::('f'::[]))))
+              ('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('e'::('a'::('v'::('e'::(' '::('t'::('h'::('e'::(' '::('s'::('c'::('o'::('p'::('e'::[]))))))))))))))))))))))))
          (foldl (fun acc i0 ->
            mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat0 ->
              let (instrs_acc, state_acc) = pat0 in
@@ -4776,11 +4790,11 @@ let rec compile_binstr h module0 f_type i s =
               in
               Ok (code, s)
             | _ :: _ ->
-              Error
-                ('I'::('_'::('b'::('r'::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('d'::('i'::('s'::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('m'::('o'::('r'::('e'::(' '::('t'::('h'::('a'::('n'::(' '::('1'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+              error_msg3 ('I'::('_'::('b'::('r'::[]))))
+                ('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('d'::('i'::('s'::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('m'::('o'::('r'::('e'::(' '::('t'::('h'::('a'::('n'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))))
       | None ->
-        Error
-          ('I'::('_'::('b'::('r'::(':'::(' '::('d'::('o'::('e'::('s'::(' '::('n'::('o'::('t'::(' '::('k'::('n'::('o'::('w'::(' '::('t'::('h'::('i'::('s'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[]))))))))))))))))))))))))))))))))
+        error_msg3 ('I'::('_'::('b'::('r'::[]))))
+          ('u'::('n'::('k'::('n'::('o'::('w'::('n'::(' '::('s'::('c'::('o'::('p'::('e'::[]))))))))))))))
    | I_br_if n0 ->
      let lbl = generate_label s.current_scope n0 in
      (match getn_scope s.current_scope n0 with
@@ -4808,11 +4822,11 @@ let rec compile_binstr h module0 f_type i s =
               Ok (code,
               (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
             | _ :: _ ->
-              Error
-                ('I'::('_'::('b'::('r'::('_'::('i'::('f'::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('d'::('i'::('s'::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('m'::('o'::('r'::('e'::(' '::('t'::('h'::('a'::('n'::(' '::('1'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))
+              error_msg3 ('I'::('_'::('b'::('r'::('_'::('i'::('f'::[])))))))
+                ('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('d'::('i'::('s'::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('m'::('o'::('r'::('e'::(' '::('t'::('h'::('a'::('n'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))))
       | None ->
-        Error
-          ('I'::('_'::('b'::('r'::('_'::('i'::('f'::(':'::(' '::('d'::('o'::('e'::('s'::(' '::('n'::('o'::('t'::(' '::('k'::('n'::('o'::('w'::(' '::('t'::('h'::('i'::('s'::(' '::('s'::('c'::('o'::('p'::('e'::('.'::[])))))))))))))))))))))))))))))))))))
+        error_msg3 ('I'::('_'::('b'::('r'::('_'::('i'::('f'::[])))))))
+          ('u'::('n'::('k'::('n'::('o'::('w'::('n'::(' '::('s'::('c'::('o'::('p'::('e'::[]))))))))))))))
    | I_return ->
      let ret = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      let tmp1 = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
@@ -4860,8 +4874,8 @@ let rec compile_binstr h module0 f_type i s =
         call_template h (R tmp_fun) (R res) prologue args arg_type ret_type
           new_state0
       | None ->
-        Error
-          ('I'::('_'::('c'::('a'::('l'::('l'::(':'::(' '::('I'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('f'::('i'::('n'::('d'::(' '::('t'::('h'::('e'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))
+        error_msg3 ('I'::('_'::('c'::('a'::('l'::('l'::[]))))))
+          ('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('i'::('n'::('d'::('i'::('r'::('e'::('c'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))
    | I_call_indirect i0 ->
      (match get_type module0 i0 with
       | Some f ->
@@ -4890,8 +4904,9 @@ let rec compile_binstr h module0 f_type i s =
         call_template h (R tmp_fun) (R res) prologue args arg_type ret_type
           new_state0
       | None ->
-        Error
-          ('I'::('_'::('c'::('a'::('l'::('l'::('_'::('i'::('n'::('d'::('i'::('r'::('e'::('c'::('t'::(':'::(' '::('I'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('f'::('i'::('n'::('d'::(' '::('t'::('h'::('e'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('i'::('n'::('d'::('i'::('r'::('e'::('c'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+        error_msg3
+          ('I'::('_'::('c'::('a'::('l'::('l'::('_'::('i'::('n'::('d'::('i'::('r'::('e'::('c'::('t'::[])))))))))))))))
+          ('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('i'::('n'::('d'::('i'::('r'::('e'::('c'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))
    | I_get_local i0 ->
      let off = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      Ok
@@ -5152,8 +5167,8 @@ let rec compile_binstr h module0 f_type i s =
      ((instrs ((Lea ((R h0), (r off))) :: ((Mov ((R res), (r h0))) :: []))),
      (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
    | I_segfree ->
-     Error
-       ('U'::('n'::('s'::('u'::('p'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('i'::('n'::('s'::('t'::('r'::('u'::('c'::('t'::('i'::('o'::('n'::[])))))))))))))))))))))))
+     error_msg3 ('_'::[])
+       ('u'::('n'::('s'::('u'::('p'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('i'::('n'::('s'::('t'::('r'::('u'::('c'::('t'::('i'::('o'::('n'::[])))))))))))))))))))))))
    | I_current_memory ->
      let tmp_sentry =
        add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -5233,8 +5248,8 @@ let rec compile_binstr h module0 f_type i s =
        (match v with
         | Val_int z0 -> Ok (Obj.magic z0)
         | Val_handle _ ->
-          Error
-            ('I'::('_'::('c'::('o'::('n'::('s'::('t'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('s'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::('.'::[]))))))))))))))))))))))))))))
+          error_msg3 ('I'::('_'::('c'::('o'::('n'::('s'::('t'::[])))))))
+            ('e'::('x'::('p'::('e'::('c'::('t'::('s'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[])))))))))))))))))))
    | I_binop (_, op) ->
      let v1 =
        sub nreg (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -5287,8 +5302,8 @@ let compile_basic_instr h module0 f_typeidx i s =
   match get_type module0 f_typeidx with
   | Some f_type -> compile_binstr h module0 f_type i s
   | None ->
-    Error
-      ('T'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))
+    error_msg
+      ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('a'::('s'::('i'::('c'::('_'::('i'::('n'::('s'::('t'::('r'::(':'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val labeled_compile_expr' :
     machineParameters -> ws_module -> typeidx -> ws_basic_instruction list ->
@@ -5440,8 +5455,8 @@ let compile_func mP f m =
        in
        Ok (app prologue body)
      | None ->
-       Error
-         ('C'::('o'::('m'::('p'::('i'::('l'::('a'::('t'::('i'::('o'::('n'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('f'::('i'::('n'::('d'::(' '::('t'::('y'::('p'::('e'::[])))))))))))))))))))))))))))))))))))))))))))
+       error_msg
+         ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::(':'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
     (Obj.magic labeled_compile_expr mP m mf_type mf_full_body init_state0)
 
 (** val compile_funcs :
@@ -5807,6 +5822,14 @@ let compile_module mP m module_name oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
     l_data = data_section; l_main = (get_start m); l_exports = exports })
     (Obj.magic compile_funcs mP m)
 
+(** val error_msg0 : char list -> 'a1 error **)
+
+let error_msg0 s =
+  Error
+    (append
+      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::[]))))))))))
+      s)
+
 (** val addresses_labels' :
     labeled_instr list -> Big_int_Z.big_int -> (label, Big_int_Z.big_int) gmap **)
 
@@ -5868,8 +5891,8 @@ let rec branch_labels' il label_map addr0 =
               (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
         | None ->
-          Error
-            ('C'::('e'::('r'::('i'::('s'::('e'::(' '::('g'::('e'::('n'::('e'::('r'::('a'::('t'::('i'::('o'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('f'::('i'::('n'::('d'::(' '::('t'::('h'::('e'::(' '::('l'::('a'::('b'::('e'::('l'::[])))))))))))))))))))))))))))))))))))))))))
+          error_msg0
+            ('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(' '::('['::('B'::('r'::('_'::('J'::('m'::('p'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))
      | Br_Jnz (lbl, reg_cond) ->
        (match lookup0
                 (gmap_lookup (list_eq_dec0 Coq0_Nat.eq_dec)
@@ -5888,8 +5911,8 @@ let rec branch_labels' il label_map addr0 =
               (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
         | None ->
-          Error
-            ('C'::('e'::('r'::('i'::('s'::('e'::(' '::('g'::('e'::('n'::('e'::('r'::('a'::('t'::('i'::('o'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('f'::('i'::('n'::('d'::(' '::('t'::('h'::('e'::(' '::('l'::('a'::('b'::('e'::('l'::[]))))))))))))))))))))))))))))))))))))))))))
+          error_msg0
+            ('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(' '::('['::('B'::('r'::('_'::('J'::('n'::('z'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))
 
 (** val branch_labels :
     labeled_instr list -> cerise_instruction list error **)
@@ -6319,6 +6342,14 @@ let register_allocation m =
   l_data = (relocate m.l_data reloc_shift); l_main = m.l_main; l_exports =
   m.l_exports }
 
+(** val error_msg1 : char list -> 'a1 error **)
+
+let error_msg1 s =
+  Error
+    (append
+      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::[])))))))))))))
+      s)
+
 (** val relocate_lib :
     ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
     -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
@@ -6418,11 +6449,11 @@ let resolve_word ws data exports =
           (match w with
            | Inl w0 -> Ok (Inl w0)
            | Inr _ ->
-             Error
-               ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::(':'::(' '::('I'::('m'::('p'::('o'::('r'::('t'::(' '::('a'::(' '::('S'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
+             error_msg1
+               ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
         | None ->
-          Error
-            ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::(':'::(' '::('I'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('s'::('o'::('l'::('v'::('e'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(','::(' '::('o'::('f'::('f'::('s'::('e'::('t'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+          error_msg1
+            ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
      | None -> Ok (Inr s))
 
 (** val resolve_data :
@@ -6448,8 +6479,8 @@ let resolve_main p_lib p_client =
   | Some m ->
     (match p_client.c_main with
      | Some _ ->
-       Error
-         ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('i'::('n'::('k'::(' '::('t'::('w'::('o'::(' '::('C'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::('s'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('o'::('n'::(' '::('b'::('o'::('t'::('h'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+       error_msg1
+         ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('m'::('a'::('i'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('i'::('n'::('k'::(' '::('t'::('w'::('o'::(' '::('C'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::('s'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('o'::('n'::(' '::('b'::('o'::('t'::('h'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
      | None -> Ok (Some (relocate_addr_lib m p_lib p_client)))
   | None ->
     (match p_client.c_main with
@@ -6512,14 +6543,22 @@ let link_seq p_lib p_client =
 
 let rec instantiation = function
 | [] ->
-  Error
-    ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('e'::(' '::('0'::(' '::('c'::('o'::('m'::('p'::('o'::('n'::('e'::('n'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))
+  error_msg1
+    ('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('i'::('o'::('n'::(':'::(' '::('r'::('e'::('q'::('u'::('i'::('r'::('e'::('s'::(' '::('a'::('t'::(' '::('l'::('e'::('a'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
 | p_client :: p_lib' ->
   (match p_lib' with
    | [] -> Ok p_client
    | _ :: _ ->
      mbind (Obj.magic (fun _ _ -> error_bind)) (fun p_lib ->
        link_seq p_lib p_client) (instantiation p_lib'))
+
+(** val error_msg2 : char list -> 'a1 error **)
+
+let error_msg2 s =
+  Error
+    (append
+      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::[])))))))))))))
+      s)
 
 (** val common_module :
     machineParameters -> oType -> oType -> oType -> Big_int_Z.big_int ->
@@ -6659,8 +6698,8 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
 let get_word = function
 | Inl w -> Ok w
 | Inr _ ->
-  Error
-    ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::('n'::(' '::('o'::('p'::('e'::('n'::(' '::('p'::('r'::('o'::('g'::('r'::('a'::('m'::[])))))))))))))))))))))))))))))))))))))))))))))))))
+  error_msg2
+    ('g'::('e'::('t'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::('n'::(' '::('o'::('p'::('e'::('n'::(' '::('p'::('r'::('o'::('g'::('r'::('a'::('m'::[]))))))))))))))))))))))))))))))))))))))))))))
 
 (** val loadable : (word, symbols) sum list -> word list error **)
 
@@ -6670,6 +6709,20 @@ let rec loadable = function
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun w -> Ok (w :: acc))
       (Obj.magic get_word ws)) (loadable l')
+
+(** val get_main_word : cerise_linkable_object -> word list -> word error **)
+
+let get_main_word linked_obj data =
+  match linked_obj.c_main with
+  | Some idx ->
+    (match nth_error data idx with
+     | Some w -> Ok w
+     | None ->
+       error_msg2
+         ('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('n'::('o'::(' '::('w'::('o'::('r'::('d'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('a'::('t'::(' '::('t'::('h'::('e'::(' '::('g'::('i'::('v'::('e'::('n'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))
+  | None ->
+    error_msg2
+      ('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::(' '::('w'::('i'::('t'::('h'::('o'::('u'::('t'::(' '::('m'::('a'::('i'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val linkable_to_executable :
     machineParameters -> cerise_linkable_object -> oType -> oType -> oType ->
@@ -6681,17 +6734,8 @@ let linkable_to_executable mP cerise_obj oT_LM oT_G oT_SM sIZE_SAFE_MEM =
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun code ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun data ->
         mbind (Obj.magic (fun _ _ -> error_bind)) (fun main_word -> Ok
-          { segment = (app code (Obj.magic data)); main = main_word })
-          (match linked_obj.c_main with
-           | Some idx ->
-             (match nth_error data idx with
-              | Some w -> Ok w
-              | None ->
-                Error
-                  ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::(':'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('a'::('t'::(' '::('t'::('h'::('e'::(' '::('g'::('i'::('v'::('e'::('n'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))
-           | None ->
-             Error
-               ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::(' '::('w'::('i'::('t'::('h'::('o'::('u'::('t'::(' '::('m'::('a'::('i'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+          { segment = (app code data); main = main_word })
+          (Obj.magic get_main_word linked_obj data))
         (Obj.magic loadable linked_obj.c_data))
       (Obj.magic loadable linked_obj.c_code))
     (Obj.magic link_seq common_obj cerise_obj)
@@ -6765,29 +6809,32 @@ let compile mP m n0 oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
       mAX_INDIRECT_TABLE)
 
 (** val compile_list :
-    machineParameters -> (ws_module * name) list -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_linkable_object error
-    list **)
+    machineParameters -> (ws_module * name, cerise_linkable_object) sum list
+    -> oType -> oType -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    cerise_linkable_object error list **)
 
 let compile_list mP ml oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
   map (fun m ->
-    compile mP (fst m) (snd m) oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE) ml
+    match m with
+    | Inl m' ->
+      compile mP (fst m') (snd m') oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE
+    | Inr m' -> Ok m') ml
 
 (** val load_in_memory :
-    machineParameters -> Big_int_Z.big_int -> (ws_module * name) list ->
-    cerise_linkable_object list -> oType -> oType -> oType ->
+    machineParameters -> Big_int_Z.big_int -> (ws_module * name,
+    cerise_linkable_object) sum list -> oType -> oType -> oType ->
     Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
     (reg * mem) error **)
 
-let load_in_memory mP start_stack wasm_modules cerise_modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
+let load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun comps ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun inst -> Ok
         (init_state mP inst start_stack))
         (Obj.magic linkable_to_executable mP linked oT_LM oT_G oT_SM
-          sIZE_SAFE_MEM)) (Obj.magic instantiation (app comps cerise_modules)))
+          sIZE_SAFE_MEM)) (Obj.magic instantiation comps))
     (Obj.magic list_error
-      (compile_list mP wasm_modules oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE))
+      (compile_list mP modules oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE))
 
 (** val bank_prog : ws_basic_instruction list **)
 
@@ -7523,15 +7570,15 @@ let env_object mP oT_G =
         Big_int_Z.zero_big_int))) }
 
 (** val load_test :
-    machineParameters -> Big_int_Z.big_int -> (ws_module * name) list ->
-    cerise_linkable_object list -> oType -> oType -> oType ->
+    machineParameters -> Big_int_Z.big_int -> (ws_module * name,
+    cerise_linkable_object) sum list -> oType -> oType -> oType ->
     Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
     ((regName * word) list * (addr * word) list) error **)
 
-let load_test mP start_stack wasm_modules cerise_modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
+let load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
   let loaded_mods =
-    load_in_memory mP start_stack wasm_modules cerise_modules oT_LM oT_G
-      oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM
+    load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
+      mAX_INDIRECT_TABLE sIZE_SAFE_MEM
   in
   (match loaded_mods with
    | Error m -> Error m
@@ -7541,11 +7588,10 @@ let load_test mP start_stack wasm_modules cerise_modules oT_LM oT_G oT_SM mAX_LI
      (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0))))
 
 (** val load_example :
-    machineParameters -> (ws_module * name) list -> cerise_linkable_object
-    list -> Big_int_Z.big_int -> ((regName * word) list * (addr * word) list)
-    error **)
+    machineParameters -> (ws_module * name, cerise_linkable_object) sum list
+    -> Big_int_Z.big_int -> ((regName * word) list * (addr * word) list) error **)
 
-let load_example mP wasm_modules cerise_modules start_stack =
+let load_example mP modules start_stack =
   let oT_LM = Big_int_Z.zero_big_int in
   let oT_G = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
   let oT_SM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -7570,64 +7616,80 @@ let load_example mP wasm_modules cerise_modules start_stack =
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))
   in
-  load_test mP start_stack wasm_modules cerise_modules oT_LM oT_G oT_SM
-    mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM
+  load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
+    mAX_INDIRECT_TABLE sIZE_SAFE_MEM
 
 (** val loaded_bank_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_bank_example mP =
-  load_example mP ((bank_module,
-    ('B'::('a'::('n'::('k'::[]))))) :: ((env_module,
-    ('E'::('n'::('v'::[])))) :: [])) []
+  load_example mP
+    (map (fun x -> Inl x) ((bank_module,
+      ('B'::('a'::('n'::('k'::[]))))) :: ((env_module,
+      ('E'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_bank_unsafe_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_bank_unsafe_example mP =
-  load_example mP ((bank_unsafe_module,
-    ('B'::('a'::('n'::('k'::[]))))) :: ((env_unsafe_module,
-    ('E'::('n'::('v'::[])))) :: [])) []
+  load_example mP
+    (map (fun x -> Inl x) ((bank_unsafe_module,
+      ('B'::('a'::('n'::('k'::[]))))) :: ((env_unsafe_module,
+      ('E'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_stack_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_stack_example mP =
-  load_example mP ((client_module,
-    ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: ((stack_module,
-    ('S'::('t'::('a'::('c'::('k'::[])))))) :: [])) []
+  load_example mP
+    (map (fun x -> Inl x) ((client_module,
+      ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: ((stack_module,
+      ('S'::('t'::('a'::('c'::('k'::[])))))) :: [])))
 
 (** val loaded_dummy_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_dummy_example mP =
-  load_example mP ((dummy_module_client,
-    ('d'::('u'::('m'::('m'::('y'::[])))))) :: ((dummy_module_lib,
-    ('e'::('n'::('v'::[])))) :: [])) []
+  load_example mP
+    (map (fun x -> Inl x) ((dummy_module_client,
+      ('d'::('u'::('m'::('m'::('y'::[])))))) :: ((dummy_module_lib,
+      ('e'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_reg_alloc_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_reg_alloc_example mP =
-  load_example mP ((reg_alloc_module_client,
-    ('m'::('a'::('i'::('n'::[]))))) :: []) []
+  load_example mP
+    (map (fun x -> Inl x) ((reg_alloc_module_client,
+      ('m'::('a'::('i'::('n'::[]))))) :: []))
 
 (** val loaded_incr_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_incr_example mP =
-  load_example mP ((incr_module, ('i'::('n'::('c'::('r'::[]))))) :: []) []
+  load_example mP
+    (map (fun x -> Inl x) ((incr_module,
+      ('i'::('n'::('c'::('r'::[]))))) :: []))
 
 (** val loaded_external_example :
     machineParameters -> Big_int_Z.big_int -> ((regName * word)
     list * (addr * word) list) error **)
 
 let loaded_external_example mP =
-  load_example mP ((main_module, ('M'::('a'::('i'::('n'::[]))))) :: [])
-    ((env_object mP (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)) :: [])
+  load_example mP ((Inl (main_module,
+    ('M'::('a'::('i'::('n'::[])))))) :: ((Inr
+    (env_object mP (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) :: []))
+
+(** val exports_insert :
+    (symbols, Big_int_Z.big_int) gmap -> symbols -> Big_int_Z.big_int ->
+    (symbols, Big_int_Z.big_int) gmap **)
+
+let exports_insert g k v =
+  insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable)) k
+    v g

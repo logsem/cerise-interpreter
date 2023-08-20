@@ -15,8 +15,8 @@ let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
 let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
 let locality = ("LOCAL" | "GLOBAL" | "DIRECTED" | "Local" | "Global" | "Directed")
 let letter = ['a'-'z' 'A'-'Z']
-let label = letter (letter | '_' | digit)*
-let symbol = '_' (letter | '_' | digit)*
+let label = ( '_' | letter) (letter | '_' | digit)*
+let symbol = (letter | '_' | '.' | digit)+
 
 rule token = parse
 | eof { EOF }
@@ -111,7 +111,7 @@ rule token = parse
 | label as lbl { LABEL (lbl) }
 
 (* symbol and sections *)
-| symbol as s { SYMBOL s }
+| '$' (symbol as s) { SYMBOL s }
 | ".text" { TEXT_SECTION }
 | ".data" { DATA_SECTION }
 | ".symtab" { EXPORT_SECTION }
