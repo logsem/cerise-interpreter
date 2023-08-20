@@ -1,4 +1,7 @@
-open Libinterp
+open Libmachine
+open Libcompile
+open Libui
+open Wasm
 
 let full_compile filename_reg filename_asm prog =
   let (regs, mem) = Compiler.glue_compile prog in

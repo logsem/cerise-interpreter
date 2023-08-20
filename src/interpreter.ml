@@ -1,4 +1,5 @@
-open Libinterp
+open Libui
+open Libmachine
 
 let () =
   let (mode, filename_prog, regfile_name) =

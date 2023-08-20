@@ -1,0 +1,6 @@
+(library
+ (name        wasm)
+ (libraries zarith))
+
+(ocamllex lexer_wasm)
+(menhir (modules parser_wasm))

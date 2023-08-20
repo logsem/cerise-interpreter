@@ -1,0 +1,3 @@
+(library
+ (name      libui)
+ (libraries zarith notty notty.unix containers libmachine libcompile))

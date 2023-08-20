@@ -1,4 +1,7 @@
 open Extract
+open Libmachine
+open Misc
+open Wasm
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -265,6 +268,182 @@ let translate_word (w : Extract.word) =
 
 let convert_error_msg (m : errorMsg) = (String.concat "" (List.map (String.make 1) m))
 
+(** Ir_wasm *)
+
+open Ir_wasm
+let extract_value_type (vt : value_type) : Extract.value_type =
+  match vt with | T_int -> Extract.T_int | T_handle -> Extract.T_handle
+
+let extract_result_type (rt : result_type) : Extract.result_type =
+  List.map extract_value_type rt
+
+let extract_mod_type (ft : function_type) : Extract.function_type =
+ match ft with
+   | Tf (rt1, rt2) -> Extract.Tf (extract_result_type rt1,
+                                  extract_result_type rt2)
+
+let extract_limits (l : limits) : Extract.limits =
+  { Extract.lim_min = l.lim_min;
+    Extract.lim_max = l.lim_max; }
+
+let extract_handle (h : handle) : Extract.handle =
+  { Extract.base = h.base;
+    Extract.offset = h.offset;
+    Extract.bound = h.bound;
+    Extract.valid = h.valid;
+    Extract.id0 = h.id0;
+  }
+
+let extract_value (v : value) : Extract.value =
+  (match v with
+   | Val_int n -> Extract.Val_int n
+   | Val_handle h -> Extract.Val_handle (extract_handle h))
+
+let extract_table_type (tt : table_type) : Extract.table_type =
+  extract_limits tt
+
+let extract_mod_table (mt : module_table) : Extract.module_table =
+  extract_table_type mt
+
+let extract_memory_type (mt : memory_type) : Extract.memory_type =
+  extract_limits mt
+
+let extract_mutability (m : mutability) : Extract.mutability =
+  (match m with | MUT_immut -> Extract.MUT_immut | MUT_mut -> Extract.MUT_mut)
+
+let extract_global_type (gt : global_type) : Extract.global_type =
+  { Extract.tg_mut = extract_mutability gt.tg_mut;
+    Extract.tg_t = extract_value_type gt.tg_t}
+
+let extract_mod_global (mg : module_glob) : Extract.module_glob =
+  { Extract.modglob_type = extract_global_type mg.modglob_type;
+    Extract.modglob_init = extract_value mg.modglob_init }
+
+let extract_memidx (tidx : memidx) : Extract.memidx = tidx
+let extract_tableidx (tidx : tableidx) : Extract.tableidx = tidx
+let extract_funidx (tidx : funcidx) : Extract.funcidx = tidx
+let extract_typeidx (tidx : typeidx) : Extract.typeidx = tidx
+let extract_globalidx (tidx : globalidx) : Extract.globalidx = tidx
+
+let extract_mod_elem (me : module_element) : Extract.module_element =
+{ Extract.modelem_table = extract_tableidx me.modelem_table;
+  Extract.modelem_offset = me.modelem_offset;
+  Extract.modelem_init = me.modelem_init }
+
+let extract_module_start (ms : module_start) : Extract.module_start =
+extract_funidx ms
+
+let extract_import_desc (d : import_desc) : Extract.import_desc =
+  (match d with
+   | ID_func tidx -> Extract.ID_func tidx
+   | ID_table tt -> Extract.ID_table (extract_table_type tt)
+   | ID_mem mt -> Extract.ID_mem (extract_memory_type mt)
+   | ID_global gt -> Extract.ID_global (extract_global_type gt))
+
+let extract_mod_import (imp : module_import ) : Extract.module_import =
+  { Extract.imp_module = Utils.explode_string imp.imp_module;
+    Extract.imp_name = Utils.explode_string imp.imp_name;
+    Extract.imp_desc = extract_import_desc imp.imp_desc }
+
+let extract_export_desc (d : module_export_desc) : Extract.module_export_desc =
+  (match d with
+   | MED_func fidx -> Extract.MED_func (extract_funidx fidx)
+   | MED_table tidx -> Extract.MED_table (extract_tableidx tidx)
+   | MED_mem midx -> Extract.MED_mem (extract_memidx midx)
+   | MED_global gidx -> Extract.MED_global (extract_globalidx gidx))
+
+let extract_mod_export (exp : module_export) : Extract.module_export =
+  { Extract.modexp_name = Utils.explode_string exp.modexp_name;
+    Extract.modexp_desc = extract_export_desc exp.modexp_desc }
+
+
+let extract_sx (s : sx) : Extract.sx =
+  match s with
+  | SX_S -> Extract.SX_S
+  | SX_U -> Extract.SX_U
+
+let extract_relop (op : relop) : Extract.relop =
+  (match op with
+   | ROI_eq -> Extract.ROI_eq
+   | ROI_ne -> Extract.ROI_ne
+   | ROI_lt s -> Extract.ROI_lt (extract_sx s)
+   | ROI_gt s -> Extract.ROI_gt (extract_sx s)
+   | ROI_le s -> Extract.ROI_le (extract_sx s)
+   | ROI_ge s -> Extract.ROI_ge (extract_sx s)
+  )
+
+let extract_binop (op : binop) : Extract.binop =
+  (match op with
+   | BOI_add -> Extract.BOI_add
+   | BOI_sub -> Extract.BOI_sub
+   | BOI_mul -> Extract.BOI_mul
+   | BOI_rem s -> Extract.BOI_rem (extract_sx s)
+   | BOI_div s -> Extract.BOI_div (extract_sx s))
+
+let rec extract_ws_binstr (i : ws_basic_instruction) : Extract.ws_basic_instruction =
+  (match i with
+   | I_unreachable -> Extract.I_unreachable
+   | I_nop -> Extract.I_nop
+   | I_drop -> Extract.I_drop
+   | I_select -> Extract.I_select
+   | I_block (rt, e) ->
+     Extract.I_block (extract_result_type rt, List.map extract_ws_binstr e)
+   | I_loop (rt, e) ->
+     Extract.I_loop (extract_result_type rt, List.map extract_ws_binstr e)
+   | I_if (rt, e1, e2) ->
+     Extract.I_if
+       (extract_result_type rt, List.map extract_ws_binstr e1, List.map extract_ws_binstr e2)
+   | I_br i -> Extract.I_br i
+   | I_br_if i -> Extract.I_br_if i
+   | I_return -> Extract.I_return
+   | I_call i -> Extract.I_call i
+   | I_call_indirect i -> Extract.I_call_indirect i
+   | I_get_local i -> Extract.I_get_local i
+   | I_set_local i -> Extract.I_set_local i
+   | I_tee_local i -> Extract.I_tee_local i
+   | I_get_global i -> Extract.I_get_global i
+   | I_set_global i -> Extract.I_set_global i
+   | I_load vt -> Extract.I_load (extract_value_type vt)
+   | I_store vt -> Extract.I_store (extract_value_type vt)
+   | I_current_memory -> Extract.I_current_memory
+   | I_grow_memory -> Extract.I_grow_memory
+   | I_segload vt -> Extract.I_segload (extract_value_type vt)
+   | I_segstore vt -> Extract.I_segstore (extract_value_type vt)
+   | I_segalloc -> Extract.I_segalloc
+   | I_segfree -> Extract.I_segfree
+   | I_slice -> Extract.I_slice
+   | I_handleadd -> Extract.I_handleadd
+   | I_const v -> Extract.I_const (extract_value v)
+   | I_binop (vt, op) -> Extract.I_binop (extract_value_type vt, extract_binop op)
+   | I_testop vt -> Extract.I_testop (extract_value_type vt)
+   | I_relop (vt, op) -> Extract.I_relop (extract_value_type vt, extract_relop op))
+
+let extract_expr (e : expr) : Extract.expr =
+  List.map extract_ws_binstr e
+
+let extract_mod_func (f : module_func) : Extract.module_func =
+ { Extract.modfunc_type = (extract_typeidx f.modfunc_type);
+   Extract.modfunc_locals = List.map extract_value_type f.modfunc_locals;
+   Extract.modfunc_body = extract_expr f.modfunc_body}
+
+let extract_module (m : ws_module) : Extract.ws_module =
+  { Extract.mod_types = List.map extract_mod_type m.mod_types;
+    Extract.mod_funcs = List.map extract_mod_func m.mod_funcs;
+    Extract.mod_tables = List.map extract_mod_table m.mod_tables;
+    Extract.mod_mems = List.map extract_memory_type m.mod_mems;
+    Extract.mod_globals = List.map extract_mod_global m.mod_globals;
+    Extract.mod_elem = List.map extract_mod_elem m.mod_elem;
+    Extract.mod_start =
+      begin
+      match m.mod_start with
+      | None -> None
+      | Some mstart -> Some (extract_module_start mstart)
+    end ;
+    Extract.mod_imports = List.map extract_mod_import m.mod_imports;
+    Extract.mod_exports = List.map extract_mod_export m.mod_exports;
+  }
+
+
 let compile (l : Ir_wasm.ws_module list)
     mp start_stack ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
   =
@@ -272,7 +451,7 @@ let compile (l : Ir_wasm.ws_module list)
   let mods =
     List.map
       (fun m ->
-         (extract_module m, Ir_wasm.explode_string m.mod_name))
+         (extract_module m, Utils.explode_string m.mod_name))
       l
   in
   Extract.load_test

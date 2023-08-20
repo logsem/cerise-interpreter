@@ -1,4 +1,5 @@
 (* Type definitions for the syntax AST *)
+open Misc
 type regname = PC | STK | Reg of int
 type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed

@@ -1,5 +1,6 @@
 open Ast
 open Parameters
+open Misc
 let (~$) = Z.(~$)
 
 exception NotYetImplemented

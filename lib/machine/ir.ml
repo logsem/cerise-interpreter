@@ -1,4 +1,5 @@
 (* Type definitions for the syntax AST *)
+open Misc
 
 exception UnknownLabelException of string
 exception ExprException of string

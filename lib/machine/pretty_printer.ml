@@ -1,5 +1,5 @@
 open Ast
-open Machine
+open Misc
 
 let (^-) s1 s2 = s1 ^ " " ^ s2
 
@@ -159,7 +159,7 @@ let string_of_statement (s : statement) : string =
 let string_of_reg_word (r : regname) (w : word) : string =
   Printf.sprintf "| %s : %s |" (string_of_regname r) (string_of_word w)
 
-let string_of_exec_state (st : exec_state) : string =
+let string_of_exec_state (st : Machine.exec_state) : string =
   match st with
   | Running -> "Running"
   | Halted -> "Halted"

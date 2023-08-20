@@ -1,7 +1,9 @@
 open Notty
 open Notty.Infix
 open Notty_unix
+open Libmachine
 open Parameters
+open Misc
 
 
 type side = Left | Right

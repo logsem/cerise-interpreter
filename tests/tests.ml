@@ -1,6 +1,6 @@
-open Libinterp
-open Libinterp.Pretty_printer
-open Libinterp.Ast
+open Libmachine
+open Pretty_printer
+open Ast
 
 
 let statement_eq (a : statement) (b : statement) = (a = b)

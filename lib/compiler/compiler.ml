@@ -1,5 +1,8 @@
 open Convert
 open Extract
+open Libmachine
+open Misc
+open Wasm
 
 exception CompilationException of string
 let rec pp_of_instrs l =

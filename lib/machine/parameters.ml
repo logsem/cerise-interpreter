@@ -1,4 +1,5 @@
 open Ast
+open Misc
 type machineFlags =
   {
     version     : string;       (* Name of the version of Cerise *)

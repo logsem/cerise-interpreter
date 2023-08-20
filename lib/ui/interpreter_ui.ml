@@ -1,3 +1,5 @@
+open Libmachine
+
 let print_exec_state (m : Machine.mchn) =
   print_endline @@ Pretty_printer.string_of_exec_state (fst m)
 
