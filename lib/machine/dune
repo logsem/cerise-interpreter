@@ -2,5 +2,5 @@
  (name        libmachine)
  (libraries zarith misc))
 
-(ocamllex lexer lexer_regfile)
-(menhir (modules parser parser_regfile))
+(ocamllex lexer lexer_regfile lexer_linkable_object)
+(menhir (modules parser parser_regfile parser_linkable_object))

@@ -4,7 +4,7 @@ open Wasm
 
 (** Convert Extract programs into Ast programs *)
 
-module ConvertExtract = struct
+module ConvertExtractAst = struct
   open Extract
 
   let perm (p : perm) : Ast.perm =
@@ -119,7 +119,7 @@ module ConvertExtract = struct
 end
 
 (** Convert Ast programs into Extract programs *)
-module ConvertAst = struct
+module ConvertAstExtract = struct
   open Extract
 
   let reg (r : Ast.regname) : regName =
@@ -191,11 +191,25 @@ module ConvertAst = struct
     | Ast.W_Cap -> wt_cap
     | Ast.W_SealRange -> wt_sealrange
     | Ast.W_Sealed -> wt_sealed
+
+  let z_inf (z : Infinite_z.t) : nbar =
+    (match z with | Infinite_z.Int z -> Finite z | Infinite_z.Inf -> P_infty)
+
+  let sealable (sb : Ast.sealable) : sealable =
+    (match sb with
+     | Ast.Cap (p, g, b, e, a) -> SCap ((perm p, loc g), b, z_inf e, a)
+     | Ast.SealRange (p, g, b, e, a) -> SSealRange ((p, loc g), b, e, a))
+
+  let word (w : Ast.word) : word =
+    match w with
+     | Ast.I z -> WInt z
+     | Ast.Sealable sb -> WSealable (sealable sb)
+     | Ast.Sealed (ot, sb) -> WSealed (ot, sealable sb)
 end
 
 (** Ir_wasm *)
 
-module ConvertWasm = struct
+module ConvertWasmExtract = struct
   open Ir_wasm
   let extract_value_type (vt : value_type) : Extract.value_type =
     match vt with | T_int -> Extract.T_int | T_handle -> Extract.T_handle
@@ -370,37 +384,78 @@ module ConvertWasm = struct
     }
 end
 
+
+let machine_param =
+  let open Encode in
+  {
+    Extract.decodeInstr = (function z -> ConvertAstExtract.machine_op (decode_machine_op z));
+    encodeInstr = (function i -> encode_machine_op (ConvertExtractAst.instr i));
+    encodePerm = (function p -> encode_perm (ConvertExtractAst.perm p));
+    encodeLoc = (function g -> encode_locality (ConvertExtractAst.locality g));
+
+    decodePermPair = (function z -> let (p,g) = decode_perm_loc_pair z in (ConvertAstExtract.perm p, ConvertAstExtract.loc g));
+    encodePermPair = (function p -> let (p,g) = p in encode_perm_loc_pair (ConvertExtractAst.perm p) (ConvertExtractAst.locality g));
+
+    decodeSealPermPair = (function z -> let (p,g) = decode_seal_perm_loc_pair z in (p, ConvertAstExtract.loc g));
+    encodeSealPermPair = (function p -> let (p,g) = p in encode_seal_perm_loc_pair p (ConvertExtractAst.locality g));
+
+    encodeSealPerms = (function p -> encode_seal_perm p);
+    decodeSealPerms = (function p -> decode_seal_perm p);
+    encodeWordType = (function wt -> encode_wtype (ConvertExtractAst.wtype wt));
+    decodeWordType = (function wt -> ConvertAstExtract.wtype (decode_wtype wt));
+  }
+
+
+module ConvertLinkableExtract = struct
+  open Ir_linkable_object
+
+  let extract_export_map (exports : int ExportMap.t) :
+        (Extract.symbols, Big_int_Z.big_int) Extract.gmap =
+    Extract.gmap_empty () ()
+
+  let extract_word (w : Ir.machine_op) : Extract.word =
+    let extract_machine_op op =
+      Extract.WInt (machine_param.encodeInstr (ConvertAstExtract.machine_op op))
+    in
+    let extract_ir_word w' =
+      match (Ir.translate_word [] w') with
+      | Op op -> extract_machine_op op
+      | Word w -> ConvertAstExtract.word w
+    in
+    try extract_machine_op (Ir.translate_instr [] w)
+    with Ir.WordException w' -> extract_ir_word w'
+
+
+  let extract_symbolic_word (w : symbolic_word)
+    : (Extract.word, Extract.symbols) Extract.sum =
+    match w with
+    | ConcreteWord w -> Extract.Inl (extract_word w)
+    | Symbol s -> Extract.Inr (Misc.Utils.explode_string s)
+
+
+  let extract_object (o : linkable_object) : Extract.cerise_linkable_object =
+    {
+      c_code = List.map extract_symbolic_word o.text_section;
+      c_data = List.map extract_symbolic_word o.data_section;
+      c_main = Option.map Big_int_Z.big_int_of_int o.start_offset;
+      c_exports = extract_export_map o.exports_section;
+    }
+end
+
+
 type extract_compiled_program = (((Extract.regName * Extract.word) list) * ((Extract.addr * Extract.word) list)) Extract.error
 type compiled_prog =  (Ast.regname * Ast.word) list * (Z.t * Ast.word) list
 
 (** Interface for utilies function *)
 module ConvertInterface
   : sig
-    val compile : Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Ir_wasm.ws_module list -> compiled_prog
+    val compile : Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t -> Z.t
+      -> Ir_wasm.ws_module list -> Ir_linkable_object.t list
+      -> compiled_prog
   end
 = struct
   (** Machine parameters *)
   exception CompilerException of string
-
-  let machine_param =
-    let open Encode in
-    {
-      Extract.decodeInstr = (function z -> ConvertAst.machine_op (decode_machine_op z));
-      encodeInstr = (function i -> encode_machine_op (ConvertExtract.instr i));
-      encodePerm = (function p -> encode_perm (ConvertExtract.perm p));
-      encodeLoc = (function g -> encode_locality (ConvertExtract.locality g));
-
-      decodePermPair = (function z -> let (p,g) = decode_perm_loc_pair z in (ConvertAst.perm p, ConvertAst.loc g));
-      encodePermPair = (function p -> let (p,g) = p in encode_perm_loc_pair (ConvertExtract.perm p) (ConvertExtract.locality g));
-
-      decodeSealPermPair = (function z -> let (p,g) = decode_seal_perm_loc_pair z in (p, ConvertAst.loc g));
-      encodeSealPermPair = (function p -> let (p,g) = p in encode_seal_perm_loc_pair p (ConvertExtract.locality g));
-
-      encodeSealPerms = (function p -> encode_seal_perm p);
-      decodeSealPerms = (function p -> decode_seal_perm p);
-      encodeWordType = (function wt -> encode_wtype (ConvertExtract.wtype wt));
-      decodeWordType = (function wt -> ConvertAst.wtype (decode_wtype wt));
-    }
 
   let compile
       (start_stack : Z.t)
@@ -410,35 +465,42 @@ module ConvertInterface
       (max_lin_mem : Z.t)
       (max_indirect_table : Z.t)
       (size_safe_mem : Z.t)
-      (l : Ir_wasm.ws_module list)
+      (wasm_mods : Ir_wasm.ws_module list)
+      (cerise_obj : Ir_linkable_object.t list)
     : compiled_prog
     =
     let open Ir_wasm in
     (* Convert the Ir_wasm.modules into Extract.modules *)
-    let mods =
+    let extracted_wasm_mods =
       List.map
         (fun m ->
-           (ConvertWasm.extract_module m, Utils.explode_string m.mod_name))
-        l
+           (ConvertWasmExtract.extract_module m, Utils.explode_string m.mod_name))
+        wasm_mods
+    in
+
+    let extract_cerise_link_obj =
+      List.map ConvertLinkableExtract.extract_object cerise_obj
     in
 
     (* Compile, link and load the *)
     let compiled : extract_compiled_program  =
       Extract.load_test
-        machine_param start_stack mods [] ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
+        machine_param start_stack
+        extracted_wasm_mods extract_cerise_link_obj
+        ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
     in
 
     match compiled with
-    | Extract.Error m -> raise @@ CompilerException (ConvertExtract.convert_error_msg m)
+    | Extract.Error m -> raise @@ CompilerException (ConvertExtractAst.convert_error_msg m)
     | Extract.Ok (regs, compiled_prog) ->
       let regs =
         List.map
-          (fun w -> (ConvertExtract.regname (fst w), ConvertExtract.word (snd w)))
+          (fun w -> (ConvertExtractAst.regname (fst w), ConvertExtractAst.word (snd w)))
           regs
       in
       let prog =
         List.map
-          (fun w -> ((fst w), ConvertExtract.word (snd w)))
+          (fun w -> ((fst w), ConvertExtractAst.word (snd w)))
           compiled_prog
       in
       (regs, prog)
