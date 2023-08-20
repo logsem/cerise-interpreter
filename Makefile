@@ -1,6 +1,6 @@
 EXEC = default
 EXTRACT_SRC = ../../cerise-compilation/extract.ml
-EXTRACT_TARGET = ./lib/extract.ml
+EXTRACT_TARGET = ./lib/compiler/extract.ml
 
 REG_FILE = ./asm-toys/$(EXEC).reg
 S_FILE = ./asm-toys/$(EXEC).s
