@@ -1,4 +1,5 @@
 EXEC = default
+INPUT = default
 EXTRACT_SRC = ../../cerise-compilation/extract.ml
 EXTRACT_TARGET = ./lib/compiler/extract.ml
 
@@ -18,10 +19,10 @@ no-warning:
 	dune build --profile release
 
 run:
-	./compile
+	./compile --output $(REG_FILE) $(S_FILE) $(INPUTS)
 	./interpreter -I --version default --regfile $(REG_FILE) $(S_FILE)
 
-compiler: get-extract no-warning run
+compiler: get-extract no-warning
 
 clean:
 	dune clean

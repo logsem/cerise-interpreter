@@ -46,10 +46,14 @@ exports:
   | e = export_entry ; exps = exports { let (s,n) = e in ExportMap.add s n exps }
   | { ExportMap.empty }
 
-export_entry: s = SYMBOL ; COLON ; offset = INT { (s, offset) }
+export_entry: s = SYMBOL ; COLON ; sec = section_type ; offset = INT { (s, (sec, offset)) }
 main_entry:
-| START_SECTION ; offset = INT { Some offset }
+| START_SECTION ; sec = section_type ; offset = INT { Some (sec, offset) }
 | { None }
+
+section_type:
+| TEXT_SECTION { CodeSection }
+| DATA_SECTION { DataSection }
 
 symb_word:
   | w = concrete_word { ConcreteWord w }

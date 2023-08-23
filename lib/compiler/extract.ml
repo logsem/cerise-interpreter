@@ -3001,10 +3001,16 @@ let symbols_encode module_name symbol_name =
 
 type cerise_function = cerise_instruction list
 
+type section =
+| Code
+| Data
+
+type section_offset = section * Big_int_Z.big_int
+
 type cerise_linkable_object = { c_code : (word, symbols) sum list;
                                 c_data : (word, symbols) sum list;
-                                c_main : Big_int_Z.big_int option;
-                                c_exports : (symbols, Big_int_Z.big_int) gmap }
+                                c_main : section_offset option;
+                                c_exports : (symbols, section_offset) gmap }
 
 type cerise_executable_object = { segment : word list; main : word }
 
@@ -3312,9 +3318,8 @@ let len_labeled_cerise_frame frm =
 type labeled_cerise_component = { l_code : (word * labeled_function list);
                                   l_data_frame : labeled_cerise_frame;
                                   l_data : (word, symbols) sum list;
-                                  l_main : Big_int_Z.big_int option;
-                                  l_exports : (symbols, Big_int_Z.big_int)
-                                              gmap }
+                                  l_main : section_offset option;
+                                  l_exports : (symbols, section_offset) gmap }
 
 type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
                                          cerise_instruction);
@@ -5743,7 +5748,7 @@ let compile_frame m functions lin_mems globals itables oT_LM oT_G =
           (app imported_itables (app defined_itables commons)))))) }
 
 (** val compile_export :
-    module_export -> frame -> char list -> (symbols, Big_int_Z.big_int) gmap **)
+    module_export -> frame -> char list -> (symbols, section_offset) gmap **)
 
 let compile_export exp frm module_name =
   let s = symbols_encode module_name exp.modexp_name in
@@ -5751,25 +5756,25 @@ let compile_export exp frm module_name =
    | MED_func f ->
      singletonM0
        (map_singleton (gmap_partial_alter string_eq_dec string_countable)
-         (gmap_empty string_eq_dec string_countable)) s f
+         (gmap_empty string_eq_dec string_countable)) s (Data, f)
    | MED_table t0 ->
      singletonM0
        (map_singleton (gmap_partial_alter string_eq_dec string_countable)
-         (gmap_empty string_eq_dec string_countable)) s
-       (add frm.idx_imports_itable t0)
+         (gmap_empty string_eq_dec string_countable)) s (Data,
+       (add frm.idx_imports_itable t0))
    | MED_mem m ->
      singletonM0
        (map_singleton (gmap_partial_alter string_eq_dec string_countable)
-         (gmap_empty string_eq_dec string_countable)) s
-       (add frm.idx_imports_lin_mem m)
+         (gmap_empty string_eq_dec string_countable)) s (Data,
+       (add frm.idx_imports_lin_mem m))
    | MED_global g ->
      singletonM0
        (map_singleton (gmap_partial_alter string_eq_dec string_countable)
-         (gmap_empty string_eq_dec string_countable)) s
-       (add frm.idx_imports_globals g))
+         (gmap_empty string_eq_dec string_countable)) s (Data,
+       (add frm.idx_imports_globals g)))
 
 (** val compile_exports :
-    module_export list -> frame -> name -> (symbols, Big_int_Z.big_int) gmap **)
+    module_export list -> frame -> name -> (symbols, section_offset) gmap **)
 
 let rec compile_exports exps frm module_name =
   match exps with
@@ -5781,11 +5786,11 @@ let rec compile_exports exps frm module_name =
       (compile_export exp frm module_name)
       (compile_exports exps' frm module_name)
 
-(** val get_start : ws_module -> Big_int_Z.big_int option **)
+(** val get_start : ws_module -> section_offset option **)
 
 let get_start m =
-  mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some
-    (modstart_func mstart)) (Obj.magic m.mod_start)
+  mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some (Data,
+    (modstart_func mstart))) (Obj.magic m.mod_start)
 
 (** val compile_module :
     machineParameters -> ws_module -> name -> oType -> oType ->
@@ -6354,19 +6359,36 @@ let error_msg1 s =
     ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
     -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
 
-let relocate_lib rel add0 y p_lib p_client =
+let relocate_lib leb0 add0 y p_lib p_client =
   let a = length p_client.c_code in
   let b = length p_client.c_data in
   let c = length p_lib.c_code in
-  if rel y c then add0 y a else add0 y (add a b)
+  if leb0 y c then add0 y a else add0 y (add a b)
 
 (** val relocate_client :
     ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
     -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
 
-let relocate_client rel add0 y p_lib p_client =
+let relocate_client leb0 add0 y p_lib p_client =
   let a = length p_client.c_code in
-  let c = length p_lib.c_code in if rel y a then y else add0 y c
+  let c = length p_lib.c_code in if leb0 y a then y else add0 y c
+
+(** val relocate_export_client :
+    (section * Big_int_Z.big_int) -> cerise_linkable_object ->
+    cerise_linkable_object -> section * Big_int_Z.big_int **)
+
+let relocate_export_client export _ _ =
+  export
+
+(** val relocate_export_lib :
+    (section * Big_int_Z.big_int) -> cerise_linkable_object ->
+    cerise_linkable_object -> section * Big_int_Z.big_int **)
+
+let relocate_export_lib export _ p_client =
+  let (s, n0) = export in
+  (match s with
+   | Code -> (Code, (add n0 (length p_client.c_code)))
+   | Data -> (Data, (add n0 (length p_client.c_data))))
 
 (** val relocate_addr_lib :
     Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
@@ -6435,15 +6457,20 @@ let relocate_word_client =
   relocate_word relocate_addr_client relocate_eaddr_client
 
 (** val resolve_word :
-    (word, symbols) sum -> (word, symbols) sum list -> (symbols,
-    Big_int_Z.big_int) gmap -> (word, symbols) sum error **)
+    (word, symbols) sum -> (word, symbols) sum list -> (word, symbols) sum
+    list -> (symbols, section_offset) gmap -> (word, symbols) sum error **)
 
-let resolve_word ws data exports =
+let resolve_word ws code_section data_section exports =
   match ws with
   | Inl w -> Ok (Inl w)
   | Inr s ->
     (match lookup0 (gmap_lookup string_eq_dec string_countable) s exports with
-     | Some n0 ->
+     | Some y ->
+       let (sec, n0) = y in
+       let data = match sec with
+                  | Code -> code_section
+                  | Data -> data_section
+       in
        (match nth_error data n0 with
         | Some w ->
           (match w with
@@ -6457,22 +6484,23 @@ let resolve_word ws data exports =
      | None -> Ok (Inr s))
 
 (** val resolve_data :
-    (word, symbols) sum list -> (word, symbols) sum list -> (symbols,
-    Big_int_Z.big_int) gmap -> (word, symbols) sum list error **)
+    (word, symbols) sum list -> (word, symbols) sum list -> (word, symbols)
+    sum list -> (symbols, section_offset) gmap -> (word, symbols) sum list
+    error **)
 
-let rec resolve_data client_data lib_data exports =
+let rec resolve_data client_data code_section data_section exports =
   match client_data with
   | [] -> Ok []
   | ws :: data' ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun solved_data ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun solved_sym -> Ok
         (solved_sym :: solved_data))
-        (Obj.magic resolve_word ws lib_data exports))
-      (resolve_data data' lib_data exports)
+        (Obj.magic resolve_word ws code_section data_section exports))
+      (resolve_data data' code_section data_section exports)
 
 (** val resolve_main :
-    cerise_linkable_object -> cerise_linkable_object -> Big_int_Z.big_int
-    option error **)
+    cerise_linkable_object -> cerise_linkable_object -> section_offset option
+    error **)
 
 let resolve_main p_lib p_client =
   match p_lib.c_main with
@@ -6481,10 +6509,10 @@ let resolve_main p_lib p_client =
      | Some _ ->
        error_msg1
          ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('m'::('a'::('i'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('i'::('n'::('k'::(' '::('t'::('w'::('o'::(' '::('C'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::('s'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('o'::('n'::(' '::('b'::('o'::('t'::('h'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-     | None -> Ok (Some (relocate_addr_lib m p_lib p_client)))
+     | None -> Ok (Some (relocate_export_lib m p_lib p_client)))
   | None ->
     (match p_client.c_main with
-     | Some m -> Ok (Some (relocate_addr_client m p_lib p_client))
+     | Some m -> Ok (Some (relocate_export_client m p_lib p_client))
      | None -> Ok None)
 
 (** val link_seq :
@@ -6512,14 +6540,14 @@ let link_seq p_lib p_client =
             let relocated_lib_exports =
               fmap
                 (Obj.magic (fun _ _ ->
-                  gmap_fmap string_eq_dec string_countable)) (fun w ->
-                relocate_addr_lib w p_lib p_client) p_lib.c_exports
+                  gmap_fmap string_eq_dec string_countable)) (fun e ->
+                relocate_export_lib e p_lib p_client) p_lib.c_exports
             in
             let relocated_client_exports =
               fmap
                 (Obj.magic (fun _ _ ->
-                  gmap_fmap string_eq_dec string_countable)) (fun w ->
-                relocate_addr_client w p_lib p_client) p_client.c_exports
+                  gmap_fmap string_eq_dec string_countable)) (fun e ->
+                relocate_export_client e p_lib p_client) p_lib.c_exports
             in
             Ok { c_code = (app linked_code_client linked_code_lib); c_data =
             (app linked_data_client linked_data_lib); c_main = main_word;
@@ -6529,14 +6557,15 @@ let link_seq p_lib p_client =
                 (Obj.magic (fun _ _ _ ->
                   gmap_merge string_eq_dec string_countable)))
               relocated_lib_exports relocated_client_exports) })
-            (Obj.magic resolve_data relocated_lib_data relocated_client_data
-              p_client.c_exports))
-          (Obj.magic resolve_data relocated_lib_code relocated_client_data
-            p_client.c_exports))
-        (Obj.magic resolve_data relocated_client_data relocated_lib_data
-          p_lib.c_exports))
-      (Obj.magic resolve_data relocated_client_code relocated_lib_data
-        p_lib.c_exports)) (Obj.magic resolve_main p_lib p_client)
+            (Obj.magic resolve_data relocated_lib_data relocated_client_code
+              relocated_client_data p_client.c_exports))
+          (Obj.magic resolve_data relocated_lib_code relocated_client_code
+            relocated_client_data p_client.c_exports))
+        (Obj.magic resolve_data relocated_client_data relocated_lib_code
+          relocated_lib_data p_lib.c_exports))
+      (Obj.magic resolve_data relocated_client_code relocated_lib_code
+        relocated_lib_data p_lib.c_exports))
+    (Obj.magic resolve_main p_lib p_client)
 
 (** val instantiation :
     cerise_linkable_object list -> cerise_linkable_object error **)
@@ -6686,12 +6715,12 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
   (map (fun x -> Inl x) (app linking_table (app safe_mem exports_data)));
   c_main = None; c_exports =
   (insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
-    link_tbl_sym offset_exports_data
+    link_tbl_sym (Data, offset_exports_data)
     (singletonM0
       (map_singleton (gmap_partial_alter string_eq_dec string_countable)
-        (gmap_empty string_eq_dec string_countable)) safe_mem_sym
+        (gmap_empty string_eq_dec string_countable)) safe_mem_sym (Data,
       (add offset_exports_data (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))) }
+        Big_int_Z.zero_big_int))))) }
 
 (** val get_word : (word, symbols) sum -> word error **)
 
@@ -6710,12 +6739,17 @@ let rec loadable = function
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun w -> Ok (w :: acc))
       (Obj.magic get_word ws)) (loadable l')
 
-(** val get_main_word : cerise_linkable_object -> word list -> word error **)
+(** val get_main_word :
+    cerise_linkable_object -> word list -> word list -> word error **)
 
-let get_main_word linked_obj data =
+let get_main_word linked_obj code data =
   match linked_obj.c_main with
-  | Some idx ->
-    (match nth_error data idx with
+  | Some s ->
+    let (sec, idx) = s in
+    let sec_data = match sec with
+                   | Code -> code
+                   | Data -> data in
+    (match nth_error sec_data idx with
      | Some w -> Ok w
      | None ->
        error_msg2
@@ -6735,7 +6769,7 @@ let linkable_to_executable mP cerise_obj oT_LM oT_G oT_SM sIZE_SAFE_MEM =
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun data ->
         mbind (Obj.magic (fun _ _ -> error_bind)) (fun main_word -> Ok
           { segment = (app code data); main = main_word })
-          (Obj.magic get_main_word linked_obj data))
+          (Obj.magic get_main_word linked_obj code data))
         (Obj.magic loadable linked_obj.c_data))
       (Obj.magic loadable linked_obj.c_code))
     (Obj.magic link_seq common_obj cerise_obj)
@@ -6864,13 +6898,30 @@ let bank_prog =
   ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
   Big_int_Z.unit_big_int))))) :: ((I_segstore T_int) :: ((I_get_local
   account_id) :: ((I_call Big_int_Z.zero_big_int) :: (I_drop :: ((I_get_local
-  account_balance) :: ((I_segload
-  T_int) :: (I_drop :: [])))))))))))))))))))))))))
+  account_balance) :: ((I_segload T_int) :: ((I_const (Val_int
+  ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+  ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+  ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+  Big_int_Z.unit_big_int))))) :: ((I_call (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int
+  Big_int_Z.zero_big_int))) :: (I_drop :: [])))))))))))))))))))))))))))
+
+(** val assert_prog : ws_basic_instruction list **)
+
+let assert_prog =
+  (I_get_local Big_int_Z.zero_big_int) :: ((I_get_local
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)) :: ((I_relop (T_int,
+    ROI_ne)) :: ((I_set_global Big_int_Z.zero_big_int) :: [])))
 
 (** val bank_tf : function_type **)
 
 let bank_tf =
   Tf ([], [])
+
+(** val assert_tf : function_type **)
+
+let assert_tf =
+  Tf ((T_int :: (T_int :: [])), [])
 
 (** val adv_tf : function_type **)
 
@@ -6880,15 +6931,19 @@ let adv_tf =
 (** val bank_module : ws_module **)
 
 let bank_module =
-  { mod_types = (bank_tf :: (adv_tf :: [])); mod_funcs = ({ modfunc_type =
-    Big_int_Z.zero_big_int; modfunc_locals =
+  { mod_types = (bank_tf :: (assert_tf :: (adv_tf :: []))); mod_funcs =
+    ({ modfunc_type = Big_int_Z.zero_big_int; modfunc_locals =
     (T_handle :: (T_handle :: (T_handle :: []))); modfunc_body =
-    bank_prog } :: []); mod_tables = []; mod_mems = []; mod_globals = [];
-    mod_elem = []; mod_start = (Some (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)); mod_imports = ({ imp_module =
-    ('E'::('n'::('v'::[]))); imp_name = ('a'::('d'::('v'::[]))); imp_desc =
-    (ID_func (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)) } :: []);
-    mod_exports = [] }
+    bank_prog } :: ({ modfunc_type = (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int); modfunc_locals = []; modfunc_body =
+    assert_prog } :: [])); mod_tables = []; mod_mems = []; mod_globals =
+    ({ modglob_type = { tg_mut = MUT_mut; tg_t = T_int }; modglob_init =
+    (Val_int Big_int_Z.zero_big_int) } :: []); mod_elem = []; mod_start =
+    (Some (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)); mod_imports =
+    ({ imp_module = ('E'::('n'::('v'::[]))); imp_name =
+    ('a'::('d'::('v'::[]))); imp_desc = (ID_func (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) } :: []); mod_exports =
+    [] }
 
 (** val env_adv_prog : ws_basic_instruction list **)
 
@@ -7561,13 +7616,13 @@ let env_object mP oT_G =
   { c_code = (env_adv mP); c_data = (env_data mP oT_G); c_main = None;
     c_exports =
     (insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
-      ('E'::('n'::('v'::('.'::('a'::('d'::('v'::[])))))))
-      Big_int_Z.zero_big_int
+      ('E'::('n'::('v'::('.'::('a'::('d'::('v'::[]))))))) (Data,
+      Big_int_Z.zero_big_int)
       (singletonM0
         (map_singleton (gmap_partial_alter string_eq_dec string_countable)
           (gmap_empty string_eq_dec string_countable))
-        ('E'::('n'::('v'::('.'::('h'::[]))))) (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int))) }
+        ('E'::('n'::('v'::('.'::('h'::[]))))) (Data, (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int)))) }
 
 (** val load_test :
     machineParameters -> Big_int_Z.big_int -> (ws_module * name,
@@ -7687,9 +7742,9 @@ let loaded_external_example mP =
     (env_object mP (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) :: []))
 
 (** val exports_insert :
-    (symbols, Big_int_Z.big_int) gmap -> symbols -> Big_int_Z.big_int ->
-    (symbols, Big_int_Z.big_int) gmap **)
+    (symbols, section_offset) gmap -> symbols -> section -> Big_int_Z.big_int
+    -> (symbols, section_offset) gmap **)
 
-let exports_insert g k v =
+let exports_insert g k sec v =
   insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable)) k
-    v g
+    (sec, v) g

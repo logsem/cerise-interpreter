@@ -26,5 +26,5 @@
     #1
 
 .symtab
-    $env.h: 1
-    $env.adv: 0
+    $env.h: .data 1
+    $env.adv: .data 0

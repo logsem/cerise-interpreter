@@ -409,17 +409,23 @@ let machine_param =
 module ConvertLinkableExtract = struct
   open Ir_linkable_object
 
-  let extract_export_map (exports : int ExportMap.t) :
-    (Extract.symbols, Big_int_Z.big_int) Extract.gmap =
-    let gmap : (((Extract.symbols, Big_int_Z.big_int) Extract.gmap) ref) =
+  let extract_section_type (s : section_type) : Extract.section =
+  match s with
+  | CodeSection -> Extract.Code
+  | DataSection -> Extract.Data
+
+  let extract_export_map (exports : (section_type * int) ExportMap.t) :
+    (Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap =
+    let gmap : (((Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap) ref) =
       ref (Extract.gmap_empty () ())
     in
-    let update_gmap m s o =
-      m := (Extract.exports_insert !m s o) ; ()
+    let update_gmap m s sec o =
+      m := (Extract.exports_insert !m s sec o) ; ()
     in
     ExportMap.iter
       (fun sym off ->
-         update_gmap gmap (Misc.Utils.explode_string sym) (Big_int_Z.big_int_of_int off))
+         update_gmap gmap (Misc.Utils.explode_string sym)
+        (extract_section_type (fst off)) (Big_int_Z.big_int_of_int (snd off)))
       exports;
     !gmap
 
@@ -447,7 +453,7 @@ module ConvertLinkableExtract = struct
     {
       c_code = List.map extract_symbolic_word o.text_section;
       c_data = List.map extract_symbolic_word o.data_section;
-      c_main = Option.map Big_int_Z.big_int_of_int o.start_offset;
+      c_main = Option.map (fun off -> (extract_section_type (fst off), Big_int_Z.big_int_of_int (snd off))) o.start_offset;
       c_exports = extract_export_map o.exports_section;
     }
 end
