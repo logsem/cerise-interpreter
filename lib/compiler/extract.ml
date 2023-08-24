@@ -3303,21 +3303,12 @@ let rec max_reg = function
 | [] -> Big_int_Z.zero_big_int
 | i :: p' -> max (max_reg_instr0 i) (max_reg p')
 
-type labeled_cerise_frame = { l_frame_imported_functions : symbols list;
-                              l_frame_defined_functions : word list;
-                              l_frame_data : (word, symbols) sum list }
-
-(** val len_labeled_cerise_frame :
-    labeled_cerise_frame -> Big_int_Z.big_int **)
-
-let len_labeled_cerise_frame frm =
-  add
-    (add (length frm.l_frame_imported_functions)
-      (length frm.l_frame_defined_functions)) (length frm.l_frame_data)
+type labeled_data = { l_data_frame : (word, symbols) sum list;
+                      l_data_func_closures : (word * word) list;
+                      l_data_section : (word, symbols) sum list }
 
 type labeled_cerise_component = { l_code : (word * labeled_function list);
-                                  l_data_frame : labeled_cerise_frame;
-                                  l_data : (word, symbols) sum list;
+                                  l_data : labeled_data;
                                   l_main : section_offset option;
                                   l_exports : (symbols, section_offset) gmap }
 
@@ -4873,7 +4864,7 @@ let rec compile_binstr h module0 f_type i s =
         let prologue =
           instrs ((Mov ((R tmp_fun), (Inr r_frame))) :: ((Lea ((R tmp_fun),
             (Inl (Z.of_nat offset_function)))) :: ((Load ((R tmp_fun), (R
-            tmp_fun))) :: [])))
+            tmp_fun))) :: ((Load ((R tmp_fun), (R tmp_fun))) :: []))))
         in
         let new_state0 = sub_reg (add_reg s (length ret_type)) len_arg_type in
         call_template h (R tmp_fun) (R res) prologue args arg_type ret_type
@@ -5567,22 +5558,27 @@ let compile_indirect_table it max_nb_entry =
 let compile_indirect_tables lit max_nb_entry =
   map (fun it -> compile_indirect_table it max_nb_entry) lit
 
-(** val import_function : module_import -> symbols option **)
+(** val encode_function_type : function_type -> Big_int_Z.big_int **)
 
-let import_function imp =
+let encode_function_type _ =
+  Big_int_Z.zero_big_int
+
+(** val import_func_closure : module_import -> symbols option **)
+
+let import_func_closure imp =
   let symbol = symbols_encode imp.imp_module imp.imp_name in
   (match imp.imp_desc with
    | ID_func _ -> Some symbol
    | _ -> None)
 
-(** val imports_functions : module_import list -> symbols list **)
+(** val imports_func_closures : module_import list -> symbols list **)
 
-let rec imports_functions = function
+let rec imports_func_closures = function
 | [] -> []
 | imp :: imps' ->
-  let acc = imports_functions imps' in
-  (match import_function imp with
-   | Some s -> s :: acc
+  let acc = imports_func_closures imps' in
+  (match import_func_closure imp with
+   | Some s -> app (s :: []) acc
    | None -> acc)
 
 (** val import_lin_mem : module_import -> symbols option **)
@@ -5600,7 +5596,7 @@ let rec imports_lin_mems = function
 | imp :: imps' ->
   let acc = imports_lin_mems imps' in
   (match import_lin_mem imp with
-   | Some s -> app (s :: []) acc
+   | Some s -> s :: acc
    | None -> acc)
 
 (** val import_global : module_import -> symbols option **)
@@ -5640,12 +5636,14 @@ let rec imports_itables = function
    | None -> acc)
 
 (** val compile_frame :
-    ws_module -> labeled_function list -> (word, symbols) sum list list ->
-    (word, symbols) sum list list -> (word, symbols) sum list list -> oType
-    -> oType -> labeled_cerise_frame **)
+    ws_module -> Big_int_Z.big_int -> (word * word) list -> (word, symbols)
+    sum list list -> (word, symbols) sum list list -> (word, symbols) sum
+    list list -> oType -> oType -> (word, symbols) sum list error **)
 
-let compile_frame m functions lin_mems globals itables oT_LM oT_G =
-  let imported_functions = imports_functions m.mod_imports in
+let compile_frame m offset_frame func_closures lin_mems globals itables oT_LM oT_G =
+  let imported_func_closures =
+    map (fun x -> Inr x) (imports_func_closures m.mod_imports)
+  in
   let imported_lin_mems =
     map (fun x -> Inr x) (imports_lin_mems m.mod_imports)
   in
@@ -5669,34 +5667,28 @@ let compile_frame m functions lin_mems globals itables oT_LM oT_G =
           (add
             (add
               (add
-                (add (add (length imported_functions) (length functions))
+                (add
+                  (add (length imported_func_closures) (length func_closures))
                   (length imported_lin_mems)) (length lin_mems))
               (length imported_globals)) (length globals))
           (length imported_itables)) (length itables)) (length commons)
   in
-  let defined_functions =
-    let entry_points =
-      let (_, entry_points) =
-        foldl (fun acc f ->
-          let (offset0, fl) = acc in
-          let next_offset = add offset0 (length f) in
-          (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int,
-          []) functions
-      in
-      entry_points
+  let offset_func_closure = add offset_frame len_frame in
+  let defined_func_closures =
+    let (_, func_closures0) =
+      foldl (fun acc _ ->
+        let (offset0, func_closures0) = acc in
+        let len_fc = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)
+        in
+        let e = add offset0 len_fc in
+        let func_closure = WSealable (SCap ((RO, Global), offset0, (Finite
+          e), offset0))
+        in
+        (e, (app func_closures0 (func_closure :: [])))) (offset_func_closure,
+        []) func_closures
     in
-    let b = Big_int_Z.zero_big_int in
-    let e =
-      add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-        (length (concat functions))
-    in
-    map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
-      (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
-      entry_points
-  in
-  let offset_frame =
-    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-      (length (concat functions))
+    map (fun x -> Inl x) func_closures0
   in
   let offset_lin_mems = add offset_frame len_frame in
   let defined_lin_mems =
@@ -5739,13 +5731,14 @@ let compile_frame m functions lin_mems globals itables oT_LM oT_G =
     in
     map (fun x -> Inl x) ro_itables
   in
-  { l_frame_imported_functions = imported_functions;
-  l_frame_defined_functions = defined_functions; l_frame_data =
-  (app imported_lin_mems
-    (app defined_lin_mems
-      (app imported_globals
-        (app defined_globals
-          (app imported_itables (app defined_itables commons)))))) }
+  Ok
+  (app imported_func_closures
+    (app defined_func_closures
+      (app imported_lin_mems
+        (app defined_lin_mems
+          (app imported_globals
+            (app defined_globals
+              (app imported_itables (app defined_itables commons))))))))
 
 (** val compile_export :
     module_export -> frame -> char list -> (symbols, section_offset) gmap **)
@@ -5792,6 +5785,45 @@ let get_start m =
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some (Data,
     (modstart_func mstart))) (Obj.magic m.mod_start)
 
+(** val compile_func_closures :
+    labeled_function list -> module_func list -> ws_module -> (word * word)
+    list error **)
+
+let compile_func_closures compiled_functions functions m =
+  let b = Big_int_Z.zero_big_int in
+  let e =
+    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+      (length (concat compiled_functions))
+  in
+  let rec compile_func_closures' compiled_functions0 functions0 entry_point =
+    match compiled_functions0 with
+    | [] ->
+      (match functions0 with
+       | [] -> Ok []
+       | _ :: _ ->
+         error_msg
+           ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))
+    | fc :: fcs ->
+      (match functions0 with
+       | [] ->
+         error_msg
+           ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))
+       | f :: fs ->
+         let next_entry_point = add entry_point (length fc) in
+         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
+             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
+           in
+           (match get_type m f.modfunc_type with
+            | Some t0 ->
+              Ok ((sentry, (WInt (encode_function_type t0))) :: acc)
+            | None ->
+              error_msg
+                ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
+           (compile_func_closures' fcs fs next_entry_point))
+  in compile_func_closures' compiled_functions functions
+       Big_int_Z.zero_big_int
+
 (** val compile_module :
     machineParameters -> ws_module -> name -> oType -> oType ->
     Big_int_Z.big_int -> Big_int_Z.big_int -> labeled_cerise_component error **)
@@ -5799,32 +5831,43 @@ let get_start m =
 let compile_module mP m module_name oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
   let frm = define_module_frame m in
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_functions ->
-    let lin_mem_section = compile_lin_mems m.mod_mems mAX_LIN_MEM in
-    let globals_section = compile_globals m.mod_globals in
-    let uninit_itables =
-      compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
-    in
-    let exports = compile_exports m.mod_exports frm module_name in
-    let data_frame =
-      compile_frame m compiled_functions
-        (lin_mem_section Big_int_Z.zero_big_int) globals_section
-        uninit_itables oT_LM oT_G
-    in
-    let b_frm =
-      add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-        (length (concat compiled_functions))
-    in
-    let len_frm = len_labeled_cerise_frame data_frame in
-    let e_frm = add b_frm len_frm in
-    let frame_cap = WSealable (SCap ((RO, Global), b_frm, (Finite e_frm),
-      b_frm))
-    in
-    let data_section =
-      app (concat (lin_mem_section e_frm))
-        (app (concat globals_section) (concat uninit_itables))
-    in
-    Ok { l_code = (frame_cap, compiled_functions); l_data_frame = data_frame;
-    l_data = data_section; l_main = (get_start m); l_exports = exports })
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closure_section ->
+      let lin_mem_section = compile_lin_mems m.mod_mems mAX_LIN_MEM in
+      let globals_section = compile_globals m.mod_globals in
+      let uninit_itables =
+        compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
+      in
+      let exports = compile_exports m.mod_exports frm module_name in
+      let offset_frame =
+        add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+          (length (concat compiled_functions))
+      in
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun data_frame ->
+        let b_frm =
+          add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+            (length (concat compiled_functions))
+        in
+        let e_frm = add b_frm (length data_frame) in
+        let frame_cap = WSealable (SCap ((RO, Global), b_frm, (Finite e_frm),
+          b_frm))
+        in
+        let offset_lin_mem_section =
+          add e_frm
+            (mul (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              Big_int_Z.zero_big_int)) (length func_closure_section))
+        in
+        let data_section =
+          app (concat (lin_mem_section offset_lin_mem_section))
+            (app (concat globals_section) (concat uninit_itables))
+        in
+        Ok { l_code = (frame_cap, compiled_functions); l_data =
+        { l_data_frame = data_frame; l_data_func_closures =
+        func_closure_section; l_data_section = data_section }; l_main =
+        (get_start m); l_exports = exports })
+        (Obj.magic compile_frame m offset_frame func_closure_section
+          (lin_mem_section Big_int_Z.zero_big_int) globals_section
+          uninit_itables oT_LM oT_G))
+      (Obj.magic compile_func_closures compiled_functions m.mod_funcs m))
     (Obj.magic compile_funcs mP m)
 
 (** val error_msg0 : char list -> 'a1 error **)
@@ -5935,27 +5978,38 @@ let compile_functions progs =
         (compiled_prog :: acc)) (Obj.magic branch_labels p)) acc_opt) (Ok [])
     progs
 
-(** val relocate_defined_functions : cerise_function list -> word list **)
+(** val relocate_func_closure :
+    cerise_function list -> (word * word) list -> (word * word) list error **)
 
-let relocate_defined_functions functions =
-  let entry_points =
-    let (_, entry_points) =
-      foldl (fun acc f ->
-        let (offset0, fl) = acc in
-        let next_offset = add offset0 (length f) in
-        (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int, [])
-        functions
-    in
-    entry_points
-  in
+let relocate_func_closure functions func_closures =
   let b = Big_int_Z.zero_big_int in
   let e =
     add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
       (length (concat functions))
   in
-  map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
-    (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
-    entry_points
+  let rec relocate_func_closure' functions0 func_closures0 entry_point =
+    match functions0 with
+    | [] ->
+      (match func_closures0 with
+       | [] -> Ok []
+       | _ :: _ ->
+         Error
+           ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+    | fc :: fcs ->
+      (match func_closures0 with
+       | [] ->
+         Error
+           ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+       | f :: fs ->
+         let (_, type_f) = f in
+         let next_entry_point = add entry_point (length fc) in
+         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
+             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
+           in
+           Ok ((sentry, type_f) :: acc))
+           (relocate_func_closure' fcs fs next_entry_point))
+  in relocate_func_closure' functions func_closures Big_int_Z.zero_big_int
 
 (** val compile_component :
     machineParameters -> labeled_cerise_component -> cerise_linkable_object
@@ -5974,21 +6028,21 @@ let compile_component mP m =
         | Inl w0 -> Inl (shift_word w0 n0)
         | Inr s -> Inr s) data
     in
-    let relocated_frame =
-      let frame_imported_functions = m.l_data_frame.l_frame_imported_functions
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closures ->
+      let relocated_data =
+        app (relocate m.l_data.l_data_frame reloc_shift)
+          (app
+            (concat
+              (map (fun s -> (Inl (fst s)) :: ((Inl (snd s)) :: []))
+                func_closures))
+            (relocate m.l_data.l_data_section reloc_shift))
       in
-      let frame_defined_functions = relocate_defined_functions lbl_erased_code
-      in
-      let frame_data = relocate m.l_data_frame.l_frame_data reloc_shift in
-      app (map (fun x -> Inr x) frame_imported_functions)
-        (app (map (fun x -> Inl x) frame_defined_functions) frame_data)
-    in
-    let relocated_data = relocate m.l_data reloc_shift in
-    Ok { c_code =
-    (map (fun x -> Inl x)
-      (relocated_frm_cap :: (encodeInstrsW mP (concat lbl_erased_code))));
-    c_data = (app relocated_frame relocated_data); c_main = m.l_main;
-    c_exports = m.l_exports }) (Obj.magic compile_functions code)
+      Ok { c_code =
+      (map (fun x -> Inl x)
+        (relocated_frm_cap :: (encodeInstrsW mP (concat lbl_erased_code))));
+      c_data = relocated_data; c_main = m.l_main; c_exports = m.l_exports })
+      (Obj.magic relocate_func_closure lbl_erased_code
+        m.l_data.l_data_func_closures)) (Obj.magic compile_functions code)
 
 (** val get_spilling_offset :
     Big_int_Z.big_int -> Big_int_Z.big_int option **)
@@ -6304,30 +6358,41 @@ let rec spilling = function
 | [] -> []
 | i :: il' -> app (spill_labeled_instr i) (spilling il')
 
-(** val relocate_defined_functions0 : labeled_function list -> word list **)
+(** val relocate_func_closure0 :
+    labeled_function list -> (word * word) list -> (word * word) list error **)
 
-let relocate_defined_functions0 functions =
-  let entry_points =
-    let (_, entry_points) =
-      foldl (fun acc f ->
-        let (offset0, fl) = acc in
-        let next_offset = add offset0 (length f) in
-        (next_offset, (app fl (offset0 :: [])))) (Big_int_Z.zero_big_int, [])
-        functions
-    in
-    entry_points
-  in
+let relocate_func_closure0 functions func_closures =
   let b = Big_int_Z.zero_big_int in
   let e =
     add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
       (length (concat functions))
   in
-  map (fun entry_point -> WSealable (SCap ((E, Global), b, (Finite e),
-    (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point))))
-    entry_points
+  let rec relocate_func_closure' functions0 func_closures0 entry_point =
+    match functions0 with
+    | [] ->
+      (match func_closures0 with
+       | [] -> Ok []
+       | _ :: _ ->
+         Error
+           ('['::('r'::('e'::('g'::('i'::('s'::('t'::('e'::('r'::('_'::('a'::('l'::('l'::('o'::('c'::('a'::('t'::('i'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+    | fc :: fcs ->
+      (match func_closures0 with
+       | [] ->
+         Error
+           ('['::('r'::('e'::('g'::('i'::('s'::('t'::('e'::('r'::('_'::('a'::('l'::('l'::('o'::('c'::('a'::('t'::('i'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+       | f :: fs ->
+         let (_, type_f) = f in
+         let next_entry_point = add entry_point (length fc) in
+         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
+             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
+           in
+           Ok ((sentry, type_f) :: acc))
+           (relocate_func_closure' fcs fs next_entry_point))
+  in relocate_func_closure' functions func_closures Big_int_Z.zero_big_int
 
 (** val register_allocation :
-    labeled_cerise_component -> labeled_cerise_component **)
+    labeled_cerise_component -> labeled_cerise_component error **)
 
 let register_allocation m =
   let (frm_cap, code) = m.l_code in
@@ -6340,12 +6405,13 @@ let register_allocation m =
       | Inl w0 -> Inl (shift_word w0 n0)
       | Inr s -> Inr s) data
   in
-  { l_code = (relocated_frm_cap, opt_code); l_data_frame =
-  { l_frame_imported_functions = m.l_data_frame.l_frame_imported_functions;
-  l_frame_defined_functions = (relocate_defined_functions0 opt_code);
-  l_frame_data = (relocate m.l_data_frame.l_frame_data reloc_shift) };
-  l_data = (relocate m.l_data reloc_shift); l_main = m.l_main; l_exports =
-  m.l_exports }
+  mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closures -> Ok
+    { l_code = (relocated_frm_cap, opt_code); l_data = { l_data_frame =
+    (relocate m.l_data.l_data_frame reloc_shift); l_data_func_closures =
+    func_closures; l_data_section =
+    (relocate m.l_data.l_data_section reloc_shift) }; l_main = m.l_main;
+    l_exports = m.l_exports })
+    (Obj.magic relocate_func_closure0 opt_code m.l_data.l_data_func_closures)
 
 (** val error_msg1 : char list -> 'a1 error **)
 
@@ -6750,13 +6816,34 @@ let get_main_word linked_obj code data =
                    | Code -> code
                    | Data -> data in
     (match nth_error sec_data idx with
-     | Some w -> Ok w
+     | Some w ->
+       (match w with
+        | WSealable sb ->
+          (match sb with
+           | SCap (p, _, _, a) ->
+             let (p0, _) = p in
+             (match p0 with
+              | RO ->
+                (match nth_error (app code data) a with
+                 | Some w0 -> Ok w0
+                 | None ->
+                   error_msg2
+                     ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('n'::('o'::(' '::('w'::('o'::('r'::('d'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('a'::('t'::(' '::('t'::('h'::('e'::(' '::('g'::('i'::('v'::('e'::('n'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))
+              | _ ->
+                error_msg2
+                  ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('t'::('h'::('e'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('s'::('h'::('o'::('u'::('l'::('d'::(' '::('b'::('e'::(' '::('a'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+           | SSealRange (_, _, _, _) ->
+             error_msg2
+               ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('t'::('h'::('e'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('s'::('h'::('o'::('u'::('l'::('d'::(' '::('b'::('e'::(' '::('a'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+        | _ ->
+          error_msg2
+            ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('t'::('h'::('e'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('s'::('h'::('o'::('u'::('l'::('d'::(' '::('b'::('e'::(' '::('a'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
      | None ->
        error_msg2
-         ('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('n'::('o'::(' '::('w'::('o'::('r'::('d'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('a'::('t'::(' '::('t'::('h'::('e'::(' '::('g'::('i'::('v'::('e'::('n'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))
+         ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('n'::('o'::(' '::('w'::('o'::('r'::('d'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('a'::('t'::(' '::('t'::('h'::('e'::(' '::('g'::('i'::('v'::('e'::('n'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
   | None ->
     error_msg2
-      ('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::(' '::('w'::('i'::('t'::('h'::('o'::('u'::('t'::(' '::('m'::('a'::('i'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+      ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::(' '::('w'::('i'::('t'::('h'::('o'::('u'::('t'::(' '::('m'::('a'::('i'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val linkable_to_executable :
     machineParameters -> cerise_linkable_object -> oType -> oType -> oType ->
@@ -6838,7 +6925,9 @@ let init_state h prog start_stack =
 
 let compile mP m n0 oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun labeled ->
-    compile_component mP (register_allocation labeled))
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun reg_allocated ->
+      compile_component mP reg_allocated)
+      (Obj.magic register_allocation labeled))
     (Obj.magic compile_module mP m n0 oT_LM oT_G mAX_LIN_MEM
       mAX_INDIRECT_TABLE)
 

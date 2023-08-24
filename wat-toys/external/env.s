@@ -14,8 +14,8 @@
     jmp r10
 
 .data
-    #(E, Global, 0, 13, 1)          ; function adv
-    #{1: (RW, Global, 17, 20, 17)}  ; sealed to global
+    #(RO, Global, 22, 24, 22)       ; function closure adv
+    #{1: (RW, Global, 19, 22, 19)}  ; sealed to global
     $main.g
     $_Common.link_tbl
     #0
@@ -24,6 +24,9 @@
     #3
     #0
     #1
+    ;; Function adv
+    #(E, Global, 0, 13, 1)
+    #0
 
 .symtab
     $env.h: .data 1
