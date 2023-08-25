@@ -13,7 +13,8 @@
 %left UMINUS
 
 %start <Irreg.t> main
-%{ open! Irreg %}
+%{ open! Irreg
+   open! Misc %}
 
 %%
 

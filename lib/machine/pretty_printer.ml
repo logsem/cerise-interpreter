@@ -1,5 +1,5 @@
 open Ast
-open Machine
+open Misc
 
 let (^-) s1 s2 = s1 ^ " " ^ s2
 
@@ -119,50 +119,49 @@ let string_of_machine_op (s: machine_op): string =
   | PromoteU r -> "promoteU" ^- string_of_regname r
   | Fail -> "fail"
   | Halt -> "halt"
+
 let string_of_sealable (sb : sealable) : string =
+  let open Big_int_Z in
   match sb with
   | Cap (p, g, b, e, a) ->
-    Printf.sprintf "Cap (%s, %s, %s, %s, %s)"
-      (string_of_perm p) (string_of_locality g)
-      (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
+    Printf.sprintf "(%s, %s, %s, %s, %s)" (string_of_perm p)
+      (string_of_locality g)
+      (string_of_big_int b)
+      (Infinite_z.to_string e)
+      (string_of_big_int a)
   | SealRange (p, g, b, e, a) ->
-    Printf.sprintf "SRange [%s, %s, %s, %s, %s]"
-      (string_of_seal_perm p) (string_of_locality g)
-      (Z.to_string b) (Z.to_string e) (Z.to_string a)
+    Printf.sprintf "[%s, %s, %s, %s, %s]" (string_of_seal_perm p)
+      (string_of_locality g)
+      (string_of_big_int b)
+      (string_of_big_int e)
+      (string_of_big_int a)
 
 let string_of_word (w : word) : string =
+  let open Big_int_Z in
   match w with
-  | I z -> Z.to_string z
+  | I z -> Printf.sprintf "%s" (string_of_big_int z)
   | Sealable sb -> string_of_sealable sb
-  | Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
+  | Sealed (ot, sb) ->
+    Printf.sprintf "{%s: %s}" (string_of_big_int ot) (string_of_sealable sb)
 
-
-let string_of_ast_sealable (sb : Ast.sealable) : string =
-  match sb with
-  | Ast.Cap (p, g, b, e, a) ->
-    Printf.sprintf "Cap (%s, %s, %s, %s, %s)"
-      (string_of_perm p) (string_of_locality g)
-      (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
-  | Ast.SealRange (p, g, b, e, a) ->
-    Printf.sprintf "SRange [%s, %s, %s, %s, %s]"
-      (string_of_seal_perm p) (string_of_locality g)
-      (Z.to_string b) (Z.to_string e) (Z.to_string a)
-
-let string_of_ast_word (w : Ast.word) : string =
+let pp_raw_word (w : word) : string = string_of_word w
+let pp_asm_word ( w : word ) : string =
+  let open Big_int_Z in
   match w with
-  | Ast.I z -> Z.to_string z
-  | Ast.Sealable sb -> string_of_sealable sb
-  | Ast.Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
+  | I z -> (string_of_machine_op (Encode.decode_machine_op z))
+  | Sealable sb -> Printf.sprintf "#%s" (string_of_sealable sb)
+  | Sealed (ot, sb) ->
+    Printf.sprintf "#{%s: %s}" (string_of_big_int ot) (string_of_sealable sb)
 
 let string_of_statement (s : statement) : string =
   match s with
   | Op op -> string_of_machine_op op
-  | Ast.Word w -> string_of_ast_word w
+  | Ast.Word w -> string_of_word w
 
 let string_of_reg_word (r : regname) (w : word) : string =
   Printf.sprintf "| %s : %s |" (string_of_regname r) (string_of_word w)
 
-let string_of_exec_state (st : exec_state) : string =
+let string_of_exec_state (st : Machine.exec_state) : string =
   match st with
   | Running -> "Running"
   | Halted -> "Halted"

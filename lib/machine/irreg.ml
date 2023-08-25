@@ -1,4 +1,5 @@
 (* Type definitions for the registers init *)
+open Misc
 
 exception ExprException of string
 

@@ -1,7 +1,9 @@
 (* Type definitions for the syntax AST *)
+open Misc
 type regname = PC | Reg of int
 let ddc = Reg 0
 let stk = Reg 31
+
 type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
 type locality = Global | Local | Directed
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed

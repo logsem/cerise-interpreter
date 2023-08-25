@@ -1,4 +1,6 @@
 (* TODO test of the CLI *)
+open Libmachine
+open Misc
 
 type cli_mode = Interactive_mode | Interpreter_mode
 

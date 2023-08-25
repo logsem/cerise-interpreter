@@ -1,6 +1,6 @@
-open Libinterp
-open Libinterp.Machine
-open Libinterp.Ast
+open Libmachine
+open Machine
+open Ast
 
 
 let make_test_list (dir : string) : string array =

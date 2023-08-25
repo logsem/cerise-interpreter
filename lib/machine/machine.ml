@@ -1,5 +1,6 @@
 open Ast
 open Parameters
+open Misc
 let (~$) = Z.(~$)
 
 exception NotYetImplemented
@@ -238,6 +239,7 @@ let can_read (p : perm) : bool =
 
 let can_read_upto (w : word) : Infinite_z.t =
   match w with
+  | Sealable (Cap (O,_,_,e,a)) -> Int Z.zero
   | Sealable (Cap (p,_,_,e,a)) -> if is_uperm p then Infinite_z.z_min a e else e
   | _ -> Int Z.zero
 

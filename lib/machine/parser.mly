@@ -18,7 +18,8 @@
 %left UMINUS
 
 %start <Ir.t> main
-%{ open! Ir %}
+%{ open! Ir
+   open! Misc %}
 
 %%
 
