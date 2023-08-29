@@ -89,6 +89,7 @@ module ConvertExtractAst = struct
     | GetOType (r1, r2) -> Ast.GetWType (regname r1, regname r2)
     | Seal (r1, r2, r3) -> Ast.Seal (regname r1, regname r2, regname r3)
     | UnSeal (r1, r2, r3) -> Ast.UnSeal (regname r1, regname r2, regname r3)
+    | Invoke (r1, r2) -> Ast.Invoke (regname r1, regname r2)
 
     | LoadU (r1, r2, c) -> Ast.LoadU (regname r1,
                                       regname r2,
@@ -158,6 +159,7 @@ module ConvertAstExtract = struct
     | Ast.GetWType (r1, r2) -> GetWType (reg r1, reg r2)
     | Ast.Seal (r1, r2, r3) -> Seal (reg r1, reg r2, reg r3)
     | Ast.UnSeal (r1, r2, r3) -> UnSeal (reg r1, reg r2, reg r3)
+    | Ast.Invoke (r1, r2) -> Invoke (reg r1, reg r2)
     | Ast.LoadU (r1, r2, c) -> LoadU (reg r1, reg r2, sum c)
     | Ast.StoreU (r, c1, c2) -> StoreU (reg r, sum c1, sum c2)
     | Ast.PromoteU r -> PromoteU (reg r)

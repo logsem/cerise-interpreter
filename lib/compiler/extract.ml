@@ -2907,6 +2907,7 @@ type cerise_instruction =
 | GetOType of regName * regName
 | Seal of regName * regName * regName
 | UnSeal of regName * regName * regName
+| Invoke of regName * regName
 | Fail
 | Halt
 | LoadU of regName * regName * (Big_int_Z.big_int, regName) sum
@@ -2983,6 +2984,7 @@ let max_reg_instr = function
   let tmp = max (get_reg_num r2) (get_reg_num r3) in max (get_reg_num r1) tmp
 | UnSeal (r1, r2, r3) ->
   let tmp = max (get_reg_num r2) (get_reg_num r3) in max (get_reg_num r1) tmp
+| Invoke (r1, r2) -> max (get_reg_num r1) (get_reg_num r2)
 | LoadU (r1, r2, zr3) ->
   let tmp = max (get_reg_num r2) (get_zreg_num zr3) in
   max (get_reg_num r1) tmp
@@ -3007,8 +3009,10 @@ type section =
 
 type section_offset = section * Big_int_Z.big_int
 
-type cerise_linkable_object = { c_code : (word, symbols) sum list;
-                                c_data : (word, symbols) sum list;
+type abstract_word = (word, symbols) sum
+
+type cerise_linkable_object = { c_code : abstract_word list;
+                                c_data : abstract_word list;
                                 c_main : section_offset option;
                                 c_exports : (symbols, section_offset) gmap }
 
@@ -3071,6 +3075,39 @@ let shift_segment m n0 =
   in
   fmap (Obj.magic (fun _ _ -> gmap_fmap Coq0_Nat.eq_dec nat_countable))
     (fun w -> shift_word w n0) (Obj.magic shift_addr)
+
+(** val compute_func_closure :
+    'a1 list list -> (word * word) list -> (word * word) list error **)
+
+let compute_func_closure functions func_closures =
+  let b = Big_int_Z.zero_big_int in
+  let e =
+    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+      (length (concat functions))
+  in
+  let rec compute_func_closure' functions0 func_closures0 entry_point =
+    match functions0 with
+    | [] ->
+      (match func_closures0 with
+       | [] -> Ok []
+       | _ :: _ ->
+         Error
+           ('['::('a'::('d'::('d'::('r'::('_'::('m'::('a'::('p'::('_'::('c'::('o'::('m'::('m'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('c'::('o'::('m'::('p'::('u'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+    | fc :: fcs ->
+      (match func_closures0 with
+       | [] ->
+         Error
+           ('['::('a'::('d'::('d'::('r'::('_'::('m'::('a'::('p'::('_'::('c'::('o'::('m'::('m'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('c'::('o'::('m'::('p'::('u'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+       | f :: fs ->
+         let (_, type_f) = f in
+         let next_entry_point = add entry_point (length fc) in
+         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
+             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
+           in
+           Ok ((sentry, type_f) :: acc))
+           (compute_func_closure' fcs fs next_entry_point))
+  in compute_func_closure' functions func_closures Big_int_Z.zero_big_int
 
 type immediate = Big_int_Z.big_int
 
@@ -3283,7 +3320,7 @@ type labeled_instr =
 | Br_Jmp of Big_int_Z.big_int list
 | Br_Jnz of Big_int_Z.big_int list * Big_int_Z.big_int
 
-(** val instrs : cerise_instruction list -> labeled_instr list **)
+(** val instrs : cerise_function -> labeled_instr list **)
 
 let instrs li =
   map (fun i -> BInstr i) li
@@ -3303,9 +3340,9 @@ let rec max_reg = function
 | [] -> Big_int_Z.zero_big_int
 | i :: p' -> max (max_reg_instr0 i) (max_reg p')
 
-type labeled_data = { l_data_frame : (word, symbols) sum list;
+type labeled_data = { l_data_frame : abstract_word list;
                       l_data_func_closures : (word * word) list;
-                      l_data_section : (word, symbols) sum list }
+                      l_data_section : abstract_word list }
 
 type labeled_cerise_component = { l_code : (word * labeled_function list);
                                   l_data : labeled_data;
@@ -3336,8 +3373,7 @@ type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
 let encodeInstrW h i =
   WInt (h.encodeInstr i)
 
-(** val encodeInstrsW :
-    machineParameters -> cerise_instruction list -> word list **)
+(** val encodeInstrsW : machineParameters -> cerise_function -> word list **)
 
 let encodeInstrsW h =
   map (encodeInstrW h)
@@ -3393,7 +3429,7 @@ let z_page_size =
   Z.of_nat page_size0
 
 (** val eq_instrs :
-    regName -> regName -> regName -> regName -> cerise_instruction list **)
+    regName -> regName -> regName -> regName -> cerise_function **)
 
 let eq_instrs res r1 r2 tmp =
   (Sub (res, (Inr r2), (Inr r1))) :: ((Mov (tmp, (Inr PC))) :: ((Lea (tmp,
@@ -3406,7 +3442,7 @@ let eq_instrs res r1 r2 tmp =
     Big_int_Z.zero_big_int))) :: []))))))))
 
 (** val neq_instrs :
-    regName -> regName -> regName -> regName -> cerise_instruction list **)
+    regName -> regName -> regName -> regName -> cerise_function **)
 
 let neq_instrs res r1 r2 tmp =
   (Sub (res, (Inr r2), (Inr r1))) :: ((Mov (tmp, (Inr PC))) :: ((Lea (tmp,
@@ -3418,8 +3454,7 @@ let neq_instrs res r1 r2 tmp =
     Big_int_Z.unit_big_int))) :: ((Mov (tmp, (Inl
     Big_int_Z.zero_big_int))) :: []))))))))
 
-(** val eqz_instrs :
-    regName -> regName -> regName -> cerise_instruction list **)
+(** val eqz_instrs : regName -> regName -> regName -> cerise_function **)
 
 let eqz_instrs res r0 tmp =
   (Mov (tmp, (Inr PC))) :: ((Lea (tmp, (Inl (Big_int_Z.mult_int_big_int 2
@@ -3431,7 +3466,7 @@ let eqz_instrs res r0 tmp =
     Big_int_Z.zero_big_int))) :: [])))))))
 
 (** val ge_instrs :
-    regName -> regName -> regName -> regName -> cerise_instruction list **)
+    regName -> regName -> regName -> regName -> cerise_function **)
 
 let ge_instrs res r1 r2 tmp =
   (Lt0 (res, (Inr r2), (Inr r1))) :: ((Mov (tmp, (Inr PC))) :: ((Lea (tmp,
@@ -3443,40 +3478,40 @@ let ge_instrs res r1 r2 tmp =
     Big_int_Z.unit_big_int))) :: ((Mov (tmp, (Inl
     Big_int_Z.zero_big_int))) :: []))))))))
 
-(** val rclear_instrs : regName list -> cerise_instruction list **)
+(** val rclear_instrs : regName list -> cerise_function **)
 
 let rclear_instrs r0 =
   map (fun r_i -> Mov (r_i, (Inl Big_int_Z.zero_big_int))) r0
 
 (** val push_instrs :
-    (Big_int_Z.big_int, regName) sum list -> cerise_instruction list **)
+    (Big_int_Z.big_int, regName) sum list -> cerise_function **)
 
 let push_instrs _UU03c1_s =
   map (fun _UU03c1_ -> StoreU (r_stk, (Inl Big_int_Z.zero_big_int),
     _UU03c1_)) _UU03c1_s
 
-(** val pop_instrs : regName -> cerise_instruction list **)
+(** val pop_instrs : regName -> cerise_function **)
 
 let pop_instrs r0 =
   (LoadU (r0, r_stk, (Inl (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int)))) :: ((Lea (r_stk, (Inl (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int)))) :: [])
 
-(** val push_env_instrs : cerise_instruction list **)
+(** val push_env_instrs : cerise_function **)
 
 let push_env_instrs =
   push_instrs
     (map (fun r0 -> Inr r0)
       (list_difference reg_eq_dec all_registers (PC :: (r_stk :: []))))
 
-(** val pop_env_instrs : cerise_instruction list **)
+(** val pop_env_instrs : cerise_function **)
 
 let pop_env_instrs =
   foldl (fun b r0 -> app (pop_instrs r0) b) []
     (list_difference reg_eq_dec all_registers (PC :: (r_stk :: [])))
 
 (** val activation_record :
-    machineParameters -> regName -> cerise_instruction list **)
+    machineParameters -> regName -> cerise_function **)
 
 let activation_record h rtmp =
   let offset_ret =
@@ -3490,7 +3525,7 @@ let activation_record h rtmp =
       (h.encodeInstr (LoadU (PC, r_stk, (Inl (Z.opp offset_ret)))))) :: []))
 
 (** val call_instrs_prologue_1 :
-    machineParameters -> regName -> cerise_instruction list **)
+    machineParameters -> regName -> cerise_function **)
 
 let call_instrs_prologue_1 h rtmp =
   app (push_instrs ((Inl Big_int_Z.zero_big_int) :: []))
@@ -3499,7 +3534,7 @@ let call_instrs_prologue_1 h rtmp =
         (app (push_instrs ((Inr r_stk) :: [])) (activation_record h rtmp))))
 
 (** val call_instrs_prologue :
-    machineParameters -> regName list -> regName -> cerise_instruction list **)
+    machineParameters -> regName list -> regName -> cerise_function **)
 
 let call_instrs_prologue h rargs rtmp =
   let offset_pc =
@@ -3521,7 +3556,7 @@ let call_instrs_prologue h rargs rtmp =
       ((StoreU (r_stk, (Inl (Z.opp offset_pc)), (Inr rtmp))) :: []))
 
 (** val call_instrs :
-    machineParameters -> regName -> regName list -> cerise_instruction list **)
+    machineParameters -> regName -> regName list -> cerise_function **)
 
 let call_instrs h r0 rargs =
   let len_act =
@@ -3642,7 +3677,7 @@ let reqloc_instrs h r0 z0 =
   Big_int_Z.unit_big_int))) :: (Fail :: [])))))))))))))
 
 (** val dyn_typecheck_instrs :
-    machineParameters -> regName -> value_type -> cerise_instruction list **)
+    machineParameters -> regName -> value_type -> cerise_function **)
 
 let dyn_typecheck_instrs h r0 vtype =
   let tmp_reg = R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
@@ -3672,7 +3707,7 @@ let len_dyn_typecheck h v_type =
 let entry_point_malloc_safe_mem =
   Big_int_Z.succ_big_int Big_int_Z.zero_big_int
 
-(** val malloc_subroutine_instrs : cerise_instruction list **)
+(** val malloc_subroutine_instrs : cerise_function **)
 
 let malloc_subroutine_instrs =
   let offset_sealing_cap = Z.opp (Z.of_nat entry_point_malloc_safe_mem) in
@@ -3747,7 +3782,7 @@ let malloc_subroutine_instrs =
   Big_int_Z.zero_big_int)))))), (Inl Big_int_Z.zero_big_int))) :: ((Jmp (R
   Big_int_Z.zero_big_int)) :: []))))))))))))))))))))))
 
-(** val malloc_safe_mem : cerise_instruction list **)
+(** val malloc_safe_mem : cerise_function **)
 
 let malloc_safe_mem =
   malloc_subroutine_instrs
@@ -3757,7 +3792,7 @@ let malloc_safe_mem =
 let entry_point_load_lin_mem =
   Big_int_Z.succ_big_int Big_int_Z.zero_big_int
 
-(** val load_lin_mem : cerise_instruction list **)
+(** val load_lin_mem : cerise_function **)
 
 let load_lin_mem =
   let offset_sealing_cap = Z.opp (Z.of_nat entry_point_load_lin_mem) in
@@ -3794,7 +3829,7 @@ let load_lin_mem =
 let entry_point_store_lin_mem =
   add entry_point_load_lin_mem (length load_lin_mem)
 
-(** val store_lin_mem : machineParameters -> cerise_instruction list **)
+(** val store_lin_mem : machineParameters -> cerise_function **)
 
 let store_lin_mem h =
   let offset_seal_cap =
@@ -3866,7 +3901,7 @@ let store_lin_mem h =
 let entry_point_grow_lin_mem h =
   add entry_point_store_lin_mem (length (store_lin_mem h))
 
-(** val grow_lin_mem : machineParameters -> cerise_instruction list **)
+(** val grow_lin_mem : machineParameters -> cerise_function **)
 
 let grow_lin_mem h =
   let offset_seal_cap = Z.opp (Z.of_nat (entry_point_grow_lin_mem h)) in
@@ -4021,7 +4056,7 @@ let grow_lin_mem h =
 let entry_point_current_lin_mem h =
   add (entry_point_grow_lin_mem h) (length (grow_lin_mem h))
 
-(** val current_lin_mem : machineParameters -> cerise_instruction list **)
+(** val current_lin_mem : machineParameters -> cerise_function **)
 
 let current_lin_mem h =
   let offset_seal_cap = Z.opp (Z.of_nat (entry_point_current_lin_mem h)) in
@@ -4062,7 +4097,7 @@ let current_lin_mem h =
 let entry_point_load_global =
   Big_int_Z.succ_big_int Big_int_Z.zero_big_int
 
-(** val load_global : cerise_instruction list **)
+(** val load_global : cerise_function **)
 
 let load_global =
   let offset_seal_cap = Z.opp (Z.of_nat entry_point_load_global) in
@@ -4087,7 +4122,7 @@ let load_global =
 let entry_point_store_global =
   add entry_point_load_global (length load_global)
 
-(** val store_global : machineParameters -> cerise_instruction list **)
+(** val store_global : machineParameters -> cerise_function **)
 
 let store_global h =
   let offset_seal_cap = Z.opp (Z.of_nat entry_point_store_global) in
@@ -4196,7 +4231,7 @@ let store_global h =
 let entry_point_get_type_global h =
   add entry_point_store_global (length (store_global h))
 
-(** val get_type_global : machineParameters -> cerise_instruction list **)
+(** val get_type_global : machineParameters -> cerise_function **)
 
 let get_type_global h =
   let offset_seal_cap = Z.opp (Z.of_nat (entry_point_get_type_global h)) in
@@ -4223,7 +4258,7 @@ let get_type_global h =
 let entry_point_get_mut_global h =
   add (entry_point_get_type_global h) (length (get_type_global h))
 
-(** val get_mut_global : machineParameters -> cerise_instruction list **)
+(** val get_mut_global : machineParameters -> cerise_function **)
 
 let get_mut_global h =
   let offset_seal_cap = Z.opp (Z.of_nat (entry_point_get_mut_global h)) in
@@ -4535,7 +4570,7 @@ type cfg = labeled_instr list * compilation_state
 let error_msg s =
   Error
     (append
-      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('a'::('b'::('e'::('l'::('e'::('d'::('_'::('g'::('e'::('n'::[]))))))))))))))))))
+      ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('a'::('b'::('e'::('l'::('e'::('d'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::[])))))))))))))))))))))))
       s)
 
 (** val r_stk0 : regName **)
@@ -4595,7 +4630,7 @@ let call_template h r_fun r_res prologue args _ ret_type new_state0 =
                 (dyn_typecheck_instrs h r_res ret_type0)))
         | _ :: _ ->
           error_msg
-            ('c'::('a'::('l'::('l'::('_'::('t'::('e'::('m'::('p'::('l'::('a'::('t'::('e'::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+            ('['::('c'::('a'::('l'::('l'::('_'::('t'::('e'::('m'::('p'::('l'::('a'::('t'::('e'::(']'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val local_offset : Big_int_Z.big_int **)
 
@@ -4604,7 +4639,7 @@ let local_offset =
 
 (** val prologue_return :
     function_type -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_instruction list error **)
+    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_function error **)
 
 let prologue_return f_type _ ret off tmp =
   let ret_type = let Tf (_, r0) = f_type in r0 in
@@ -4620,7 +4655,7 @@ let prologue_return f_type _ ret off tmp =
           Big_int_Z.zero_big_int), (r ret))) :: []))))))
       | _ :: _ ->
         error_msg
-          ('p'::('r'::('o'::('l'::('o'::('g'::('u'::('e'::('_'::('r'::('e'::('t'::('u'::('r'::('n'::(' '::(':'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+          ('['::('p'::('r'::('o'::('l'::('o'::('g'::('u'::('e'::('_'::('r'::('e'::('t'::('u'::('r'::('n'::(']'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val compile_binstr :
     machineParameters -> ws_module -> function_type -> ws_basic_instruction
@@ -4632,7 +4667,7 @@ let rec compile_binstr h module0 f_type i s =
   let error_msg3 = fun i0 e ->
     error_msg
       (append
-        ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('i'::('n'::('s'::('t'::('r'::(' '::('['::[]))))))))))))))))
+        ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('i'::('n'::('s'::('t'::('r'::(']'::(' '::('['::[]))))))))))))))))))
         (append i0 (append (']'::(':'::(' '::[]))) e)))
   in
   (match i with
@@ -5299,7 +5334,7 @@ let compile_basic_instr h module0 f_typeidx i s =
   | Some f_type -> compile_binstr h module0 f_type i s
   | None ->
     error_msg
-      ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('a'::('s'::('i'::('c'::('_'::('i'::('n'::('s'::('t'::('r'::(':'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))
+      ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('a'::('s'::('i'::('c'::('_'::('i'::('n'::('s'::('t'::('r'::(']'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val labeled_compile_expr' :
     machineParameters -> ws_module -> typeidx -> ws_basic_instruction list ->
@@ -5326,8 +5361,7 @@ let labeled_compile_expr =
 
 (** val load_args :
     machineParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> result_type ->
-    cerise_instruction list **)
+    Big_int_Z.big_int -> Big_int_Z.big_int -> result_type -> cerise_function **)
 
 let rec load_args mP arg tmp tmp1 tmp2 tf =
   let rarg = R arg in
@@ -5452,7 +5486,7 @@ let compile_func mP f m =
        Ok (app prologue body)
      | None ->
        error_msg
-         ('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::(':'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
+         ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::(']'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))
     (Obj.magic labeled_compile_expr mP m mf_type mf_full_body init_state0)
 
 (** val compile_funcs :
@@ -5466,8 +5500,8 @@ let compile_funcs mP m =
     []) m.mod_funcs
 
 (** val compile_lin_mem :
-    memory_type -> Big_int_Z.big_int -> Big_int_Z.big_int -> (word, symbols)
-    sum list **)
+    memory_type -> Big_int_Z.big_int -> Big_int_Z.big_int -> abstract_word
+    list **)
 
 let compile_lin_mem m max_nb_page m_b =
   let size_min = mul m.lim_min page_size0 in
@@ -5489,8 +5523,8 @@ let compile_lin_mem m max_nb_page m_b =
   map (fun x -> Inl x) (full_cap :: (current_cap :: linear_memory))
 
 (** val compile_lin_mems :
-    memory_type list -> Big_int_Z.big_int -> Big_int_Z.big_int -> (word,
-    symbols) sum list list **)
+    memory_type list -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    abstract_word list list **)
 
 let compile_lin_mems llm max_nb_page offset_init =
   let (_, l) =
@@ -5502,7 +5536,7 @@ let compile_lin_mems llm max_nb_page offset_init =
   in
   l
 
-(** val compile_global : module_glob -> (word, symbols) sum list **)
+(** val compile_global : module_glob -> abstract_word list **)
 
 let compile_global g =
   let gtype = g.modglob_type in
@@ -5528,14 +5562,13 @@ let compile_global g =
   in
   map (fun x -> Inl x) (init_value :: (type_val :: (mut_val :: [])))
 
-(** val compile_globals :
-    module_glob list -> (word, symbols) sum list list **)
+(** val compile_globals : module_glob list -> abstract_word list list **)
 
 let compile_globals lg =
   map compile_global lg
 
 (** val compile_indirect_table :
-    module_table -> Big_int_Z.big_int -> (word, symbols) sum list **)
+    module_table -> Big_int_Z.big_int -> abstract_word list **)
 
 let compile_indirect_table it max_nb_entry =
   let nb_entry =
@@ -5553,7 +5586,7 @@ let compile_indirect_table it max_nb_entry =
   map (fun x -> Inl x) indirect_table
 
 (** val compile_indirect_tables :
-    module_table list -> Big_int_Z.big_int -> (word, symbols) sum list list **)
+    module_table list -> Big_int_Z.big_int -> abstract_word list list **)
 
 let compile_indirect_tables lit max_nb_entry =
   map (fun it -> compile_indirect_table it max_nb_entry) lit
@@ -5636,9 +5669,9 @@ let rec imports_itables = function
    | None -> acc)
 
 (** val compile_frame :
-    ws_module -> Big_int_Z.big_int -> (word * word) list -> (word, symbols)
-    sum list list -> (word, symbols) sum list list -> (word, symbols) sum
-    list list -> oType -> oType -> (word, symbols) sum list error **)
+    ws_module -> Big_int_Z.big_int -> (word * word) list -> abstract_word
+    list list -> abstract_word list list -> abstract_word list list -> oType
+    -> oType -> abstract_word list error **)
 
 let compile_frame m offset_frame func_closures lin_mems globals itables oT_LM oT_G =
   let imported_func_closures =
@@ -5785,44 +5818,31 @@ let get_start m =
   mbind (Obj.magic (fun _ _ -> option_bind)) (fun mstart -> Some (Data,
     (modstart_func mstart))) (Obj.magic m.mod_start)
 
+(** val prepare_function_closures :
+    module_func list -> ws_module -> (word * word) list error **)
+
+let rec prepare_function_closures func_mods m =
+  match func_mods with
+  | [] -> Ok []
+  | f :: fs ->
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+      let placeholder = WInt Big_int_Z.zero_big_int in
+      (match get_type m f.modfunc_type with
+       | Some t0 ->
+         Ok ((placeholder, (WInt (encode_function_type t0))) :: acc)
+       | None ->
+         error_msg
+           ('['::('p'::('r'::('e'::('p'::('a'::('r'::('e'::('_'::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))
+      (prepare_function_closures fs m)
+
 (** val compile_func_closures :
     labeled_function list -> module_func list -> ws_module -> (word * word)
     list error **)
 
-let compile_func_closures compiled_functions functions m =
-  let b = Big_int_Z.zero_big_int in
-  let e =
-    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-      (length (concat compiled_functions))
-  in
-  let rec compile_func_closures' compiled_functions0 functions0 entry_point =
-    match compiled_functions0 with
-    | [] ->
-      (match functions0 with
-       | [] -> Ok []
-       | _ :: _ ->
-         error_msg
-           ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))
-    | fc :: fcs ->
-      (match functions0 with
-       | [] ->
-         error_msg
-           ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))
-       | f :: fs ->
-         let next_entry_point = add entry_point (length fc) in
-         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
-           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
-             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
-           in
-           (match get_type m f.modfunc_type with
-            | Some t0 ->
-              Ok ((sentry, (WInt (encode_function_type t0))) :: acc)
-            | None ->
-              error_msg
-                ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
-           (compile_func_closures' fcs fs next_entry_point))
-  in compile_func_closures' compiled_functions functions
-       Big_int_Z.zero_big_int
+let compile_func_closures compiled_functions func_mods m =
+  mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closures ->
+    compute_func_closure compiled_functions func_closures)
+    (prepare_function_closures func_mods m)
 
 (** val compile_module :
     machineParameters -> ws_module -> name -> oType -> oType ->
@@ -5875,7 +5895,7 @@ let compile_module mP m module_name oT_LM oT_G mAX_LIN_MEM mAX_INDIRECT_TABLE =
 let error_msg0 s =
   Error
     (append
-      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::[]))))))))))
+      ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::(']'::(' '::[])))))))))))))
       s)
 
 (** val addresses_labels' :
@@ -5910,7 +5930,7 @@ let addresses_labels il =
 
 (** val branch_labels' :
     labeled_instr list -> (label, Big_int_Z.big_int) gmap ->
-    Big_int_Z.big_int -> cerise_instruction list error **)
+    Big_int_Z.big_int -> cerise_function error **)
 
 let rec branch_labels' il label_map addr0 =
   match il with
@@ -5940,7 +5960,7 @@ let rec branch_labels' il label_map addr0 =
                 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
         | None ->
           error_msg0
-            ('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(' '::('['::('B'::('r'::('_'::('J'::('m'::('p'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))
+            ('['::('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(']'::(' '::('['::('B'::('r'::('_'::('J'::('m'::('p'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))
      | Br_Jnz (lbl, reg_cond) ->
        (match lookup0
                 (gmap_lookup (list_eq_dec0 Coq0_Nat.eq_dec)
@@ -5960,10 +5980,9 @@ let rec branch_labels' il label_map addr0 =
                 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
         | None ->
           error_msg0
-            ('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(' '::('['::('B'::('r'::('_'::('J'::('n'::('z'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))
+            ('['::('b'::('r'::('a'::('n'::('c'::('h'::('_'::('l'::('a'::('b'::('e'::('l'::('s'::('\''::(']'::(' '::('['::('B'::('r'::('_'::('J'::('n'::('z'::(']'::(' '::('l'::('a'::('b'::('e'::('l'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))
 
-(** val branch_labels :
-    labeled_instr list -> cerise_instruction list error **)
+(** val branch_labels : labeled_instr list -> cerise_function error **)
 
 let branch_labels il =
   branch_labels' il (addresses_labels il) Big_int_Z.zero_big_int
@@ -5977,39 +5996,6 @@ let compile_functions progs =
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_prog -> Ok
         (compiled_prog :: acc)) (Obj.magic branch_labels p)) acc_opt) (Ok [])
     progs
-
-(** val relocate_func_closure :
-    cerise_function list -> (word * word) list -> (word * word) list error **)
-
-let relocate_func_closure functions func_closures =
-  let b = Big_int_Z.zero_big_int in
-  let e =
-    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-      (length (concat functions))
-  in
-  let rec relocate_func_closure' functions0 func_closures0 entry_point =
-    match functions0 with
-    | [] ->
-      (match func_closures0 with
-       | [] -> Ok []
-       | _ :: _ ->
-         Error
-           ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-    | fc :: fcs ->
-      (match func_closures0 with
-       | [] ->
-         Error
-           ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-       | f :: fs ->
-         let (_, type_f) = f in
-         let next_entry_point = add entry_point (length fc) in
-         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
-           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
-             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
-           in
-           Ok ((sentry, type_f) :: acc))
-           (relocate_func_closure' fcs fs next_entry_point))
-  in relocate_func_closure' functions func_closures Big_int_Z.zero_big_int
 
 (** val compile_component :
     machineParameters -> labeled_cerise_component -> cerise_linkable_object
@@ -6041,7 +6027,7 @@ let compile_component mP m =
       (map (fun x -> Inl x)
         (relocated_frm_cap :: (encodeInstrsW mP (concat lbl_erased_code))));
       c_data = relocated_data; c_main = m.l_main; c_exports = m.l_exports })
-      (Obj.magic relocate_func_closure lbl_erased_code
+      (Obj.magic compute_func_closure lbl_erased_code
         m.l_data.l_data_func_closures)) (Obj.magic compile_functions code)
 
 (** val get_spilling_offset :
@@ -6066,8 +6052,8 @@ let get_spilling_offset reg_num =
   else Some (Z.sub (Z.of_nat mAX_REG) (Z.of_nat reg_num))
 
 (** val load_spilled :
-    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_instruction
-    list * Big_int_Z.big_int **)
+    Big_int_Z.big_int -> Big_int_Z.big_int ->
+    cerise_function * Big_int_Z.big_int **)
 
 let load_spilled reg_num tmp =
   match get_spilling_offset reg_num with
@@ -6075,7 +6061,7 @@ let load_spilled reg_num tmp =
   | None -> ([], reg_num)
 
 (** val load_spilled_reg :
-    regName -> Big_int_Z.big_int -> cerise_instruction list * regName **)
+    regName -> Big_int_Z.big_int -> cerise_function * regName **)
 
 let load_spilled_reg reg0 tmp =
   match reg0 with
@@ -6084,7 +6070,7 @@ let load_spilled_reg reg0 tmp =
 
 (** val load_spilled_zreg :
     (Big_int_Z.big_int, regName) sum -> Big_int_Z.big_int ->
-    cerise_instruction list * (Big_int_Z.big_int, regName) sum **)
+    cerise_function * (Big_int_Z.big_int, regName) sum **)
 
 let load_spilled_zreg zreg tmp =
   match zreg with
@@ -6092,7 +6078,7 @@ let load_spilled_zreg zreg tmp =
   | Inr r0 -> let (li, r') = load_spilled_reg r0 tmp in (li, (Inr r'))
 
 (** val store_spilled_reg :
-    regName -> regName -> cerise_instruction list * regName **)
+    regName -> regName -> cerise_function * regName **)
 
 let store_spilled_reg dst tmp =
   match dst with
@@ -6103,7 +6089,7 @@ let store_spilled_reg dst tmp =
      | None -> ([], (R n0)))
   | _ -> ([], dst)
 
-(** val spill_instruction : cerise_instruction -> cerise_instruction list **)
+(** val spill_instruction : cerise_instruction -> cerise_function **)
 
 let spill_instruction = function
 | Jmp src ->
@@ -6312,6 +6298,13 @@ let spill_instruction = function
         Big_int_Z.zero_big_int))))
   in
   app li_src1 (app li_src2 (app ((UnSeal (dst', src1', src2')) :: []) li_dst))
+| Invoke (src1, src2) ->
+  let (li1, src1') = load_spilled_reg src1 r_tmp in
+  let (li2, src2') =
+    load_spilled_reg src2
+      (add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+  in
+  app li1 (app li2 ((Invoke (src1', src2')) :: []))
 | LoadU (dst, src1, src2) ->
   let (li_src1, src1') = load_spilled_reg src1 r_tmp in
   let (li_src2, src2') =
@@ -6358,39 +6351,6 @@ let rec spilling = function
 | [] -> []
 | i :: il' -> app (spill_labeled_instr i) (spilling il')
 
-(** val relocate_func_closure0 :
-    labeled_function list -> (word * word) list -> (word * word) list error **)
-
-let relocate_func_closure0 functions func_closures =
-  let b = Big_int_Z.zero_big_int in
-  let e =
-    add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
-      (length (concat functions))
-  in
-  let rec relocate_func_closure' functions0 func_closures0 entry_point =
-    match functions0 with
-    | [] ->
-      (match func_closures0 with
-       | [] -> Ok []
-       | _ :: _ ->
-         Error
-           ('['::('r'::('e'::('g'::('i'::('s'::('t'::('e'::('r'::('_'::('a'::('l'::('l'::('o'::('c'::('a'::('t'::('i'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-    | fc :: fcs ->
-      (match func_closures0 with
-       | [] ->
-         Error
-           ('['::('r'::('e'::('g'::('i'::('s'::('t'::('e'::('r'::('_'::('a'::('l'::('l'::('o'::('c'::('a'::('t'::('i'::('o'::('n'::('.'::('v'::(']'::(' '::('['::('r'::('e'::('l'::('o'::('c'::('a'::('t'::('e'::('_'::('f'::('u'::('n'::('c'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('s'::('a'::('m'::('e'::(' '::('s'::('i'::('z'::('e'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-       | f :: fs ->
-         let (_, type_f) = f in
-         let next_entry_point = add entry_point (length fc) in
-         mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
-           let sentry = WSealable (SCap ((E, Global), b, (Finite e),
-             (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) entry_point)))
-           in
-           Ok ((sentry, type_f) :: acc))
-           (relocate_func_closure' fcs fs next_entry_point))
-  in relocate_func_closure' functions func_closures Big_int_Z.zero_big_int
-
 (** val register_allocation :
     labeled_cerise_component -> labeled_cerise_component error **)
 
@@ -6411,92 +6371,92 @@ let register_allocation m =
     func_closures; l_data_section =
     (relocate m.l_data.l_data_section reloc_shift) }; l_main = m.l_main;
     l_exports = m.l_exports })
-    (Obj.magic relocate_func_closure0 opt_code m.l_data.l_data_func_closures)
+    (Obj.magic compute_func_closure opt_code m.l_data.l_data_func_closures)
 
 (** val error_msg1 : char list -> 'a1 error **)
 
 let error_msg1 s =
   Error
     (append
-      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::[])))))))))))))
+      ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('i'::('n'::('k'::('e'::('r'::('.'::('v'::(']'::(' '::[]))))))))))))))))))
       s)
 
-(** val relocate_lib :
+(** val relocate_right :
     ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
     -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
 
-let relocate_lib leb0 add0 y p_lib p_client =
-  let a = length p_client.c_code in
-  let b = length p_client.c_data in
-  let c = length p_lib.c_code in
+let relocate_right leb0 add0 y p_left p_right =
+  let a = length p_left.c_code in
+  let b = length p_left.c_data in
+  let c = length p_right.c_code in
   if leb0 y c then add0 y a else add0 y (add a b)
 
-(** val relocate_client :
+(** val relocate_left :
     ('a1 -> Big_int_Z.big_int -> bool) -> ('a1 -> Big_int_Z.big_int -> 'a1)
     -> 'a1 -> cerise_linkable_object -> cerise_linkable_object -> 'a1 **)
 
-let relocate_client leb0 add0 y p_lib p_client =
-  let a = length p_client.c_code in
-  let c = length p_lib.c_code in if leb0 y a then y else add0 y c
+let relocate_left leb0 add0 y p_left p_right =
+  let a = length p_left.c_code in
+  let c = length p_right.c_code in if leb0 y a then y else add0 y c
 
-(** val relocate_export_client :
+(** val relocate_export_left :
     (section * Big_int_Z.big_int) -> cerise_linkable_object ->
     cerise_linkable_object -> section * Big_int_Z.big_int **)
 
-let relocate_export_client export _ _ =
+let relocate_export_left export _ _ =
   export
 
-(** val relocate_export_lib :
+(** val relocate_export_right :
     (section * Big_int_Z.big_int) -> cerise_linkable_object ->
     cerise_linkable_object -> section * Big_int_Z.big_int **)
 
-let relocate_export_lib export _ p_client =
+let relocate_export_right export p_left _ =
   let (s, n0) = export in
   (match s with
-   | Code -> (Code, (add n0 (length p_client.c_code)))
-   | Data -> (Data, (add n0 (length p_client.c_data))))
+   | Code -> (Code, (add n0 (length p_left.c_code)))
+   | Data -> (Data, (add n0 (length p_left.c_data))))
 
-(** val relocate_addr_lib :
+(** val relocate_addr_right :
     Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
     Big_int_Z.big_int **)
 
-let relocate_addr_lib =
-  relocate_lib Coq_Nat.ltb add
+let relocate_addr_right =
+  relocate_right Coq_Nat.ltb add
 
-(** val relocate_eaddr_lib :
+(** val relocate_eaddr_right :
     nbar -> cerise_linkable_object -> cerise_linkable_object -> nbar **)
 
-let relocate_eaddr_lib =
-  relocate_lib (fun x y -> nbar_leb x (Finite y)) (fun x y ->
+let relocate_eaddr_right =
+  relocate_right (fun x y -> nbar_leb x (Finite y)) (fun x y ->
     nbar_plus x (Finite y))
 
-(** val relocate_addr_client :
+(** val relocate_addr_left :
     Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
     Big_int_Z.big_int **)
 
-let relocate_addr_client =
-  relocate_client Coq_Nat.ltb add
+let relocate_addr_left =
+  relocate_left Coq_Nat.ltb add
 
-(** val relocate_eaddr_client :
+(** val relocate_eaddr_left :
     nbar -> cerise_linkable_object -> cerise_linkable_object -> nbar **)
 
-let relocate_eaddr_client =
-  relocate_client (fun x y -> nbar_leb x (Finite y)) (fun x y ->
+let relocate_eaddr_left =
+  relocate_left (fun x y -> nbar_leb x (Finite y)) (fun x y ->
     nbar_plus x (Finite y))
 
 (** val relocate_word :
     (Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
     Big_int_Z.big_int) -> (nbar -> cerise_linkable_object ->
-    cerise_linkable_object -> nbar) -> (word, symbols) sum ->
-    cerise_linkable_object -> cerise_linkable_object -> (word, symbols) sum **)
+    cerise_linkable_object -> nbar) -> abstract_word ->
+    cerise_linkable_object -> cerise_linkable_object -> abstract_word **)
 
-let relocate_word relocate_addr relocate_eaddr w p_lib p_client =
+let relocate_word relocate_addr relocate_eaddr w p_left p_right =
   let relocate_sealable = fun sb ->
     match sb with
     | SCap (p0, b, e, a) ->
-      let b0 = relocate_addr b p_lib p_client in
-      let e0 = relocate_eaddr e p_lib p_client in
-      let a0 = relocate_addr a p_lib p_client in SCap (p0, b0, e0, a0)
+      let b0 = relocate_addr b p_left p_right in
+      let e0 = relocate_eaddr e p_left p_right in
+      let a0 = relocate_addr a p_left p_right in SCap (p0, b0, e0, a0)
     | SSealRange (p0, b, e, a) -> SSealRange (p0, b, e, a)
   in
   (match w with
@@ -6508,23 +6468,23 @@ let relocate_word relocate_addr relocate_eaddr w p_lib p_client =
         | WSealed (ot, sb) -> WSealed (ot, (relocate_sealable sb)))
    | Inr s -> Inr s)
 
-(** val relocate_word_lib :
-    (word, symbols) sum -> cerise_linkable_object -> cerise_linkable_object
-    -> (word, symbols) sum **)
+(** val relocate_word_right :
+    abstract_word -> cerise_linkable_object -> cerise_linkable_object ->
+    abstract_word **)
 
-let relocate_word_lib =
-  relocate_word relocate_addr_lib relocate_eaddr_lib
+let relocate_word_right =
+  relocate_word relocate_addr_right relocate_eaddr_right
 
-(** val relocate_word_client :
-    (word, symbols) sum -> cerise_linkable_object -> cerise_linkable_object
-    -> (word, symbols) sum **)
+(** val relocate_word_left :
+    abstract_word -> cerise_linkable_object -> cerise_linkable_object ->
+    abstract_word **)
 
-let relocate_word_client =
-  relocate_word relocate_addr_client relocate_eaddr_client
+let relocate_word_left =
+  relocate_word relocate_addr_left relocate_eaddr_left
 
 (** val resolve_word :
-    (word, symbols) sum -> (word, symbols) sum list -> (word, symbols) sum
-    list -> (symbols, section_offset) gmap -> (word, symbols) sum error **)
+    abstract_word -> abstract_word list -> abstract_word list -> (symbols,
+    section_offset) gmap -> abstract_word error **)
 
 let resolve_word ws code_section data_section exports =
   match ws with
@@ -6543,19 +6503,18 @@ let resolve_word ws code_section data_section exports =
            | Inl w0 -> Ok (Inl w0)
            | Inr _ ->
              error_msg1
-               ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
+               ('['::('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(']'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
         | None ->
           error_msg1
-            ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
+            ('['::('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(']'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
      | None -> Ok (Inr s))
 
 (** val resolve_data :
-    (word, symbols) sum list -> (word, symbols) sum list -> (word, symbols)
-    sum list -> (symbols, section_offset) gmap -> (word, symbols) sum list
-    error **)
+    abstract_word list -> abstract_word list -> abstract_word list ->
+    (symbols, section_offset) gmap -> abstract_word list error **)
 
-let rec resolve_data client_data code_section data_section exports =
-  match client_data with
+let rec resolve_data left_data code_section data_section exports =
+  match left_data with
   | [] -> Ok []
   | ws :: data' ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun solved_data ->
@@ -6568,70 +6527,70 @@ let rec resolve_data client_data code_section data_section exports =
     cerise_linkable_object -> cerise_linkable_object -> section_offset option
     error **)
 
-let resolve_main p_lib p_client =
-  match p_lib.c_main with
+let resolve_main p_left p_right =
+  match p_left.c_main with
   | Some m ->
-    (match p_client.c_main with
+    (match p_right.c_main with
      | Some _ ->
        error_msg1
-         ('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('m'::('a'::('i'::('n'::(':'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('i'::('n'::('k'::(' '::('t'::('w'::('o'::(' '::('C'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::('s'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('o'::('n'::(' '::('b'::('o'::('t'::('h'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-     | None -> Ok (Some (relocate_export_lib m p_lib p_client)))
+         ('['::('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('m'::('a'::('i'::('n'::(']'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('l'::('i'::('n'::('k'::(' '::('t'::('w'::('o'::(' '::('C'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::('s'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('m'::('a'::('i'::('n'::(' '::('w'::('o'::('r'::('d'::(' '::('o'::('n'::(' '::('b'::('o'::('t'::('h'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+     | None -> Ok (Some (relocate_export_left m p_left p_right)))
   | None ->
-    (match p_client.c_main with
-     | Some m -> Ok (Some (relocate_export_client m p_lib p_client))
+    (match p_right.c_main with
+     | Some m -> Ok (Some (relocate_export_right m p_left p_right))
      | None -> Ok None)
 
 (** val link_seq :
     cerise_linkable_object -> cerise_linkable_object ->
     cerise_linkable_object error **)
 
-let link_seq p_lib p_client =
+let link_seq p_left p_right =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun main_word ->
-    let relocated_lib_code =
-      map (fun w -> relocate_word_lib w p_lib p_client) p_lib.c_code
+    let relocated_right_code =
+      map (fun w -> relocate_word_right w p_left p_right) p_right.c_code
     in
-    let relocated_lib_data =
-      map (fun w -> relocate_word_lib w p_lib p_client) p_lib.c_data
+    let relocated_right_data =
+      map (fun w -> relocate_word_right w p_left p_right) p_right.c_data
     in
-    let relocated_client_code =
-      map (fun w -> relocate_word_client w p_lib p_client) p_client.c_code
+    let relocated_left_code =
+      map (fun w -> relocate_word_left w p_left p_right) p_left.c_code
     in
-    let relocated_client_data =
-      map (fun w -> relocate_word_client w p_lib p_client) p_client.c_data
+    let relocated_left_data =
+      map (fun w -> relocate_word_left w p_left p_right) p_left.c_data
     in
-    mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_client ->
-      mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_client ->
-        mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_lib ->
-          mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_lib ->
-            let relocated_lib_exports =
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_left ->
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_left ->
+        mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_right ->
+          mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_right ->
+            let relocated_right_exports =
               fmap
                 (Obj.magic (fun _ _ ->
                   gmap_fmap string_eq_dec string_countable)) (fun e ->
-                relocate_export_lib e p_lib p_client) p_lib.c_exports
+                relocate_export_right e p_left p_right) p_right.c_exports
             in
-            let relocated_client_exports =
+            let relocated_left_exports =
               fmap
                 (Obj.magic (fun _ _ ->
                   gmap_fmap string_eq_dec string_countable)) (fun e ->
-                relocate_export_client e p_lib p_client) p_lib.c_exports
+                relocate_export_left e p_left p_right) p_left.c_exports
             in
-            Ok { c_code = (app linked_code_client linked_code_lib); c_data =
-            (app linked_data_client linked_data_lib); c_main = main_word;
+            Ok { c_code = (app linked_code_left linked_code_right); c_data =
+            (app linked_data_left linked_data_right); c_main = main_word;
             c_exports =
             (union0
               (map_union
                 (Obj.magic (fun _ _ _ ->
                   gmap_merge string_eq_dec string_countable)))
-              relocated_lib_exports relocated_client_exports) })
-            (Obj.magic resolve_data relocated_lib_data relocated_client_code
-              relocated_client_data p_client.c_exports))
-          (Obj.magic resolve_data relocated_lib_code relocated_client_code
-            relocated_client_data p_client.c_exports))
-        (Obj.magic resolve_data relocated_client_data relocated_lib_code
-          relocated_lib_data p_lib.c_exports))
-      (Obj.magic resolve_data relocated_client_code relocated_lib_code
-        relocated_lib_data p_lib.c_exports))
-    (Obj.magic resolve_main p_lib p_client)
+              relocated_left_exports relocated_right_exports) })
+            (Obj.magic resolve_data relocated_right_data relocated_left_code
+              relocated_left_data p_left.c_exports))
+          (Obj.magic resolve_data relocated_right_code relocated_left_code
+            relocated_left_data p_left.c_exports))
+        (Obj.magic resolve_data relocated_left_data relocated_right_code
+          relocated_right_data p_right.c_exports))
+      (Obj.magic resolve_data relocated_left_code relocated_right_code
+        relocated_right_data p_right.c_exports))
+    (Obj.magic resolve_main p_left p_right)
 
 (** val instantiation :
     cerise_linkable_object list -> cerise_linkable_object error **)
@@ -6639,20 +6598,20 @@ let link_seq p_lib p_client =
 let rec instantiation = function
 | [] ->
   error_msg1
-    ('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('i'::('o'::('n'::(':'::(' '::('r'::('e'::('q'::('u'::('i'::('r'::('e'::('s'::(' '::('a'::('t'::(' '::('l'::('e'::('a'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
-| p_client :: p_lib' ->
-  (match p_lib' with
-   | [] -> Ok p_client
+    ('['::('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('i'::('o'::('n'::(']'::(' '::('r'::('e'::('q'::('u'::('i'::('r'::('e'::('s'::(' '::('a'::('t'::(' '::('l'::('e'::('a'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+| p_left :: p_right' ->
+  (match p_right' with
+   | [] -> Ok p_left
    | _ :: _ ->
-     mbind (Obj.magic (fun _ _ -> error_bind)) (fun p_lib ->
-       link_seq p_lib p_client) (instantiation p_lib'))
+     mbind (Obj.magic (fun _ _ -> error_bind)) (fun p_right ->
+       link_seq p_left p_right) (instantiation p_right'))
 
 (** val error_msg2 : char list -> 'a1 error **)
 
 let error_msg2 s =
   Error
     (append
-      ('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::[])))))))))))))
+      ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('o'::('a'::('d'::('e'::('r'::(']'::(' '::[]))))))))))))))))
       s)
 
 (** val common_module :
@@ -6788,15 +6747,15 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
       (add offset_exports_data (Big_int_Z.succ_big_int
         Big_int_Z.zero_big_int))))) }
 
-(** val get_word : (word, symbols) sum -> word error **)
+(** val get_word : abstract_word -> word error **)
 
 let get_word = function
 | Inl w -> Ok w
 | Inr _ ->
   error_msg2
-    ('g'::('e'::('t'::('_'::('w'::('o'::('r'::('d'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::('n'::(' '::('o'::('p'::('e'::('n'::(' '::('p'::('r'::('o'::('g'::('r'::('a'::('m'::[]))))))))))))))))))))))))))))))))))))))))))))
+    ('['::('g'::('e'::('t'::('_'::('w'::('o'::('r'::('d'::(']'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::('n'::(' '::('o'::('p'::('e'::('n'::(' '::('p'::('r'::('o'::('g'::('r'::('a'::('m'::[])))))))))))))))))))))))))))))))))))))))))))))
 
-(** val loadable : (word, symbols) sum list -> word list error **)
+(** val loadable : abstract_word list -> word list error **)
 
 let rec loadable = function
 | [] -> Ok []
@@ -7582,8 +7541,7 @@ let env_h =
     Big_int_Z.unit_big_int) :: []))
 
 (** val env_frame :
-    oType -> Big_int_Z.big_int -> Big_int_Z.big_int -> (word, symbols) sum
-    list **)
+    oType -> Big_int_Z.big_int -> Big_int_Z.big_int -> abstract_word list **)
 
 let env_frame oT_G size_adv_fun offset_h =
   (Inl (WSealable (SCap ((E, Global), Big_int_Z.zero_big_int, (Finite
@@ -7670,7 +7628,7 @@ let env_adv_fun =
     Big_int_Z.zero_big_int)))))))))))) :: [])))))))))))
 
 (** val env_adv' :
-    machineParameters -> Big_int_Z.big_int -> (word, symbols) sum list **)
+    machineParameters -> Big_int_Z.big_int -> abstract_word list **)
 
 let env_adv' mP offset_data =
   let s_data =
@@ -7684,12 +7642,12 @@ let env_adv' mP offset_data =
   let prog = data_cap :: (encodeInstrsW mP env_adv_fun) in
   map (fun x -> Inl x) prog
 
-(** val env_adv : machineParameters -> (word, symbols) sum list **)
+(** val env_adv : machineParameters -> abstract_word list **)
 
 let env_adv mP =
   let o = length (env_adv' mP Big_int_Z.zero_big_int) in env_adv' mP o
 
-(** val env_data : machineParameters -> oType -> (word, symbols) sum list **)
+(** val env_data : machineParameters -> oType -> abstract_word list **)
 
 let env_data mP oT_G =
   let size_adv = length (env_adv mP) in
