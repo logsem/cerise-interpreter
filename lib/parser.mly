@@ -8,7 +8,7 @@
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP COLON
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
-%token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
+%token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL INVOKE
 %token LOADU STOREU PROMOTEU FAIL HALT
 %token LOCAL GLOBAL DIRECTED
 %token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
@@ -47,6 +47,7 @@ main:
   | GETWTYPE; r1 = reg; r2 = reg; p = main; { GetWType (r1, r2) :: p }
   | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
   | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
+  | INVOKE; r1 = reg; r2 = reg; p = main; { Invoke (r1, r2) :: p }
   | LOADU; r1 = reg; r2 = reg; c = reg_const; p = main; { LoadU (r1, r2, c) :: p }
   | STOREU; r = reg; c1 = reg_const; c2 = reg_const; p = main; { StoreU (r, c1, c2) :: p }
   | PROMOTEU; r = reg; p = main ; { PromoteU r :: p }

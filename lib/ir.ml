@@ -52,6 +52,7 @@ type machine_op
   | GetWType of regname * regname
   | Seal of regname * regname * regname
   | UnSeal of regname * regname * regname
+  | Invoke of regname * regname
   | LoadU of regname * regname * reg_or_const
   | StoreU of regname * reg_or_const * reg_or_const
   | PromoteU of regname
@@ -238,6 +239,7 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | GetWType (r1, r2) -> Ast.GetWType (translate_regname r1, translate_regname r2)
   | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
   | UnSeal (r1, r2, r3) -> Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
+  | Invoke (r1, r2) -> Ast.Invoke (translate_regname r1, translate_regname r2)
   | LoadU (r1, r2, c) -> Ast.LoadU (translate_regname r1,
                                     translate_regname r2,
                                     translate_reg_or_const envr c)

@@ -210,6 +210,11 @@ let is_WLperm (p : perm) : bool =
   | RWL | RWLX | URWL | URWLX -> true
   | _ -> false
 
+let is_exec (p : perm) : bool =
+  match p with
+  | RX | RWX | RWLX | URWX | URWLX -> true
+  | _ -> false
+
 let sealperm_flowsto (p1 : seal_perm) (p2 : seal_perm) : bool =
   let p_flows p p' =
     match p,p' with
@@ -533,6 +538,20 @@ let exec_single (conf : exec_conf) : mchn =
               else fail_state
             | _ -> fail_state
           end
+        | Invoke (r1, r2) -> begin (* r1 = code, r2 = data *)
+            match r1 @! conf, r2 @! conf with
+            | Sealed (o1, w1), Sealed (o2, w2) when o1 = o2 ->
+              begin
+                match w1, w2 with
+                | Cap (p1, _, _ ,_ ,_ ), Cap (p2, _, _ ,_ ,_ )
+                  when (is_exec p1) && (not (is_exec p2)) ->
+                  let new_pc = upd_pc_perm (Sealable w1) in
+                  (Running, upd_reg r2 (Sealable w2) (upd_reg PC new_pc conf))
+                | _ ,_  -> fail_state
+              end
+            | _ -> fail_state
+          end
+
 
         | LoadU (r1, r2, c) -> begin
             match r2 @! conf with

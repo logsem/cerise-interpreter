@@ -73,6 +73,7 @@ let instr_tests = [
   ("getwtype r27 r28", Op (GetWType (Reg 27, Reg 28)));
   ("seal r22 r29 r30", Op (Seal (Reg 22, Reg 29, Reg 30)));
   ("unseal r31 r26 r27", Op (UnSeal (Reg 31, Reg 26, Reg 27)));
+  ("invoke r1 r2", Op (Invoke (Reg 1, Reg 2)));
   ("loadU r24 r25 3", Op (LoadU (Reg 24, Reg 25, const 3)));
   ("storeu r26 r27 r28", Op (StoreU (Reg 26, Register (Reg 27), Register (Reg 28))));
   ("promoteu r29", Op (PromoteU (Reg 29)));
@@ -232,6 +233,7 @@ let test_enc_dec_stm_list = [
   (GetWType (Reg 11, Reg 26), "encode-decode GetWType R11 R26");
   (Seal (Reg 12, Reg 25, Reg 14), "encode-decode Seal R12 R25 R15");
   (UnSeal (Reg 13, Reg 24, Reg 15), "encode-decode UnSeal R13 R24 R14");
+  (Invoke (Reg 6, Reg 28), "encode-decode Invoke R6 R28");
   (StoreU (Reg 5, Register (Reg 6), const 8128), "encode-decode StoreU R5 R6 8128");
   (StoreU (Reg 5, Register (Reg 6), encode_perm_loc RO Global), "encode-decode StoreU R5 R6 RO");
   (StoreU (Reg 5, Register (Reg 6), Register STK), "encode-decode StoreU R5 R6 STK");

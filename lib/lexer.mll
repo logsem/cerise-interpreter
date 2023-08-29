@@ -57,6 +57,7 @@ rule token = parse
 | "getl" { GETL }
 | "seal" { SEAL }
 | "unseal" { UNSEAL }
+| "invoke" { INVOKE }
 | "load" ['u' 'U'] { LOADU }
 | "store" ['u' 'U'] { STOREU }
 | "promote" ['u' 'U'] { PROMOTEU }

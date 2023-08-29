@@ -12,6 +12,7 @@ type machine_op
   =
   | Jmp of regname
   | Jnz of regname * regname
+  | Invoke of regname * regname
   | Move of regname * reg_or_const
   | Load of regname * regname
   | Store of regname * reg_or_const

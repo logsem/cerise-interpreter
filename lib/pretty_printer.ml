@@ -111,6 +111,7 @@ let string_of_machine_op (s: machine_op): string =
   | GetWType (r1, r2) -> "getwtype" ^- string_of_rr r1 r2
   | Seal (r1, r2, r3) -> "seal" ^- string_of_rrr r1 r2 r3
   | UnSeal (r1, r2, r3) -> "unseal" ^- string_of_rrr r1 r2 r3
+  | Invoke (r1, r2) -> "invoke" ^- string_of_rr r1 r2
   | LoadU (r1, r2, c) -> "loadU" ^- string_of_rrc r1 r2 c
   | StoreU (r, c1, c2) -> "storeU" ^- string_of_rcc r c1 c2
   | PromoteU r -> "promoteU" ^- string_of_regname r
