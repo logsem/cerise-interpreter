@@ -3195,13 +3195,6 @@ type ws_basic_instruction =
 | I_testop of value_type
 | I_relop of value_type * relop
 
-(** val page_size : Big_int_Z.big_int **)
-
-let page_size =
-  (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
-    (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
-    (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))))
-
 type expr = ws_basic_instruction list
 
 type typeidx =
@@ -3417,31 +3410,24 @@ let wt_sealed =
 let wt_int =
   WInt Big_int_Z.zero_big_int
 
+type compilerParameters = { encode_function_type : (function_type ->
+                                                   Big_int_Z.big_int);
+                            decode_function_type : (Big_int_Z.big_int ->
+                                                   function_type);
+                            otype_stack : oType; otype_lin_mem : oType;
+                            otype_global : oType; otype_safe_mem : oType;
+                            otype_module : oType;
+                            page_size : Big_int_Z.big_int;
+                            max_size_linear_memory : Big_int_Z.big_int;
+                            max_size_indirection_table : Big_int_Z.big_int;
+                            max_size_safe_mem : Big_int_Z.big_int;
+                            common_safe_memory_symbol : symbols;
+                            common_linking_table_symbol : symbols }
+
 (** val r_stk : regName **)
 
 let r_stk =
   STK
-
-(** val page_size0 : Big_int_Z.big_int **)
-
-let page_size0 =
-  Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))
-
-(** val z_page_size : Big_int_Z.big_int **)
-
-let z_page_size =
-  Z.of_nat page_size0
 
 (** val eq_instrs :
     regName -> regName -> regName -> regName -> cerise_function **)
@@ -3806,6 +3792,11 @@ let malloc_subroutine_instrs =
 let malloc_safe_mem =
   malloc_subroutine_instrs
 
+(** val z_page_size : compilerParameters -> Big_int_Z.big_int **)
+
+let z_page_size cP =
+  Z.of_nat cP.page_size
+
 (** val entry_point_load_lin_mem : Big_int_Z.big_int **)
 
 let entry_point_load_lin_mem =
@@ -3920,9 +3911,10 @@ let store_lin_mem h =
 let entry_point_grow_lin_mem h =
   add entry_point_store_lin_mem (length (store_lin_mem h))
 
-(** val grow_lin_mem : machineParameters -> cerise_function **)
+(** val grow_lin_mem :
+    machineParameters -> compilerParameters -> cerise_function **)
 
-let grow_lin_mem h =
+let grow_lin_mem h cP =
   let offset_seal_cap = Z.opp (Z.of_nat (entry_point_grow_lin_mem h)) in
   (Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))), (Inr PC))) :: ((Lea ((R
@@ -3951,7 +3943,7 @@ let grow_lin_mem h =
   Big_int_Z.zero_big_int))))))) :: ((Mul ((R (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inr (R
   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))),
-  (Inl z_page_size))) :: ((Add ((R (Big_int_Z.succ_big_int
+  (Inl (z_page_size cP)))) :: ((Add ((R (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   Big_int_Z.zero_big_int))))))), (Inr (R (Big_int_Z.succ_big_int
@@ -3997,8 +3989,8 @@ let grow_lin_mem h =
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))))) :: ((Div ((R
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr (R
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inl
-  z_page_size))) :: ((Lea ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+  (z_page_size cP)))) :: ((Lea ((R (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   Big_int_Z.zero_big_int))))), (Inr (R (Big_int_Z.succ_big_int
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))) :: ((GetA ((R
   (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))),
@@ -4070,15 +4062,16 @@ let grow_lin_mem h =
   Big_int_Z.zero_big_int)) :: []))))))))))))))))))))))))))))))))))))))
 
 (** val entry_point_current_lin_mem :
-    machineParameters -> Big_int_Z.big_int **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int **)
 
-let entry_point_current_lin_mem h =
-  add (entry_point_grow_lin_mem h) (length (grow_lin_mem h))
+let entry_point_current_lin_mem h cP =
+  add (entry_point_grow_lin_mem h) (length (grow_lin_mem h cP))
 
-(** val current_lin_mem : machineParameters -> cerise_function **)
+(** val current_lin_mem :
+    machineParameters -> compilerParameters -> cerise_function **)
 
-let current_lin_mem h =
-  let offset_seal_cap = Z.opp (Z.of_nat (entry_point_current_lin_mem h)) in
+let current_lin_mem h cP =
+  let offset_seal_cap = Z.opp (Z.of_nat (entry_point_current_lin_mem h cP)) in
   let offset_mem_cap = Big_int_Z.unit_big_int in
   (Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
   Big_int_Z.zero_big_int))), (Inr PC))) :: ((Lea ((R (Big_int_Z.succ_big_int
@@ -4105,10 +4098,11 @@ let current_lin_mem h =
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))) :: ((Div ((R
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr (R
   (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inl
-  z_page_size))) :: ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-  Big_int_Z.zero_big_int))), (Inl Big_int_Z.zero_big_int))) :: ((Mov ((R
-  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-  Big_int_Z.zero_big_int)))), (Inl Big_int_Z.zero_big_int))) :: ((Jmp (R
+  (z_page_size cP)))) :: ((Mov ((R (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inl
+  Big_int_Z.zero_big_int))) :: ((Mov ((R (Big_int_Z.succ_big_int
+  (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))),
+  (Inl Big_int_Z.zero_big_int))) :: ((Jmp (R
   Big_int_Z.zero_big_int)) :: []))))))))))))
 
 (** val entry_point_load_global : Big_int_Z.big_int **)
@@ -4699,10 +4693,10 @@ let prologue_return f_type _ ret off tmp =
           ('['::('p'::('r'::('o'::('l'::('o'::('g'::('u'::('e'::('_'::('r'::('e'::('t'::('u'::('r'::('n'::(']'::(' '::('W'::('a'::('s'::('m'::(' '::('1'::('.'::('0'::(' '::('a'::('l'::('l'::('o'::('w'::('s'::(' '::('a'::('t'::(' '::('m'::('o'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('r'::('e'::('t'::('u'::('r'::('n'::(' '::('v'::('a'::('l'::('u'::('e'::('.'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val compile_binstr :
-    machineParameters -> ws_module -> function_type -> ws_basic_instruction
-    -> compilation_state -> cfg error **)
+    compilerParameters -> machineParameters -> ws_module -> function_type ->
+    ws_basic_instruction -> compilation_state -> cfg error **)
 
-let rec compile_binstr h module0 f_type i s =
+let rec compile_binstr cP h module0 f_type i s =
   let nreg = s.regidx in
   let module_frame = define_module_frame module0 in
   let error_msg3 = fun i0 e ->
@@ -4768,7 +4762,7 @@ let rec compile_binstr h module0 f_type i s =
            mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat0 ->
              let (instrs_comp, state_comp) = pat0 in
              Ok ((app instrs_acc instrs_comp), state_comp))
-             (compile_binstr h module0 f_type i0 state_acc)) acc) (Ok ([],
+             (compile_binstr cP h module0 f_type i0 state_acc)) acc) (Ok ([],
          loop_state)) body)
    | I_loop (rt, body) ->
      let loop_state = enter_scope s rt nreg in
@@ -4789,7 +4783,7 @@ let rec compile_binstr h module0 f_type i s =
            mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat0 ->
              let (instrs_comp, state_comp) = pat0 in
              Ok ((app instrs_acc instrs_comp), state_comp))
-             (compile_binstr h module0 f_type i0 state_acc)) acc) (Ok ([],
+             (compile_binstr cP h module0 f_type i0 state_acc)) acc) (Ok ([],
          loop_state)) body)
    | I_if (rt, body_true, body_false) ->
      let s1 =
@@ -4833,15 +4827,15 @@ let rec compile_binstr h module0 f_type i s =
              mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat1 ->
                let (instrs_comp, state_comp) = pat1 in
                Ok ((app instrs_acc instrs_comp), state_comp))
-               (compile_binstr h module0 f_type i0 state_acc)) acc) (Ok ([],
-           bodyT_state)) body_true))
+               (compile_binstr cP h module0 f_type i0 state_acc)) acc) (Ok
+           ([], bodyT_state)) body_true))
        (foldl (fun acc i0 ->
          mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat ->
            let (instrs_acc, state_acc) = pat in
            mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat0 ->
              let (instrs_comp, state_comp) = pat0 in
              Ok ((app instrs_acc instrs_comp), state_comp))
-             (compile_binstr h module0 f_type i0 state_acc)) acc) (Ok ([],
+             (compile_binstr cP h module0 f_type i0 state_acc)) acc) (Ok ([],
          bodyF_state)) body_false)
    | I_br n0 ->
      let lbl = generate_label s.current_scope n0 in
@@ -4964,6 +4958,16 @@ let rec compile_binstr h module0 f_type i s =
         let len_arg_type = length arg_type in
         let nfun = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
         let res = sub nfun len_arg_type in
+        let tmp_jmp =
+          add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            Big_int_Z.zero_big_int))))
+        in
+        let tmp_type =
+          add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
+        in
         let tmp_fun =
           add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
             (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -4983,10 +4987,21 @@ let rec compile_binstr h module0 f_type i s =
             (Inl (Z.of_nat module_frame.idx_imports_itable)))) :: ((Load ((R
             tmp_fun), (R tmp_fun))) :: ((Lea ((R tmp_fun),
             (r nfun))) :: ((Load ((R tmp_fun), (R tmp_fun))) :: ((Mov ((R
-            tmp_data), (Inr (R tmp_fun)))) :: ((Load ((R tmp_fun), (R
-            tmp_fun))) :: ((Lea ((R tmp_data), (Inl
-            Big_int_Z.unit_big_int))) :: ((Load ((R tmp_data), (R
-            tmp_data))) :: [])))))))))
+            tmp_data), (Inr (R tmp_fun)))) :: ((Mov ((R tmp_type), (Inr (R
+            tmp_fun)))) :: ((Lea ((R tmp_type), (Inl
+            (Big_int_Z.mult_int_big_int 2
+            Big_int_Z.unit_big_int)))) :: ((Load ((R tmp_type), (R
+            tmp_type))) :: ((Sub ((R tmp_type), (Inr (R tmp_type)), (Inl
+            (cP.encode_function_type (Tf (arg_type, ret_type)))))) :: ((Mov
+            ((R tmp_jmp), (Inr PC))) :: ((Lea ((R tmp_jmp), (Inl
+            ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+            (Big_int_Z.mult_int_big_int 2
+            Big_int_Z.unit_big_int))))) :: ((Jnz ((R tmp_jmp), (R
+            tmp_type))) :: ((Lea ((R tmp_jmp), (Inl
+            Big_int_Z.unit_big_int))) :: ((Jmp (R
+            tmp_jmp)) :: (Fail :: ((Load ((R tmp_fun), (R tmp_fun))) :: ((Lea
+            ((R tmp_data), (Inl Big_int_Z.unit_big_int))) :: ((Load ((R
+            tmp_data), (R tmp_data))) :: [])))))))))))))))))))
         in
         let new_state0 =
           sub_reg (add_reg s (length ret_type))
@@ -5386,21 +5401,21 @@ let rec compile_binstr h module0 f_type i s =
      (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))
 
 (** val compile_basic_instr :
-    machineParameters -> ws_module -> typeidx -> ws_basic_instruction ->
-    compilation_state -> cfg error **)
+    compilerParameters -> machineParameters -> ws_module -> typeidx ->
+    ws_basic_instruction -> compilation_state -> cfg error **)
 
-let compile_basic_instr h module0 f_typeidx i s =
+let compile_basic_instr cP h module0 f_typeidx i s =
   match get_type module0 f_typeidx with
-  | Some f_type -> compile_binstr h module0 f_type i s
+  | Some f_type -> compile_binstr cP h module0 f_type i s
   | None ->
     error_msg
       ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('b'::('a'::('s'::('i'::('c'::('_'::('i'::('n'::('s'::('t'::('r'::(']'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val labeled_compile_expr' :
-    machineParameters -> ws_module -> typeidx -> ws_basic_instruction list ->
-    compilation_state -> cfg error **)
+    compilerParameters -> machineParameters -> ws_module -> typeidx ->
+    ws_basic_instruction list -> compilation_state -> cfg error **)
 
-let rec labeled_compile_expr' h module0 f_typeidx il s =
+let rec labeled_compile_expr' cP h module0 f_typeidx il s =
   match il with
   | [] -> Ok ([], s)
   | i :: il' ->
@@ -5409,12 +5424,12 @@ let rec labeled_compile_expr' h module0 f_typeidx il s =
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun pat0 ->
         let (instr_rec, state_rec) = pat0 in
         Ok ((app instrs_comp instr_rec), state_rec))
-        (labeled_compile_expr' h module0 f_typeidx il' s_comp))
-      (compile_basic_instr h module0 f_typeidx i s)
+        (labeled_compile_expr' cP h module0 f_typeidx il' s_comp))
+      (compile_basic_instr cP h module0 f_typeidx i s)
 
 (** val labeled_compile_expr :
-    machineParameters -> ws_module -> typeidx -> ws_basic_instruction list ->
-    compilation_state -> cfg error **)
+    compilerParameters -> machineParameters -> ws_module -> typeidx ->
+    ws_basic_instruction list -> compilation_state -> cfg error **)
 
 let labeled_compile_expr =
   labeled_compile_expr'
@@ -5491,9 +5506,10 @@ let allocate_data size z0 =
   repeat (WInt z0) size
 
 (** val compile_func :
-    machineParameters -> module_func -> ws_module -> labeled_instr list error **)
+    compilerParameters -> machineParameters -> module_func -> ws_module ->
+    labeled_instr list error **)
 
-let compile_func mP f m =
+let compile_func cP mP f m =
   let p = (f.modfunc_type, f.modfunc_locals) in
   let mf_body = f.modfunc_body in
   let (mf_type, mf_locals) = p in
@@ -5529,29 +5545,30 @@ let compile_func mP f m =
      | None ->
        error_msg
          ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('f'::('u'::('n'::('c'::(']'::(' '::('t'::('y'::('p'::('e'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))
-    (Obj.magic labeled_compile_expr mP m mf_type mf_full_body init_state0)
+    (Obj.magic labeled_compile_expr cP mP m mf_type mf_full_body init_state0)
 
 (** val compile_funcs :
-    machineParameters -> ws_module -> labeled_function list error **)
+    compilerParameters -> machineParameters -> ws_module -> labeled_function
+    list error **)
 
-let compile_funcs mP m =
+let compile_funcs cP mP m =
   foldl (fun acc_opt f ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_f -> Ok
-        (compiled_f :: acc)) (Obj.magic compile_func mP f m)) acc_opt) (Ok
+        (compiled_f :: acc)) (Obj.magic compile_func cP mP f m)) acc_opt) (Ok
     []) m.mod_funcs
 
 (** val compile_lin_mem :
-    memory_type -> Big_int_Z.big_int -> Big_int_Z.big_int -> abstract_word
+    compilerParameters -> memory_type -> Big_int_Z.big_int -> abstract_word
     list **)
 
-let compile_lin_mem m max_nb_page m_b =
-  let size_min = mul m.lim_min page_size0 in
+let compile_lin_mem cP m m_b =
+  let size_min = mul m.lim_min cP.page_size in
   let size_max =
     mul
       (match m.lim_max with
-       | Some n0 -> min n0 max_nb_page
-       | None -> max_nb_page) page_size0
+       | Some n0 -> min n0 cP.max_size_linear_memory
+       | None -> cP.max_size_linear_memory) cP.page_size
   in
   let l_m =
     add m_b (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -5565,14 +5582,14 @@ let compile_lin_mem m max_nb_page m_b =
   map (fun x -> Inl x) (full_cap :: (current_cap :: linear_memory))
 
 (** val compile_lin_mems :
-    memory_type list -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    compilerParameters -> memory_type list -> Big_int_Z.big_int ->
     abstract_word list list **)
 
-let compile_lin_mems llm max_nb_page offset_init =
+let compile_lin_mems cP llm offset_init =
   let (_, l) =
     foldl (fun acc m ->
       let (mb, l_lin_mem) = acc in
-      let lin_mem = compile_lin_mem m max_nb_page mb in
+      let lin_mem = compile_lin_mem cP m mb in
       ((add mb (length lin_mem)), (lin_mem :: l_lin_mem))) (offset_init, [])
       llm
   in
@@ -5610,13 +5627,13 @@ let compile_globals lg =
   map compile_global lg
 
 (** val compile_indirect_table :
-    module_table -> Big_int_Z.big_int -> abstract_word list **)
+    compilerParameters -> module_table -> abstract_word list **)
 
-let compile_indirect_table it max_nb_entry =
+let compile_indirect_table cP it =
   let nb_entry =
     match (tt_limits (modtab_type it)).lim_max with
-    | Some n0 -> min n0 max_nb_entry
-    | None -> max_nb_entry
+    | Some n0 -> min n0 cP.max_size_indirection_table
+    | None -> cP.max_size_indirection_table
   in
   let indirect_table =
     allocate_data nb_entry
@@ -5628,15 +5645,10 @@ let compile_indirect_table it max_nb_entry =
   map (fun x -> Inl x) indirect_table
 
 (** val compile_indirect_tables :
-    module_table list -> Big_int_Z.big_int -> abstract_word list list **)
+    compilerParameters -> module_table list -> abstract_word list list **)
 
-let compile_indirect_tables lit max_nb_entry =
-  map (fun it -> compile_indirect_table it max_nb_entry) lit
-
-(** val encode_function_type : function_type -> Big_int_Z.big_int **)
-
-let encode_function_type _ =
-  Big_int_Z.zero_big_int
+let compile_indirect_tables cP lit =
+  map (fun it -> compile_indirect_table cP it) lit
 
 (** val import_func_closure : module_import -> symbols option **)
 
@@ -5711,11 +5723,11 @@ let rec imports_itables = function
    | None -> acc)
 
 (** val compile_frame :
-    ws_module -> Big_int_Z.big_int -> ((word * word) * word) list ->
-    abstract_word list list -> abstract_word list list -> abstract_word list
-    list -> oType -> oType -> abstract_word list error **)
+    compilerParameters -> ws_module -> Big_int_Z.big_int ->
+    ((word * word) * word) list -> abstract_word list list -> abstract_word
+    list list -> abstract_word list list -> abstract_word list error **)
 
-let compile_frame m offset_datas func_closures lin_mems globals itables oT_LM oT_G =
+let compile_frame cP m offset_datas func_closures lin_mems globals itables =
   let imported_func_closures =
     map (fun x -> Inr x) (imports_func_closures m.mod_imports)
   in
@@ -5727,13 +5739,8 @@ let compile_frame m offset_datas func_closures lin_mems globals itables oT_LM oT
   let imported_itables = map (fun x -> Inr x) (imports_itables m.mod_imports)
   in
   let commons =
-    let safe_memory =
-      '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('s'::('a'::('f'::('e'::('_'::('m'::('e'::('m'::[])))))))))))))))
-    in
-    let link_tbl =
-      '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('l'::('i'::('n'::('k'::('_'::('t'::('b'::('l'::[])))))))))))))))
-    in
-    map (fun x -> Inr x) (safe_memory :: (link_tbl :: []))
+    map (fun x -> Inr x)
+      (cP.common_safe_memory_symbol :: (cP.common_linking_table_symbol :: []))
   in
   let defined_func_closures =
     let (_, func_closures0) =
@@ -5762,8 +5769,8 @@ let compile_frame m offset_datas func_closures lin_mems globals itables oT_LM oT
       foldl (fun acc m0 ->
         let (offset0, sealed_lin_mems) = acc in
         let e = add offset0 (length m0) in
-        let sealed_lin_mem = WSealed (oT_LM, (SCap ((RW, Global), offset0,
-          (Finite e), offset0)))
+        let sealed_lin_mem = WSealed (cP.otype_lin_mem, (SCap ((RW, Global),
+          offset0, (Finite e), offset0)))
         in
         (e, (app sealed_lin_mems (sealed_lin_mem :: [])))) (offset_lin_mems,
         []) lin_mems
@@ -5776,8 +5783,8 @@ let compile_frame m offset_datas func_closures lin_mems globals itables oT_LM oT
       foldl (fun acc g ->
         let (offset0, sealed_globals) = acc in
         let e = add offset0 (length g) in
-        let sealed_global = WSealed (oT_G, (SCap ((RW, Global), offset0,
-          (Finite e), offset0)))
+        let sealed_global = WSealed (cP.otype_global, (SCap ((RW, Global),
+          offset0, (Finite e), offset0)))
         in
         (e, (app sealed_globals (sealed_global :: [])))) (offset_globals, [])
         globals
@@ -5852,48 +5859,46 @@ let get_start m =
     (modstart_func mstart))) (Obj.magic m.mod_start)
 
 (** val prepare_function_closures :
-    oType -> module_func list -> ws_module -> ((word * word) * word) list
-    error **)
+    compilerParameters -> module_func list -> ws_module ->
+    ((word * word) * word) list error **)
 
-let rec prepare_function_closures oT_MOD func_mods m =
+let rec prepare_function_closures cP func_mods m =
   match func_mods with
   | [] -> Ok []
   | f :: fs ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
-      let placeholder = WSealed (oT_MOD, (SCap ((O, Global),
+      let placeholder = WSealed (cP.otype_module, (SCap ((O, Global),
         Big_int_Z.zero_big_int, (Finite Big_int_Z.zero_big_int),
         Big_int_Z.zero_big_int)))
       in
       (match get_type m f.modfunc_type with
        | Some t0 ->
          Ok (((placeholder, placeholder), (WInt
-           (encode_function_type t0))) :: acc)
+           (cP.encode_function_type t0))) :: acc)
        | None ->
          error_msg
            ('['::('p'::('r'::('e'::('p'::('a'::('r'::('e'::('_'::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::('s'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))
-      (prepare_function_closures oT_MOD fs m)
+      (prepare_function_closures cP fs m)
 
 (** val compile_func_closures :
-    oType -> addr -> addr -> labeled_function list -> module_func list ->
-    ws_module -> ((word * word) * word) list error **)
+    compilerParameters -> addr -> addr -> labeled_function list ->
+    module_func list -> ws_module -> ((word * word) * word) list error **)
 
-let compile_func_closures oT_MOD frm_b frm_e compiled_functions func_mods m =
+let compile_func_closures cP frm_b frm_e compiled_functions func_mods m =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closures ->
     compute_func_closure frm_b frm_e compiled_functions func_closures)
-    (prepare_function_closures oT_MOD func_mods m)
+    (prepare_function_closures cP func_mods m)
 
 (** val compile_module :
-    machineParameters -> ws_module -> name -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> labeled_cerise_component error **)
+    compilerParameters -> machineParameters -> ws_module -> name ->
+    labeled_cerise_component error **)
 
-let compile_module mP m module_name oT_LM oT_G oT_MOD mAX_LIN_MEM mAX_INDIRECT_TABLE =
+let compile_module cP mP m module_name =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_functions ->
     let frm = define_module_frame m in
-    let lin_mem_section = compile_lin_mems m.mod_mems mAX_LIN_MEM in
+    let lin_mem_section = compile_lin_mems cP m.mod_mems in
     let globals_section = compile_globals m.mod_globals in
-    let uninit_itables =
-      compile_indirect_tables m.mod_tables mAX_INDIRECT_TABLE
-    in
+    let uninit_itables = compile_indirect_tables cP m.mod_tables in
     let exports = compile_exports m.mod_exports frm module_name in
     let b_frm = length (concat compiled_functions) in
     let e_frm = add b_frm (len_frame m) in
@@ -5913,11 +5918,11 @@ let compile_module mP m module_name oT_LM oT_G oT_MOD mAX_LIN_MEM mAX_INDIRECT_T
         data_frame; l_data_func_closures = func_closure_section;
         l_data_section = data_section }; l_main = (get_start m); l_exports =
         exports })
-        (Obj.magic compile_frame m e_frm func_closure_section
+        (Obj.magic compile_frame cP m e_frm func_closure_section
           (lin_mem_section Big_int_Z.zero_big_int) globals_section
-          uninit_itables oT_LM oT_G))
-      (Obj.magic compile_func_closures oT_MOD b_frm e_frm compiled_functions
-        m.mod_funcs m)) (Obj.magic compile_funcs mP m)
+          uninit_itables))
+      (Obj.magic compile_func_closures cP b_frm e_frm compiled_functions
+        m.mod_funcs m)) (Obj.magic compile_funcs cP mP m)
 
 (** val error_msg0 : char list -> 'a1 error **)
 
@@ -6647,10 +6652,9 @@ let error_msg2 s =
       s)
 
 (** val common_module :
-    machineParameters -> oType -> oType -> oType -> Big_int_Z.big_int ->
-    cerise_linkable_object **)
+    machineParameters -> compilerParameters -> cerise_linkable_object **)
 
-let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
+let common_module mP cP =
   let allocate_mem = fun z0 n0 -> repeat (WInt z0) n0 in
   let safe_mem_sym =
     '_'::('C'::('o'::('m'::('m'::('o'::('n'::('.'::('s'::('a'::('f'::('e'::('_'::('m'::('e'::('m'::[])))))))))))))))
@@ -6661,19 +6665,21 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
   let trusted_macros_code =
     let lin_mem_macros =
       let sealing_lin_mem = WSealable (SSealRange (((true, true), Global),
-        oT_LM, (add oT_LM (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        oT_LM))
+        cP.otype_lin_mem,
+        (add cP.otype_lin_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+        cP.otype_lin_mem))
       in
       app (sealing_lin_mem :: [])
         (app (encodeInstrsW mP load_lin_mem)
           (app (encodeInstrsW mP (store_lin_mem mP))
-            (app (encodeInstrsW mP (grow_lin_mem mP))
-              (encodeInstrsW mP (current_lin_mem mP)))))
+            (app (encodeInstrsW mP (grow_lin_mem mP cP))
+              (encodeInstrsW mP (current_lin_mem mP cP)))))
     in
     let global_macros =
       let sealing_global = WSealable (SSealRange (((true, true), Global),
-        oT_G, (add oT_G (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        oT_G))
+        cP.otype_global,
+        (add cP.otype_global (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+        cP.otype_global))
       in
       app (sealing_global :: [])
         (app (encodeInstrsW mP load_global)
@@ -6683,8 +6689,9 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
     in
     let safe_mem_macros =
       let sealing_safe_mem = WSealable (SSealRange (((true, true), Global),
-        oT_SM, (add oT_SM (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
-        oT_SM))
+        cP.otype_safe_mem,
+        (add cP.otype_safe_mem (Big_int_Z.succ_big_int
+          Big_int_Z.zero_big_int)), cP.otype_safe_mem))
       in
       app (sealing_safe_mem :: []) (encodeInstrsW mP malloc_safe_mem)
     in
@@ -6702,10 +6709,10 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
       add offset_lin_mem_macros (entry_point_grow_lin_mem mP)
     in
     let offset_lin_mem_current0 =
-      add offset_lin_mem_macros (entry_point_current_lin_mem mP)
+      add offset_lin_mem_macros (entry_point_current_lin_mem mP cP)
     in
     let offset_global_macros =
-      add offset_lin_mem_current0 (length (current_lin_mem mP))
+      add offset_lin_mem_current0 (length (current_lin_mem mP cP))
     in
     let offset_global_load0 = add offset_global_macros entry_point_load_global
     in
@@ -6750,7 +6757,8 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
   let start_safe_mem = add start_link_tbl (length linking_table) in
   let end_safe_mem =
     add start_safe_mem
-      (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) sIZE_SAFE_MEM)
+      (add (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)
+        cP.max_size_safe_mem)
   in
   let safe_mem =
     let free_space_malloc_cap = WSealable (SCap ((RW, Global),
@@ -6758,13 +6766,13 @@ let common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM =
       (add start_safe_mem (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))
     in
     free_space_malloc_cap :: (allocate_mem Big_int_Z.zero_big_int
-                               sIZE_SAFE_MEM)
+                               cP.max_size_safe_mem)
   in
   let link_tbl_ro = WSealable (SCap ((RO, Global), start_link_tbl, (Finite
     start_safe_mem), start_link_tbl))
   in
-  let safe_mem_sealed = WSealed (oT_SM, (SCap ((RW, Global), start_safe_mem,
-    (Finite end_safe_mem), start_safe_mem)))
+  let safe_mem_sealed = WSealed (cP.otype_safe_mem, (SCap ((RW, Global),
+    start_safe_mem, (Finite end_safe_mem), start_safe_mem)))
   in
   let exports_data = link_tbl_ro :: (safe_mem_sealed :: []) in
   let offset_exports_data = length (app linking_table safe_mem) in
@@ -6816,11 +6824,10 @@ let get_main_word linked_obj code data =
       ('['::('g'::('e'::('t'::('_'::('m'::('a'::('i'::('n'::('_'::('w'::('o'::('r'::('d'::(']'::(':'::(' '::('i'::('m'::('p'::('o'::('s'::('s'::('i'::('b'::('l'::('e'::(' '::('t'::('o'::(' '::('l'::('o'::('a'::('d'::(' '::('a'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::(' '::('w'::('i'::('t'::('h'::('o'::('u'::('t'::(' '::('m'::('a'::('i'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val linkable_to_executable :
-    machineParameters -> cerise_linkable_object -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> cerise_executable_object error **)
+    machineParameters -> compilerParameters -> cerise_linkable_object ->
+    cerise_executable_object error **)
 
-let linkable_to_executable mP cerise_obj oT_LM oT_G oT_SM sIZE_SAFE_MEM =
-  let common_obj = common_module mP oT_LM oT_G oT_SM sIZE_SAFE_MEM in
+let linkable_to_executable mP cP cerise_obj =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_obj ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun code ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun data ->
@@ -6829,7 +6836,7 @@ let linkable_to_executable mP cerise_obj oT_LM oT_G oT_SM sIZE_SAFE_MEM =
           (Obj.magic get_main_word linked_obj code data))
         (Obj.magic loadable linked_obj.c_data))
       (Obj.magic loadable linked_obj.c_code))
-    (Obj.magic link_seq cerise_obj common_obj)
+    (Obj.magic link_seq cerise_obj (common_module mP cP))
 
 (** val boot_code : machineParameters -> word list **)
 
@@ -6895,47 +6902,38 @@ let init_state h prog start_stack =
   (regfile, heap)
 
 (** val compile :
-    machineParameters -> ws_module -> name -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> cerise_linkable_object error **)
+    machineParameters -> compilerParameters -> ws_module -> name ->
+    cerise_linkable_object error **)
 
-let compile mP m n0 oT_LM oT_G oT_MOD mAX_LIN_MEM mAX_INDIRECT_TABLE =
+let compile mP cP m n0 =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun labeled ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun reg_allocated ->
       compile_component mP reg_allocated)
       (Obj.magic register_allocation labeled))
-    (Obj.magic compile_module mP m n0 oT_LM oT_G oT_MOD mAX_LIN_MEM
-      mAX_INDIRECT_TABLE)
+    (Obj.magic compile_module cP mP m n0)
 
 (** val compile_list :
-    machineParameters -> (ws_module * name, cerise_linkable_object) sum list
-    -> oType -> oType -> oType -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    cerise_linkable_object error list **)
+    machineParameters -> compilerParameters -> (ws_module * name,
+    cerise_linkable_object) sum list -> cerise_linkable_object error list **)
 
-let compile_list mP ml oT_LM oT_G oT_MOD mAX_LIN_MEM mAX_INDIRECT_TABLE =
+let compile_list mP cP ml =
   map (fun m ->
     match m with
-    | Inl m' ->
-      compile mP (fst m') (snd m') oT_LM oT_G oT_MOD mAX_LIN_MEM
-        mAX_INDIRECT_TABLE
+    | Inl m' -> compile mP cP (fst m') (snd m')
     | Inr m' -> Ok m') ml
 
 (** val load_in_memory :
-    machineParameters -> Big_int_Z.big_int -> (ws_module * name,
-    cerise_linkable_object) sum list -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    (reg * mem) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    (ws_module * name, cerise_linkable_object) sum list -> (reg * mem) error **)
 
-let load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
-  let oT_MOD = add oT_SM (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
+let load_in_memory mP cP start_stack modules =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun comps ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun inst -> Ok
         (init_state mP inst start_stack))
-        (Obj.magic linkable_to_executable mP linked oT_LM oT_G oT_SM
-          sIZE_SAFE_MEM)) (Obj.magic instantiation comps))
-    (Obj.magic list_error
-      (compile_list mP modules oT_LM oT_G oT_MOD mAX_LIN_MEM
-        mAX_INDIRECT_TABLE))
+        (Obj.magic linkable_to_executable mP cP linked))
+      (Obj.magic instantiation comps))
+    (Obj.magic list_error (compile_list mP cP modules))
 
 (** val bank_prog : ws_basic_instruction list **)
 
@@ -7102,48 +7100,56 @@ let env_unsafe_module =
     ('m'::('e'::('m'::[]))); modexp_desc = (MED_mem
     Big_int_Z.zero_big_int) } :: [])) }
 
-(** val new_stack : ws_basic_instruction list **)
+(** val z_page_size0 : compilerParameters -> Big_int_Z.big_int **)
 
-let new_stack =
+let z_page_size0 cP =
+  Z.of_nat cP.page_size
+
+(** val new_stack : compilerParameters -> ws_basic_instruction list **)
+
+let new_stack cP =
   (I_const (Val_int
     Big_int_Z.unit_big_int)) :: (I_grow_memory :: ((I_tee_local
     Big_int_Z.zero_big_int) :: ((I_const (Val_int (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int))) :: ((I_relop (T_int, ROI_eq)) :: ((I_if
     ((T_int :: []), ((I_const (Val_int (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int))) :: []), ((I_get_local
-    Big_int_Z.zero_big_int) :: ((I_const (Val_int page_size)) :: ((I_binop
-    (T_int, BOI_mul)) :: ((I_tee_local
+    Big_int_Z.zero_big_int) :: ((I_const (Val_int
+    (z_page_size0 cP))) :: ((I_binop (T_int, BOI_mul)) :: ((I_tee_local
     Big_int_Z.zero_big_int) :: ((I_get_local
     Big_int_Z.zero_big_int) :: ((I_store T_int) :: ((I_get_local
     Big_int_Z.zero_big_int) :: []))))))))) :: [])))))
 
-(** val validate_stack : immediate -> ws_basic_instruction list **)
+(** val validate_stack :
+    compilerParameters -> immediate -> ws_basic_instruction list **)
 
-let validate_stack x =
-  (I_get_local x) :: ((I_const (Val_int page_size)) :: ((I_binop (T_int,
-    (BOI_rem SX_S))) :: ((I_if ([], (I_unreachable :: []), [])) :: [])))
+let validate_stack cP x =
+  (I_get_local x) :: ((I_const (Val_int (z_page_size0 cP))) :: ((I_binop
+    (T_int, (BOI_rem SX_S))) :: ((I_if ([], (I_unreachable :: []),
+    [])) :: [])))
 
 (** val validate_stack_bound : immediate -> ws_basic_instruction list **)
 
 let validate_stack_bound x =
   (I_get_local x) :: ((I_load T_int) :: (I_drop :: []))
 
-(** val is_full_op : ws_basic_instruction list **)
+(** val is_full_op : compilerParameters -> ws_basic_instruction list **)
 
-let is_full_op =
+let is_full_op cP =
   (I_const (Val_int Big_int_Z.unit_big_int)) :: ((I_const (Val_int
     Big_int_Z.zero_big_int)) :: ((I_get_local
     Big_int_Z.zero_big_int) :: ((I_load T_int) :: ((I_const (Val_int
-    page_size)) :: ((I_binop (T_int, (BOI_rem SX_S))) :: ((I_const (Val_int
-    (Z.sub page_size (Big_int_Z.mult_int_big_int 2
+    (z_page_size0 cP))) :: ((I_binop (T_int, (BOI_rem SX_S))) :: ((I_const
+    (Val_int
+    (Z.sub (z_page_size0 cP) (Big_int_Z.mult_int_big_int 2
       (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int))))) :: ((I_relop
     (T_int, ROI_eq)) :: (I_select :: []))))))))
 
-(** val is_full : ws_basic_instruction list **)
+(** val is_full : compilerParameters -> ws_basic_instruction list **)
 
-let is_full =
-  app (validate_stack Big_int_Z.zero_big_int)
-    (app (validate_stack_bound Big_int_Z.zero_big_int) is_full_op)
+let is_full cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
+    (app (validate_stack_bound Big_int_Z.zero_big_int) (is_full_op cP))
 
 (** val is_empty_op : ws_basic_instruction list **)
 
@@ -7152,31 +7158,31 @@ let is_empty_op =
     Big_int_Z.zero_big_int) :: ((I_load T_int) :: ((I_relop (T_int,
     ROI_eq)) :: [])))
 
-(** val is_empty : ws_basic_instruction list **)
+(** val is_empty : compilerParameters -> ws_basic_instruction list **)
 
-let is_empty =
-  app (validate_stack Big_int_Z.zero_big_int)
+let is_empty cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
     (app (validate_stack_bound Big_int_Z.zero_big_int) is_empty_op)
 
-(** val push_op : ws_basic_instruction list **)
+(** val push_op : compilerParameters -> ws_basic_instruction list **)
 
-let push_op =
-  app is_full_op ((I_if ([], (I_unreachable :: []), [])) :: ((I_get_local
-    Big_int_Z.zero_big_int) :: ((I_load T_int) :: ((I_const (Val_int
-    (Big_int_Z.mult_int_big_int 2 (Big_int_Z.mult_int_big_int 2
-    Big_int_Z.unit_big_int)))) :: ((I_binop (T_int,
-    BOI_add)) :: ((I_tee_local (Big_int_Z.succ_big_int
+let push_op cP =
+  app (is_full_op cP) ((I_if ([], (I_unreachable :: []),
+    [])) :: ((I_get_local Big_int_Z.zero_big_int) :: ((I_load
+    T_int) :: ((I_const (Val_int (Big_int_Z.mult_int_big_int 2
+    (Big_int_Z.mult_int_big_int 2 Big_int_Z.unit_big_int)))) :: ((I_binop
+    (T_int, BOI_add)) :: ((I_tee_local (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) :: ((I_get_local
     (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)) :: ((I_store
     T_int) :: ((I_get_local Big_int_Z.zero_big_int) :: ((I_get_local
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int))) :: ((I_store T_int) :: [])))))))))))
 
-(** val push : ws_basic_instruction list **)
+(** val push : compilerParameters -> ws_basic_instruction list **)
 
-let push =
-  app (validate_stack Big_int_Z.zero_big_int)
-    (app (validate_stack_bound Big_int_Z.zero_big_int) push_op)
+let push cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
+    (app (validate_stack_bound Big_int_Z.zero_big_int) (push_op cP))
 
 (** val pop_op : ws_basic_instruction list **)
 
@@ -7190,10 +7196,10 @@ let pop_op =
     Big_int_Z.unit_big_int)))) :: ((I_binop (T_int, BOI_sub)) :: ((I_store
     T_int) :: []))))))))))
 
-(** val pop : ws_basic_instruction list **)
+(** val pop : compilerParameters -> ws_basic_instruction list **)
 
-let pop =
-  app (validate_stack Big_int_Z.zero_big_int)
+let pop cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
     (app (validate_stack_bound Big_int_Z.zero_big_int) pop_op)
 
 (** val stack_length_op : ws_basic_instruction list **)
@@ -7205,10 +7211,10 @@ let stack_length_op =
     Big_int_Z.unit_big_int)))) :: ((I_binop (T_int, (BOI_div
     SX_U))) :: [])))))
 
-(** val stack_length : ws_basic_instruction list **)
+(** val stack_length : compilerParameters -> ws_basic_instruction list **)
 
-let stack_length =
-  app (validate_stack Big_int_Z.zero_big_int)
+let stack_length cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
     (app (validate_stack_bound Big_int_Z.zero_big_int) stack_length_op)
 
 (** val map_initialise : ws_basic_instruction list **)
@@ -7246,10 +7252,10 @@ let map_op =
   app map_initialise ((I_block ([], ((I_loop ([],
     map_loop_body)) :: []))) :: [])
 
-(** val stack_map : ws_basic_instruction list **)
+(** val stack_map : compilerParameters -> ws_basic_instruction list **)
 
-let stack_map =
-  app (validate_stack Big_int_Z.zero_big_int)
+let stack_map cP =
+  app (validate_stack cP Big_int_Z.zero_big_int)
     (app (validate_stack_bound Big_int_Z.zero_big_int) map_op)
 
 (** val main_stack : ws_basic_instruction list **)
@@ -7291,26 +7297,27 @@ let square0 =
   (I_get_local Big_int_Z.zero_big_int) :: ((I_get_local
     Big_int_Z.zero_big_int) :: ((I_binop (T_int, BOI_mul)) :: []))
 
-(** val stack_module : ws_module **)
+(** val stack_module : compilerParameters -> ws_module **)
 
-let stack_module =
+let stack_module cP =
   { mod_types = ((Tf ([], (T_int :: []))) :: ((Tf ((T_int :: []),
     (T_int :: []))) :: ((Tf ((T_int :: (T_int :: [])), [])) :: [])));
     mod_funcs = ({ modfunc_type = Big_int_Z.zero_big_int; modfunc_locals =
-    (T_int :: []); modfunc_body = new_stack } :: ({ modfunc_type =
+    (T_int :: []); modfunc_body = (new_stack cP) } :: ({ modfunc_type =
     (Big_int_Z.succ_big_int Big_int_Z.zero_big_int); modfunc_locals = [];
-    modfunc_body = is_empty } :: ({ modfunc_type = (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int); modfunc_locals = []; modfunc_body =
-    is_full } :: ({ modfunc_type = (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int); modfunc_locals = (T_int :: []); modfunc_body =
-    pop } :: ({ modfunc_type = (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)); modfunc_locals =
-    (T_int :: []); modfunc_body = push } :: ({ modfunc_type =
+    modfunc_body = (is_empty cP) } :: ({ modfunc_type =
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int); modfunc_locals = [];
+    modfunc_body = (is_full cP) } :: ({ modfunc_type =
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int); modfunc_locals =
+    (T_int :: []); modfunc_body = (pop cP) } :: ({ modfunc_type =
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int));
-    modfunc_locals = (T_int :: (T_int :: [])); modfunc_body =
-    stack_map } :: ({ modfunc_type = (Big_int_Z.succ_big_int
+    modfunc_locals = (T_int :: []); modfunc_body =
+    (push cP) } :: ({ modfunc_type = (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)); modfunc_locals =
+    (T_int :: (T_int :: [])); modfunc_body =
+    (stack_map cP) } :: ({ modfunc_type = (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int); modfunc_locals = []; modfunc_body =
-    stack_length } :: []))))))); mod_tables = ({ lim_min =
+    (stack_length cP) } :: []))))))); mod_tables = ({ lim_min =
     (Big_int_Z.succ_big_int Big_int_Z.zero_big_int); lim_max = None } :: []);
     mod_mems = ({ lim_min = Big_int_Z.zero_big_int; lim_max = None } :: []);
     mod_globals = []; mod_elem = []; mod_start = None; mod_imports = [];
@@ -7560,13 +7567,14 @@ let env_h =
     Big_int_Z.unit_big_int) :: []))
 
 (** val env_frame :
-    oType -> Big_int_Z.big_int -> Big_int_Z.big_int -> abstract_word list **)
+    compilerParameters -> Big_int_Z.big_int -> Big_int_Z.big_int ->
+    abstract_word list **)
 
-let env_frame oT_G size_adv_fun offset_h =
+let env_frame cP size_adv_fun offset_h =
   (Inl (WSealable (SCap ((E, Global), Big_int_Z.zero_big_int, (Finite
     size_adv_fun), (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int))))) :: ((Inl (WSealed (oT_G, (SCap ((RW, Global),
-    offset_h, (Finite
+    Big_int_Z.zero_big_int))))) :: ((Inl (WSealed (cP.otype_global, (SCap
+    ((RW, Global), offset_h, (Finite
     (add offset_h (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
       (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))),
     offset_h))))) :: ((Inr
@@ -7647,13 +7655,12 @@ let env_adv_fun =
     Big_int_Z.zero_big_int)))))))))))) :: [])))))))))))
 
 (** val env_adv' :
-    machineParameters -> Big_int_Z.big_int -> abstract_word list **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    abstract_word list **)
 
-let env_adv' mP offset_data =
+let env_adv' mP cP offset_data =
   let s_data =
-    length
-      (env_frame Big_int_Z.zero_big_int Big_int_Z.zero_big_int
-        Big_int_Z.zero_big_int)
+    length (env_frame cP Big_int_Z.zero_big_int Big_int_Z.zero_big_int)
   in
   let data_cap = WSealable (SCap ((RO, Global), offset_data, (Finite
     (add offset_data s_data)), offset_data))
@@ -7661,25 +7668,28 @@ let env_adv' mP offset_data =
   let prog = data_cap :: (encodeInstrsW mP env_adv_fun) in
   map (fun x -> Inl x) prog
 
-(** val env_adv : machineParameters -> abstract_word list **)
+(** val env_adv :
+    machineParameters -> compilerParameters -> abstract_word list **)
 
-let env_adv mP =
-  let o = length (env_adv' mP Big_int_Z.zero_big_int) in env_adv' mP o
+let env_adv mP cP =
+  let o = length (env_adv' mP cP Big_int_Z.zero_big_int) in env_adv' mP cP o
 
-(** val env_data : machineParameters -> oType -> abstract_word list **)
+(** val env_data :
+    machineParameters -> compilerParameters -> abstract_word list **)
 
-let env_data mP oT_G =
-  let size_adv = length (env_adv mP) in
+let env_data mP cP =
+  let size_adv = length (env_adv mP cP) in
   let offset_h =
     add size_adv
-      (length (env_frame oT_G Big_int_Z.zero_big_int Big_int_Z.zero_big_int))
+      (length (env_frame cP Big_int_Z.zero_big_int Big_int_Z.zero_big_int))
   in
-  app (env_frame oT_G size_adv offset_h) (map (fun x -> Inl x) env_h)
+  app (env_frame cP size_adv offset_h) (map (fun x -> Inl x) env_h)
 
-(** val env_object : machineParameters -> oType -> cerise_linkable_object **)
+(** val env_object :
+    machineParameters -> compilerParameters -> cerise_linkable_object **)
 
-let env_object mP oT_G =
-  { c_code = (env_adv mP); c_data = (env_data mP oT_G); c_main = None;
+let env_object mP cP =
+  { c_code = (env_adv mP cP); c_data = (env_data mP cP); c_main = None;
     c_exports =
     (insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
       ('E'::('n'::('v'::('.'::('a'::('d'::('v'::[]))))))) (Data,
@@ -7691,16 +7701,12 @@ let env_object mP oT_G =
         Big_int_Z.zero_big_int)))) }
 
 (** val load_test :
-    machineParameters -> Big_int_Z.big_int -> (ws_module * name,
-    cerise_linkable_object) sum list -> oType -> oType -> oType ->
-    Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int ->
-    ((regName * word) list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    (ws_module * name, cerise_linkable_object) sum list -> ((regName * word)
+    list * (addr * word) list) error **)
 
-let load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_TABLE sIZE_SAFE_MEM =
-  let loaded_mods =
-    load_in_memory mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
-      mAX_INDIRECT_TABLE sIZE_SAFE_MEM
-  in
+let load_test mP cP start_stack modules =
+  let loaded_mods = load_in_memory mP cP start_stack modules in
   (match loaded_mods with
    | Error m -> Error m
    | Ok a ->
@@ -7709,103 +7715,78 @@ let load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM mAX_INDIRECT_T
      (sort (gmap_to_list Coq0_Nat.eq_dec nat_countable mem0))))
 
 (** val load_example :
-    machineParameters -> (ws_module * name, cerise_linkable_object) sum list
-    -> Big_int_Z.big_int -> ((regName * word) list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> (ws_module * name,
+    cerise_linkable_object) sum list -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let load_example mP modules start_stack =
-  let oT_LM = Big_int_Z.zero_big_int in
-  let oT_G = Big_int_Z.succ_big_int Big_int_Z.zero_big_int in
-  let oT_SM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)
-  in
-  let mAX_LIN_MEM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-  in
-  let mAX_INDIRECT_TABLE = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
-  in
-  let sIZE_SAFE_MEM = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))
-  in
-  load_test mP start_stack modules oT_LM oT_G oT_SM mAX_LIN_MEM
-    mAX_INDIRECT_TABLE sIZE_SAFE_MEM
+let load_example mP cP modules start_stack =
+  load_test mP cP start_stack modules
 
 (** val loaded_bank_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_bank_example mP =
-  load_example mP
+let loaded_bank_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((bank_module,
       ('B'::('a'::('n'::('k'::[]))))) :: ((env_module,
       ('E'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_bank_unsafe_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_bank_unsafe_example mP =
-  load_example mP
+let loaded_bank_unsafe_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((bank_unsafe_module,
       ('B'::('a'::('n'::('k'::[]))))) :: ((env_unsafe_module,
       ('E'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_stack_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_stack_example mP =
-  load_example mP
+let loaded_stack_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((client_module,
-      ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: ((stack_module,
+      ('C'::('l'::('i'::('e'::('n'::('t'::[]))))))) :: (((stack_module cP),
       ('S'::('t'::('a'::('c'::('k'::[])))))) :: [])))
 
 (** val loaded_dummy_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_dummy_example mP =
-  load_example mP
+let loaded_dummy_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((dummy_module_client,
       ('d'::('u'::('m'::('m'::('y'::[])))))) :: ((dummy_module_lib,
       ('e'::('n'::('v'::[])))) :: [])))
 
 (** val loaded_reg_alloc_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_reg_alloc_example mP =
-  load_example mP
+let loaded_reg_alloc_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((reg_alloc_module_client,
       ('m'::('a'::('i'::('n'::[]))))) :: []))
 
 (** val loaded_incr_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_incr_example mP =
-  load_example mP
+let loaded_incr_example mP cP =
+  load_example mP cP
     (map (fun x -> Inl x) ((incr_module,
       ('i'::('n'::('c'::('r'::[]))))) :: []))
 
 (** val loaded_external_example :
-    machineParameters -> Big_int_Z.big_int -> ((regName * word)
-    list * (addr * word) list) error **)
+    machineParameters -> compilerParameters -> Big_int_Z.big_int ->
+    ((regName * word) list * (addr * word) list) error **)
 
-let loaded_external_example mP =
-  load_example mP ((Inl (main_module,
-    ('M'::('a'::('i'::('n'::[])))))) :: ((Inr
-    (env_object mP (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))) :: []))
+let loaded_external_example mP cP =
+  load_example mP cP ((Inl (main_module,
+    ('M'::('a'::('i'::('n'::[])))))) :: ((Inr (env_object mP cP)) :: []))
 
 (** val exports_insert :
     (symbols, section_offset) gmap -> symbols -> section -> Big_int_Z.big_int

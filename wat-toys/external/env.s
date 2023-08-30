@@ -12,7 +12,7 @@
 
 .data
     #(RO, Global, 19, 22, 19)       ; function closure adv
-    #{1: (RW, Global, 16, 19, 16)}  ; sealed to global
+    #{2: (RW, Global, 16, 19, 16)}  ; sealed to global
     $main.g
     $_Common.link_tbl
     #0
@@ -22,8 +22,8 @@
     #0
     #1
     ;; Function adv
-    #{3: (RX, Global, 0, 10, 0)}
-    #{3: (RO, Global, 10, 14, 10)}
+    #{4: (RX, Global, 0, 10, 0)}
+    #{4: (RO, Global, 10, 14, 10)}
     #0
 
 .symtab

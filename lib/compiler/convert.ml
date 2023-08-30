@@ -407,6 +407,21 @@ let machine_param =
     decodeWordType = (function wt -> ConvertAstExtract.wtype (decode_wtype wt));
   }
 
+let compiler_param =
+  { Extract.encode_function_type = (function _ -> Z.of_int 0);
+    decode_function_type = (function _ -> Extract.Tf ([], []));
+    otype_stack = Z.of_int 0;
+    otype_lin_mem = Z.of_int 1;
+    otype_global = Z.of_int 2;
+    otype_safe_mem = Z.of_int 3;
+    otype_module = Z.of_int 4;
+    page_size = Z.of_int 32;
+    max_size_linear_memory = Z.of_int 4;
+    max_size_indirection_table = Z.of_int 4;
+    max_size_safe_mem = Z.of_int 32;
+    common_safe_memory_symbol = Utils.explode_string "_Common.safe_mem";
+    common_linking_table_symbol = Utils.explode_string "_Common.link_tbl";
+  }
 
 module ConvertLinkableExtract = struct
   open Ir_linkable_object
@@ -501,9 +516,10 @@ module ConvertInterface
     (* Compile, link and load the *)
     let compiled : extract_compiled_program  =
       Extract.load_test
-        machine_param start_stack
+        machine_param
+        compiler_param
+        start_stack
         extracted_modules
-        ot_lm ot_g ot_sm max_lin_mem max_indirect_table size_safe_mem
     in
 
     match compiled with
