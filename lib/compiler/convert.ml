@@ -324,41 +324,41 @@ module ConvertWasmExtract = struct
 
   let rec extract_ws_binstr (i : ws_basic_instruction) : Extract.ws_basic_instruction =
     (match i with
-     | I_unreachable -> Extract.I_unreachable
-     | I_nop -> Extract.I_nop
-     | I_drop -> Extract.I_drop
-     | I_select -> Extract.I_select
+     | I_unreachable -> Extract.BI_unreachable
+     | I_nop -> Extract.BI_nop
+     | I_drop -> Extract.BI_drop
+     | I_select -> Extract.BI_select
      | I_block (rt, e) ->
-       Extract.I_block (extract_result_type rt, List.map extract_ws_binstr e)
+       Extract.BI_block (extract_result_type rt, List.map extract_ws_binstr e)
      | I_loop (rt, e) ->
-       Extract.I_loop (extract_result_type rt, List.map extract_ws_binstr e)
+       Extract.BI_loop (extract_result_type rt, List.map extract_ws_binstr e)
      | I_if (rt, e1, e2) ->
-       Extract.I_if
+       Extract.BI_if
          (extract_result_type rt, List.map extract_ws_binstr e1, List.map extract_ws_binstr e2)
-     | I_br i -> Extract.I_br i
-     | I_br_if i -> Extract.I_br_if i
-     | I_return -> Extract.I_return
-     | I_call i -> Extract.I_call i
-     | I_call_indirect i -> Extract.I_call_indirect i
-     | I_get_local i -> Extract.I_get_local i
-     | I_set_local i -> Extract.I_set_local i
-     | I_tee_local i -> Extract.I_tee_local i
-     | I_get_global i -> Extract.I_get_global i
-     | I_set_global i -> Extract.I_set_global i
-     | I_load vt -> Extract.I_load (extract_value_type vt)
-     | I_store vt -> Extract.I_store (extract_value_type vt)
-     | I_current_memory -> Extract.I_current_memory
-     | I_grow_memory -> Extract.I_grow_memory
-     | I_segload vt -> Extract.I_segload (extract_value_type vt)
-     | I_segstore vt -> Extract.I_segstore (extract_value_type vt)
-     | I_segalloc -> Extract.I_segalloc
-     | I_segfree -> Extract.I_segfree
-     | I_slice -> Extract.I_slice
-     | I_handleadd -> Extract.I_handleadd
-     | I_const v -> Extract.I_const (extract_value v)
-     | I_binop (vt, op) -> Extract.I_binop (extract_value_type vt, extract_binop op)
-     | I_testop vt -> Extract.I_testop (extract_value_type vt)
-     | I_relop (vt, op) -> Extract.I_relop (extract_value_type vt, extract_relop op))
+     | I_br i -> Extract.BI_br i
+     | I_br_if i -> Extract.BI_br_if i
+     | I_return -> Extract.BI_return
+     | I_call i -> Extract.BI_call i
+     | I_call_indirect i -> Extract.BI_call_indirect i
+     | I_get_local i -> Extract.BI_get_local i
+     | I_set_local i -> Extract.BI_set_local i
+     | I_tee_local i -> Extract.BI_tee_local i
+     | I_get_global i -> Extract.BI_get_global i
+     | I_set_global i -> Extract.BI_set_global i
+     | I_load vt -> Extract.BI_load (extract_value_type vt)
+     | I_store vt -> Extract.BI_store (extract_value_type vt)
+     | I_current_memory -> Extract.BI_current_memory
+     | I_grow_memory -> Extract.BI_grow_memory
+     | I_segload vt -> Extract.BI_segload (extract_value_type vt)
+     | I_segstore vt -> Extract.BI_segstore (extract_value_type vt)
+     | I_segalloc -> Extract.BI_segalloc
+     | I_segfree -> Extract.BI_segfree
+     | I_slice -> Extract.BI_slice
+     | I_handleadd -> Extract.BI_handleadd
+     | I_const v -> Extract.BI_const (extract_value v)
+     | I_binop (vt, op) -> Extract.BI_binop (extract_value_type vt, extract_binop op)
+     | I_testop vt -> Extract.BI_testop (extract_value_type vt)
+     | I_relop (vt, op) -> Extract.BI_relop (extract_value_type vt, extract_relop op))
 
   let extract_expr (e : expr) : Extract.expr =
     List.map extract_ws_binstr e

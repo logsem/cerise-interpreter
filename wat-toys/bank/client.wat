@@ -27,11 +27,6 @@
               slice
               local.set 2
 
-              i32.const 4
-              local.get 2
-              handleadd
-              local.set 2
-
               local.get 2
               i32.const 15
               i32.segstore
