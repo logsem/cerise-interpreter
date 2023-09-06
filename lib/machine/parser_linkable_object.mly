@@ -16,7 +16,7 @@
 %token SO S U SU
 %token Int Cap SealRange Sealed
 
-%token TEXT_SECTION DATA_SECTION EXPORT_SECTION START_SECTION
+%token TEXT_SECTION DATA_SECTION EXPORT_SECTION IMPORT_SECTION INIT_SECTION START_SECTION
 
 %left PLUS MINUS EXPR
 %left UMINUS
@@ -31,20 +31,32 @@
 main:
 TEXT_SECTION ; text_section = list(symb_word) ;
 DATA_SECTION ; data_section = list(symb_word);
+(* TODO imports, exports, and init should be optional, right ?*)
+IMPORT_SECTION ; imports_section = imports ;
 EXPORT_SECTION ; exports_section = exports ;
+INIT_SECTION ; init_section = inits ;
 start_section = main_entry ; EOF
 {
   {
     text_section = text_section;
     data_section = data_section;
+    imports_section = imports_section;
     exports_section = exports_section;
+    init_section = init_section;
     start_offset = start_section;
   }
 }
 
+(* TODO *)
+imports:
+  | { SymbolMap.empty }
+
+inits:
+  | { SymbolMap.empty }
+
 exports:
-  | e = export_entry ; exps = exports { let (s,n) = e in ExportMap.add s n exps }
-  | { ExportMap.empty }
+  | e = export_entry ; exps = exports { let (s,n) = e in SymbolMap.add s n exps }
+  | { SymbolMap.empty }
 
 export_entry: s = SYMBOL ; COLON ; sec = section_type ; offset = INT { (s, (sec, offset)) }
 main_entry:

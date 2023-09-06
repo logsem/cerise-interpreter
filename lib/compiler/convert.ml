@@ -386,6 +386,30 @@ module ConvertWasmExtract = struct
     }
 end
 
+let encode_extern_t (t : Extract.extern_t) =
+  match t with
+      | Extract.ET_glob { tg_mut = MUT_immut ; tg_t = T_int } -> 1
+      | Extract.ET_glob { tg_mut = MUT_mut ; tg_t = T_int } -> 2
+      | Extract.ET_glob { tg_mut = MUT_immut ; tg_t = T_handle } -> 3
+      | Extract.ET_glob { tg_mut = MUT_mut ; tg_t = T_handle } -> 4
+
+      (* TODO I would expect it to be more precise *)
+      | Extract.ET_tab _ -> 5
+      | Extract.ET_mem _ -> 6
+      | Extract.ET_func _ -> 7
+
+let decode_extern_t (n : Big_int_Z.big_int) =
+
+  match n with
+  | x when (x = Z.of_int 1) -> Some (Extract.ET_glob { tg_mut = MUT_immut ; tg_t = T_int})
+  | x when (x = Z.of_int 2) -> Some (Extract.ET_glob { tg_mut = MUT_mut ; tg_t = T_int})
+  | x when (x = Z.of_int 3) -> Some (Extract.ET_glob { tg_mut = MUT_mut ; tg_t = T_handle})
+  | x when (x = Z.of_int 4) -> Some (Extract.ET_glob { tg_mut = MUT_mut ; tg_t = T_handle})
+
+  | x when (x = Z.of_int 5) -> Some (Extract.ET_tab { lim_min = Z.zero; lim_max = None })
+  | x when (x = Z.of_int 6) -> Some (Extract.ET_mem { lim_min = Z.zero; lim_max = None })
+  | x when (x = Z.of_int 6) -> Some (Extract.ET_func (Extract.Tf ([], [])))
+  | _ -> None
 
 let machine_param =
   let open Encode in
@@ -408,8 +432,11 @@ let machine_param =
   }
 
 let compiler_param =
-  { Extract.encode_function_type = (function _ -> Z.of_int 0);
+  {(* TODO define instances of the actual encoding functions *)
+    Extract.encode_function_type = (function _ -> Z.of_int 0);
     decode_function_type = (function _ -> Extract.Tf ([], []));
+    Extract.encode_extern_t = (function _ -> Z.of_int 0);
+    Extract.decode_extern_t = decode_extern_t;
     otype_stack = Z.of_int 0;
     otype_lin_mem = Z.of_int 1;
     otype_global = Z.of_int 2;
@@ -431,7 +458,7 @@ module ConvertLinkableExtract = struct
   | CodeSection -> Extract.Code
   | DataSection -> Extract.Data
 
-  let extract_export_map (exports : (section_type * int) ExportMap.t) :
+  let extract_export_map (exports : (section_type * int) SymbolMap.t) :
     (Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap =
     let gmap : (((Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap) ref) =
       ref (Extract.gmap_empty () ())
@@ -439,7 +466,7 @@ module ConvertLinkableExtract = struct
     let update_gmap m s sec o =
       m := (Extract.exports_insert !m s sec o) ; ()
     in
-    ExportMap.iter
+    SymbolMap.iter
       (fun sym off ->
          update_gmap gmap (Misc.Utils.explode_string sym)
         (extract_section_type (fst off)) (Big_int_Z.big_int_of_int (snd off)))
@@ -472,6 +499,8 @@ module ConvertLinkableExtract = struct
       c_data = List.map extract_symbolic_word o.data_section;
       c_main = Option.map (fun off -> (extract_section_type (fst off), Big_int_Z.big_int_of_int (snd off))) o.start_offset;
       c_exports = extract_export_map o.exports_section;
+      c_imports = Extract.gmap_empty Extract.string_eq_dec Extract.string_countable; (*TODO*)
+      c_init = Extract.gmap_empty Extract.string_eq_dec Extract.string_countable; (*TODO*)
     }
 end
 

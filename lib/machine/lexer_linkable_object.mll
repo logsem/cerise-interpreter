@@ -114,7 +114,9 @@ rule token = parse
 | '$' (symbol as s) { SYMBOL s }
 | ".text" { TEXT_SECTION }
 | ".data" { DATA_SECTION }
-| ".symtab" { EXPORT_SECTION }
+| ".exports" { EXPORT_SECTION }
+| ".imports" { IMPORT_SECTION }
+| ".init" { INIT_SECTION }
 | ".start" { START_SECTION }
 
 and comment = parse

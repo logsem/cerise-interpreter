@@ -1491,6 +1491,42 @@ module Pos =
   let pred = (fun n -> Big_int_Z.max_big_int Big_int_Z.unit_big_int
   (Big_int_Z.pred_big_int n))
 
+  (** val eqb : Big_int_Z.big_int -> Big_int_Z.big_int -> bool **)
+
+  let rec eqb p q =
+    (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+      (fun p0 ->
+      (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+        (fun q0 -> eqb p0 q0)
+        (fun _ -> false)
+        (fun _ -> false)
+        q)
+      (fun p0 ->
+      (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+        (fun _ -> false)
+        (fun q0 -> eqb p0 q0)
+        (fun _ -> false)
+        q)
+      (fun _ ->
+      (fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)
+        (fun _ -> false)
+        (fun _ -> false)
+        (fun _ -> true)
+        q)
+      p
+
   (** val iter_op : ('a1 -> 'a1 -> 'a1) -> Big_int_Z.big_int -> 'a1 -> 'a1 **)
 
   let rec iter_op op p a =
@@ -1758,6 +1794,10 @@ module Z =
       Big_int_Z.big_int -> Big_int_Z.big_int -> Big_int_Z.big_int **)
 
   let sub = Big_int_Z.sub_big_int
+
+  (** val eqb : Big_int_Z.big_int -> Big_int_Z.big_int -> bool **)
+
+  let eqb = Big_int_Z.eq_big_int
 
   (** val of_nat : Big_int_Z.big_int -> Big_int_Z.big_int **)
 
@@ -2608,6 +2648,17 @@ let nbar_plus x y =
      | P_infty -> P_infty)
   | P_infty -> P_infty
 
+(** val nbar_eqb : nbar -> nbar -> bool **)
+
+let nbar_eqb x y =
+  match x with
+  | Finite z1 -> (match y with
+                  | Finite z2 -> Nat.eqb z1 z2
+                  | P_infty -> false)
+  | P_infty -> (match y with
+                | Finite _ -> false
+                | P_infty -> true)
+
 type regName =
 | PC
 | STK
@@ -2915,7 +2966,11 @@ type abstract_word = (word, symbols) sum
 type cerise_linkable_object = { c_code : abstract_word list;
                                 c_data : abstract_word list;
                                 c_main : section_offset option;
-                                c_exports : (symbols, section_offset) gmap }
+                                c_exports : (symbols, section_offset) gmap;
+                                c_imports : (symbols, Big_int_Z.big_int) gmap;
+                                c_init : (symbols,
+                                         (Big_int_Z.big_int * section_offset)
+                                         list) gmap }
 
 type cerise_executable_object = { segment : word list; main : word }
 
@@ -3325,6 +3380,12 @@ let get_function_type module0 i =
          get_type module0 module_func0.modfunc_type)
          (nth_error (Obj.magic module0.mod_funcs) i0)
 
+type extern_t =
+| ET_func of function_type
+| ET_tab of table_type
+| ET_mem of memory_type
+| ET_glob of global_type
+
 type labeled_instr =
 | Label of Big_int_Z.big_int list
 | BInstr of cerise_instruction
@@ -3358,7 +3419,12 @@ type labeled_data = { l_data_frame : abstract_word list;
 type labeled_cerise_component = { l_code : labeled_function list;
                                   l_data : labeled_data;
                                   l_main : section_offset option;
-                                  l_exports : (symbols, section_offset) gmap }
+                                  l_exports : (symbols, section_offset) gmap;
+                                  l_imports : (symbols, Big_int_Z.big_int)
+                                              gmap;
+                                  l_init : (symbols,
+                                           (Big_int_Z.big_int * section_offset)
+                                           list) gmap }
 
 type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
                                          cerise_instruction);
@@ -3417,7 +3483,10 @@ type compilerParameters = { encode_function_type : (function_type ->
                                                    Big_int_Z.big_int);
                             decode_function_type : (Big_int_Z.big_int ->
                                                    function_type);
-                            otype_stack : oType; otype_lin_mem : oType;
+                            encode_extern_t : (extern_t -> Big_int_Z.big_int);
+                            decode_extern_t : (Big_int_Z.big_int -> extern_t
+                                              option); otype_stack : 
+                            oType; otype_lin_mem : oType;
                             otype_global : oType; otype_safe_mem : oType;
                             otype_module : oType;
                             page_size : Big_int_Z.big_int;
@@ -5894,6 +5963,37 @@ let compile_func_closures cP frm_b frm_e compiled_functions func_mods m =
     compute_func_closure frm_b frm_e compiled_functions func_closures)
     (prepare_function_closures cP func_mods m)
 
+(** val compile_import :
+    compilerParameters -> module_import -> ws_module ->
+    (symbols * Big_int_Z.big_int) error **)
+
+let compile_import cP imp m =
+  let symbol = symbols_encode imp.imp_module imp.imp_name in
+  mbind (Obj.magic (fun _ _ -> error_bind)) (fun t0 -> Ok (symbol, t0))
+    (match imp.imp_desc with
+     | ID_func tidx ->
+       (match get_type m tidx with
+        | Some ft -> Ok (Obj.magic cP.encode_extern_t (ET_func ft))
+        | None ->
+          error_msg
+            ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('i'::('m'::('p'::('o'::('r'::('t'::(']'::(' '::('t'::('y'::('p'::('e'::(' '::('i'::('n'::('d'::('e'::('x'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::('.'::[])))))))))))))))))))))))))))))))))))))))
+     | ID_table tbl_t -> Ok (Obj.magic cP.encode_extern_t (ET_tab tbl_t))
+     | ID_mem mem_t -> Ok (Obj.magic cP.encode_extern_t (ET_mem mem_t))
+     | ID_global glob_t -> Ok (Obj.magic cP.encode_extern_t (ET_glob glob_t)))
+
+(** val compile_imports :
+    compilerParameters -> ws_module -> (symbols, Big_int_Z.big_int) gmap error **)
+
+let compile_imports cP m =
+  foldl (fun er_acc imp ->
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc ->
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun imp_entry -> Ok
+        (insert0
+          (map_insert (gmap_partial_alter string_eq_dec string_countable))
+          (fst imp_entry) (snd imp_entry) acc))
+        (Obj.magic compile_import cP imp m)) er_acc) (Ok
+    (gmap_empty string_eq_dec string_countable)) m.mod_imports
+
 (** val compile_module :
     compilerParameters -> machineParameters -> ws_module -> name ->
     labeled_cerise_component error **)
@@ -5909,20 +6009,23 @@ let compile_module cP mP m module_name =
     let e_frm = add b_frm (len_frame m) in
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closure_section ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun data_frame ->
-        let len_fc = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-          (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-        in
-        let offset_lin_mem_section =
-          add e_frm (mul len_fc (length func_closure_section))
-        in
-        let data_section =
-          app (concat (lin_mem_section offset_lin_mem_section))
-            (app (concat globals_section) (concat uninit_itables))
-        in
-        Ok { l_code = compiled_functions; l_data = { l_data_frame =
-        data_frame; l_data_func_closures = func_closure_section;
-        l_data_section = data_section }; l_main = (get_start m); l_exports =
-        exports })
+        mbind (Obj.magic (fun _ _ -> error_bind)) (fun imports ->
+          let init = gmap_empty string_eq_dec string_countable in
+          let len_fc = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+            (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+          in
+          let offset_lin_mem_section =
+            add e_frm (mul len_fc (length func_closure_section))
+          in
+          let data_section =
+            app (concat (lin_mem_section offset_lin_mem_section))
+              (app (concat globals_section) (concat uninit_itables))
+          in
+          Ok { l_code = compiled_functions; l_data = { l_data_frame =
+          data_frame; l_data_func_closures = func_closure_section;
+          l_data_section = data_section }; l_main = (get_start m);
+          l_exports = exports; l_imports = imports; l_init = init })
+          (Obj.magic compile_imports cP m))
         (Obj.magic compile_frame cP m e_frm func_closure_section
           (lin_mem_section Big_int_Z.zero_big_int) globals_section
           uninit_itables))
@@ -6066,7 +6169,8 @@ let compile_component mP m =
       in
       Ok { c_code =
       (map (fun x -> Inl x) (encodeInstrsW mP (concat lbl_erased_code)));
-      c_data = relocated_data; c_main = m.l_main; c_exports = m.l_exports })
+      c_data = relocated_data; c_main = m.l_main; c_exports = m.l_exports;
+      c_imports = m.l_imports; c_init = m.l_init })
       (Obj.magic compute_func_closure b_frm e_frm lbl_erased_code
         m.l_data.l_data_func_closures)) (Obj.magic compile_functions m.l_code)
 
@@ -6411,7 +6515,7 @@ let register_allocation m =
     (relocate m.l_data.l_data_frame reloc_shift); l_data_func_closures =
     func_closures; l_data_section =
     (relocate m.l_data.l_data_section reloc_shift) }; l_main = m.l_main;
-    l_exports = m.l_exports })
+    l_exports = m.l_exports; l_imports = m.l_imports; l_init = m.l_init })
     (Obj.magic compute_func_closure b_frm e_frm opt_code
       m.l_data.l_data_func_closures)
 
@@ -6524,11 +6628,256 @@ let relocate_word_right =
 let relocate_word_left =
   relocate_word relocate_addr_left relocate_eaddr_left
 
-(** val resolve_word :
-    abstract_word -> abstract_word list -> abstract_word list -> (symbols,
-    section_offset) gmap -> abstract_word error **)
+(** val check_global :
+    compilerParameters -> word -> global_type -> abstract_word list -> unit
+    error **)
 
-let resolve_word ws code_section data_section exports =
+let check_global h0 w glob_t mem =
+  match w with
+  | WSealed (o, s) ->
+    (match s with
+     | SCap (p, gb, ge, ga) ->
+       let (p0, l) = p in
+       (match p0 with
+        | RW ->
+          (match l with
+           | Global ->
+             if negb (Nat.eqb o h0.otype_global)
+             then error_msg1
+                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('o'::('t'::('y'::('p'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))
+             else if negb
+                       (nbar_eqb ge
+                         (nbar_plus (Finite gb) (Finite
+                           (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                           (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
+                  then error_msg1
+                         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('s'::('i'::('z'::('e'::[]))))))))))))))))))))))))))))))))))))))))
+                  else if negb (Nat.eqb ga gb)
+                       then error_msg1
+                              ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                       else (match nth_error mem gb with
+                             | Some a ->
+                               (match a with
+                                | Inl g_val ->
+                                  (match nth_error mem
+                                           (add gb (Big_int_Z.succ_big_int
+                                             Big_int_Z.zero_big_int)) with
+                                   | Some a0 ->
+                                     (match a0 with
+                                      | Inl w0 ->
+                                        (match w0 with
+                                         | WInt g_type ->
+                                           (match nth_error mem
+                                                    (add gb
+                                                      (Big_int_Z.succ_big_int
+                                                      (Big_int_Z.succ_big_int
+                                                      Big_int_Z.zero_big_int))) with
+                                            | Some a1 ->
+                                              (match a1 with
+                                               | Inl _ ->
+                                                 mbind
+                                                   (Obj.magic (fun _ _ ->
+                                                     error_bind)) (fun _ ->
+                                                   mbind
+                                                     (Obj.magic (fun _ _ ->
+                                                       error_bind)) (fun _ ->
+                                                     Ok ())
+                                                     (match glob_t.tg_mut with
+                                                      | MUT_immut ->
+                                                        if Z.eqb g_type
+                                                             Big_int_Z.zero_big_int
+                                                        then Ok ()
+                                                        else error_msg1
+                                                               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[])))))))))))))))))))))))))))))
+                                                      | MUT_mut ->
+                                                        if Z.eqb g_type
+                                                             Big_int_Z.unit_big_int
+                                                        then Ok ()
+                                                        else error_msg1
+                                                               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[])))))))))))))))))))))))))))))))
+                                                   (match glob_t.tg_t with
+                                                    | T_int ->
+                                                      if Z.eqb g_type
+                                                           Big_int_Z.zero_big_int
+                                                      then (match g_val with
+                                                            | WInt _ -> Ok ()
+                                                            | _ ->
+                                                              error_msg1
+                                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                      else error_msg1
+                                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::[]))))))))))))))))))))))))))))))
+                                                    | T_handle ->
+                                                      if Z.eqb g_type
+                                                           Big_int_Z.unit_big_int
+                                                      then (match g_val with
+                                                            | WSealable sb ->
+                                                              (match sb with
+                                                               | SCap (
+                                                                   p1, a2,
+                                                                   n0, a3) ->
+                                                                 let (
+                                                                   p2, l0) =
+                                                                   p1
+                                                                 in
+                                                                 (match p2 with
+                                                                  | RW ->
+                                                                    (match l0 with
+                                                                    | Global ->
+                                                                    ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+                                                                    (fun _ ->
+                                                                    match n0 with
+                                                                    | Finite n1 ->
+                                                                    ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+                                                                    (fun _ ->
+                                                                    (fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+                                                                    (fun _ ->
+                                                                    Ok
+                                                                    ())
+                                                                    (fun _ ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    a3)
+                                                                    (fun _ ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    n1)
+                                                                    | P_infty ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    (fun _ ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    a2)
+                                                                    | _ ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                  | _ ->
+                                                                    error_msg1
+                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                               | SSealRange (
+                                                                   _, _, _, _) ->
+                                                                 error_msg1
+                                                                   ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                            | _ ->
+                                                              error_msg1
+                                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                      else error_msg1
+                                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::[])))))))))))))))))))))))))))))))))
+                                               | Inr _ ->
+                                                 error_msg1
+                                                   ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                            | None ->
+                                              error_msg1
+                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                         | _ ->
+                                           error_msg1
+                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('m'::('u'::('s'::('t'::(' '::('b'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
+                                      | Inr _ ->
+                                        error_msg1
+                                          ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
+                                   | None ->
+                                     error_msg1
+                                       ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+                                | Inr _ ->
+                                  error_msg1
+                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+                             | None ->
+                               error_msg1
+                                 ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))
+           | _ ->
+             error_msg1
+               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
+        | _ ->
+          error_msg1
+            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
+     | SSealRange (_, _, _, _) ->
+       error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
+  | _ ->
+    error_msg1
+      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))
+
+(** val check_itable :
+    word -> table_type -> abstract_word list -> unit error **)
+
+let check_itable w _ _ =
+  match w with
+  | WSealable sb ->
+    (match sb with
+     | SCap (p, _, _, _) ->
+       let (p0, l) = p in
+       (match p0 with
+        | RO ->
+          (match l with
+           | Global -> Ok ()
+           | _ ->
+             error_msg1
+               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+        | _ ->
+          error_msg1
+            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+     | SSealRange (_, _, _, _) ->
+       error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+  | _ ->
+    error_msg1
+      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
+
+(** val check_lin_mem :
+    word -> memory_type -> abstract_word list -> unit error **)
+
+let check_lin_mem w _ _ =
+  match w with
+  | WSealed (_, s) ->
+    (match s with
+     | SCap (p, _, _, _) ->
+       let (p0, l) = p in
+       (match p0 with
+        | RW ->
+          (match l with
+           | Global -> Ok ()
+           | _ ->
+             error_msg1
+               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
+        | _ ->
+          error_msg1
+            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
+     | SSealRange (_, _, _, _) ->
+       error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
+  | _ ->
+    error_msg1
+      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
+
+(** val check_function_closure :
+    word -> function_type -> abstract_word list -> unit error **)
+
+let check_function_closure _ _ _ =
+  Ok ()
+
+(** val check_symbol_type :
+    compilerParameters -> word -> Big_int_Z.big_int -> abstract_word list ->
+    unit error **)
+
+let check_symbol_type h0 w et mem =
+  match h0.decode_extern_t et with
+  | Some e ->
+    (match e with
+     | ET_func ft -> check_function_closure w ft mem
+     | ET_tab tbl_t -> check_itable w tbl_t mem
+     | ET_mem mem_t -> check_lin_mem w mem_t mem
+     | ET_glob glob_t -> check_global h0 w glob_t mem)
+  | None -> Ok ()
+
+(** val resolve_word :
+    compilerParameters -> abstract_word -> abstract_word list ->
+    abstract_word list -> (symbols, section_offset) gmap -> (symbols,
+    Big_int_Z.big_int) gmap -> abstract_word error **)
+
+let resolve_word h0 ws code_section data_section exports imports =
   match ws with
   | Inl w -> Ok (Inl w)
   | Inr s ->
@@ -6542,7 +6891,15 @@ let resolve_word ws code_section data_section exports =
        (match nth_error data n0 with
         | Some w ->
           (match w with
-           | Inl w0 -> Ok (Inl w0)
+           | Inl w' ->
+             (match lookup0 (gmap_lookup string_eq_dec string_countable) s
+                      imports with
+              | Some et ->
+                mbind (Obj.magic (fun _ _ -> error_bind)) (fun _ -> Ok (Inl
+                  w'))
+                  (Obj.magic check_symbol_type h0 w' et
+                    (app code_section data_section))
+              | None -> Ok (Inl w'))
            | Inr _ ->
              error_msg1
                ('['::('r'::('e'::('s'::('o'::('l'::('v'::('e'::('_'::('w'::('o'::('r'::('d'::(']'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))
@@ -6552,18 +6909,20 @@ let resolve_word ws code_section data_section exports =
      | None -> Ok (Inr s))
 
 (** val resolve_data :
-    abstract_word list -> abstract_word list -> abstract_word list ->
-    (symbols, section_offset) gmap -> abstract_word list error **)
+    compilerParameters -> abstract_word list -> abstract_word list ->
+    abstract_word list -> (symbols, section_offset) gmap -> (symbols,
+    Big_int_Z.big_int) gmap -> abstract_word list error **)
 
-let rec resolve_data left_data code_section data_section exports =
+let rec resolve_data h0 left_data code_section data_section exports imports =
   match left_data with
   | [] -> Ok []
   | ws :: data' ->
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun solved_data ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun solved_sym -> Ok
         (solved_sym :: solved_data))
-        (Obj.magic resolve_word ws code_section data_section exports))
-      (resolve_data data' code_section data_section exports)
+        (Obj.magic resolve_word h0 ws code_section data_section exports
+          imports))
+      (resolve_data h0 data' code_section data_section exports imports)
 
 (** val resolve_main :
     cerise_linkable_object -> cerise_linkable_object -> section_offset option
@@ -6582,11 +6941,45 @@ let resolve_main p_left p_right =
      | Some m -> Ok (Some (relocate_export_right m p_left p_right))
      | None -> Ok None)
 
+(** val offset_otype :
+    compilerParameters -> abstract_word -> oType -> abstract_word **)
+
+let offset_otype h0 aw off =
+  match aw with
+  | Inl w ->
+    (match w with
+     | WSealed (ot, sb) ->
+       Inl
+         (if Coq_Nat.ltb ot h0.otype_module
+          then WSealed (ot, sb)
+          else WSealed
+                 ((add
+                    (add (sub ot h0.otype_module) (Big_int_Z.succ_big_int
+                      Big_int_Z.zero_big_int)) off), sb))
+     | _ -> Inl w)
+  | Inr s -> Inr s
+
+(** val offsets_otype :
+    compilerParameters -> abstract_word list -> oType -> abstract_word list **)
+
+let offsets_otype h0 l off =
+  map (fun w -> offset_otype h0 w off) l
+
+(** val get_max_otype : abstract_word list -> oType **)
+
+let get_max_otype l =
+  foldl (fun acc w ->
+    match w with
+    | Inl y -> (match y with
+                | WSealed (o, _) -> max o acc
+                | _ -> acc)
+    | Inr _ -> acc) Big_int_Z.zero_big_int l
+
 (** val link_seq :
-    cerise_linkable_object -> cerise_linkable_object ->
+    compilerParameters -> cerise_linkable_object -> cerise_linkable_object ->
     cerise_linkable_object error **)
 
-let link_seq p_left p_right =
+let link_seq h0 p_left p_right =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun main_word ->
     let relocated_right_code =
       map (fun w -> relocate_word_right w p_left p_right) p_right.c_code
@@ -6616,28 +7009,49 @@ let link_seq p_left p_right =
                   gmap_fmap string_eq_dec string_countable)) (fun e ->
                 relocate_export_left e p_left p_right) p_left.c_exports
             in
-            Ok { c_code = (app linked_code_left linked_code_right); c_data =
-            (app linked_data_left linked_data_right); c_main = main_word;
+            let max_otype_left =
+              get_max_otype (app linked_code_left linked_data_left)
+            in
+            let otypes_code_right =
+              offsets_otype h0 linked_code_right max_otype_left
+            in
+            let otypes_data_right =
+              offsets_otype h0 linked_data_right max_otype_left
+            in
+            Ok { c_code = (app linked_code_left otypes_code_right); c_data =
+            (app linked_data_left otypes_data_right); c_main = main_word;
             c_exports =
             (union0
               (map_union
                 (Obj.magic (fun _ _ _ ->
                   gmap_merge string_eq_dec string_countable)))
-              relocated_left_exports relocated_right_exports) })
-            (Obj.magic resolve_data relocated_right_data relocated_left_code
-              relocated_left_data p_left.c_exports))
-          (Obj.magic resolve_data relocated_right_code relocated_left_code
-            relocated_left_data p_left.c_exports))
-        (Obj.magic resolve_data relocated_left_data relocated_right_code
-          relocated_right_data p_right.c_exports))
-      (Obj.magic resolve_data relocated_left_code relocated_right_code
-        relocated_right_data p_right.c_exports))
+              relocated_left_exports relocated_right_exports); c_imports =
+            (union0
+              (map_union
+                (Obj.magic (fun _ _ _ ->
+                  gmap_merge string_eq_dec string_countable)))
+              p_left.c_imports p_right.c_imports); c_init =
+            (union0
+              (map_union
+                (Obj.magic (fun _ _ _ ->
+                  gmap_merge string_eq_dec string_countable))) p_left.c_init
+              p_right.c_init) })
+            (Obj.magic resolve_data h0 relocated_right_data
+              relocated_left_code relocated_left_data p_left.c_exports
+              p_right.c_imports))
+          (Obj.magic resolve_data h0 relocated_right_code relocated_left_code
+            relocated_left_data p_left.c_exports p_right.c_imports))
+        (Obj.magic resolve_data h0 relocated_left_data relocated_right_code
+          relocated_right_data p_right.c_exports p_left.c_imports))
+      (Obj.magic resolve_data h0 relocated_left_code relocated_right_code
+        relocated_right_data p_right.c_exports p_left.c_imports))
     (Obj.magic resolve_main p_left p_right)
 
 (** val instantiation :
-    cerise_linkable_object list -> cerise_linkable_object error **)
+    compilerParameters -> cerise_linkable_object list ->
+    cerise_linkable_object error **)
 
-let rec instantiation = function
+let rec instantiation h0 = function
 | [] ->
   error_msg1
     ('['::('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('i'::('o'::('n'::(']'::(' '::('r'::('e'::('q'::('u'::('i'::('r'::('e'::('s'::(' '::('a'::('t'::(' '::('l'::('e'::('a'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
@@ -6646,7 +7060,7 @@ let rec instantiation = function
    | [] -> Ok p_left
    | _ :: _ ->
      mbind (Obj.magic (fun _ _ -> error_bind)) (fun p_right ->
-       link_seq p_left p_right) (instantiation p_right'))
+       link_seq h0 p_left p_right) (instantiation h0 p_right'))
 
 (** val error_msg2 : char list -> 'a1 error **)
 
@@ -6790,7 +7204,9 @@ let common_module mP cP =
       (map_singleton (gmap_partial_alter string_eq_dec string_countable)
         (gmap_empty string_eq_dec string_countable)) safe_mem_sym (Data,
       (add offset_exports_data (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int))))) }
+        Big_int_Z.zero_big_int))))); c_imports =
+  (gmap_empty string_eq_dec string_countable); c_init =
+  (gmap_empty string_eq_dec string_countable) }
 
 (** val get_word : abstract_word -> word error **)
 
@@ -6841,7 +7257,7 @@ let linkable_to_executable mP cP cerise_obj =
           (Obj.magic get_main_word linked_obj code data))
         (Obj.magic loadable linked_obj.c_data))
       (Obj.magic loadable linked_obj.c_code))
-    (Obj.magic link_seq cerise_obj (common_module mP cP))
+    (Obj.magic link_seq cP cerise_obj (common_module mP cP))
 
 (** val boot_code : machineParameters -> word list **)
 
@@ -6938,7 +7354,7 @@ let load_in_memory mP cP start_stack modules =
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun inst -> Ok
         (init_state mP inst start_stack))
         (Obj.magic linkable_to_executable mP cP linked))
-      (Obj.magic instantiation comps))
+      (Obj.magic instantiation cP comps))
     (Obj.magic list_error (compile_list mP cP modules))
 
 (** val bank_prog : ws_basic_instruction list **)
@@ -7705,7 +8121,9 @@ let env_object mP cP =
         (map_singleton (gmap_partial_alter string_eq_dec string_countable)
           (gmap_empty string_eq_dec string_countable))
         ('E'::('n'::('v'::('.'::('h'::[]))))) (Data, (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int)))) }
+        Big_int_Z.zero_big_int)))); c_imports =
+    (gmap_empty string_eq_dec string_countable); c_init =
+    (gmap_empty string_eq_dec string_countable) }
 
 (** val load_test :
     machineParameters -> compilerParameters -> Big_int_Z.big_int ->

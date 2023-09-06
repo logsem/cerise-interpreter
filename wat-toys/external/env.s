@@ -25,7 +25,8 @@
     #{4: (RX, Global, 0, 10, 0)}
     #{4: (RO, Global, 10, 14, 10)}
     #0
-
-.symtab
+.imports
+.exports
     $env.h: .data 1
     $env.adv: .data 0
+.init
