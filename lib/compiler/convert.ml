@@ -460,18 +460,19 @@ module ConvertLinkableExtract = struct
 
   let extract_export_map (exports : (section_type * int) SymbolMap.t) :
     (Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap =
-    let gmap : (((Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap) ref) =
+    let empty_gmap : (((Extract.symbols, (Extract.section * Big_int_Z.big_int)) Extract.gmap) ref) =
       ref (Extract.gmap_empty () ())
     in
     let update_gmap m s sec o =
-      m := (Extract.exports_insert !m s sec o) ; ()
+      (* m := (Extract.exports_insert !m s sec o) ; () *)
+      m := (Extract.gmap_insert !m s (sec, o)) ; ()
     in
     SymbolMap.iter
       (fun sym off ->
-         update_gmap gmap (Misc.Utils.explode_string sym)
+         update_gmap empty_gmap (Misc.Utils.explode_string sym)
         (extract_section_type (fst off)) (Big_int_Z.big_int_of_int (snd off)))
       exports;
-    !gmap
+    !empty_gmap
 
   let extract_word (w : Ir.machine_op) : Extract.word =
     let extract_machine_op op =
@@ -492,6 +493,43 @@ module ConvertLinkableExtract = struct
     | ConcreteWord w -> Extract.Inl (extract_word w)
     | Symbol s -> Extract.Inr (Misc.Utils.explode_string s)
 
+  let rec extract_init ( l : ((int * Ir.machine_op) list) ) :
+    (Big_int_Z.big_int * Extract.word) list =
+    List.map (fun e -> (Big_int_Z.big_int_of_int (fst e), extract_word (snd e))) l
+
+  let extract_init_section (init_section : ((int * Ir.machine_op) list) SymbolMap.t) :
+    (Extract.symbols, (Big_int_Z.big_int * Extract.word) list) Extract.gmap =
+    let empty_gmap : (((Extract.symbols, (Big_int_Z.big_int * Extract.word) list) Extract.gmap) ref) =
+      ref (Extract.gmap_empty () ())
+    in
+    let update_gmap m s l =
+      m := (Extract.gmap_insert !m s l) ; ()
+    in
+    Printf.printf "ah\n";
+    SymbolMap.iter
+      (fun sym l ->
+         update_gmap empty_gmap
+           (Misc.Utils.explode_string sym)
+           (extract_init l))
+      init_section;
+    !empty_gmap
+
+  let extract_imports (imports_section : int SymbolMap.t) :
+    (Extract.symbols, Big_int_Z.big_int) Extract.gmap =
+    let empty_gmap : (((Extract.symbols, Big_int_Z.big_int) Extract.gmap) ref) =
+      ref (Extract.gmap_empty () ())
+    in
+    let update_gmap m s l =
+      m := (Extract.gmap_insert !m s l) ; ()
+    in
+    SymbolMap.iter
+      (fun sym z ->
+         update_gmap empty_gmap
+           (Misc.Utils.explode_string sym)
+           (Big_int_Z.big_int_of_int z))
+      imports_section;
+    !empty_gmap
+
 
   let extract_object (o : linkable_object) : Extract.cerise_linkable_object =
     {
@@ -499,8 +537,8 @@ module ConvertLinkableExtract = struct
       c_data = List.map extract_symbolic_word o.data_section;
       c_main = Option.map (fun off -> (extract_section_type (fst off), Big_int_Z.big_int_of_int (snd off))) o.start_offset;
       c_exports = extract_export_map o.exports_section;
-      c_imports = Extract.gmap_empty Extract.string_eq_dec Extract.string_countable; (*TODO*)
-      c_init = Extract.gmap_empty Extract.string_eq_dec Extract.string_countable; (*TODO*)
+      c_imports = extract_imports o.imports_section;
+      c_init = extract_init_section o.init_section
     }
 end
 

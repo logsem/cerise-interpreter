@@ -33,6 +33,16 @@ let fst = function
 let snd = function
 | (_, y) -> y
 
+(** val uncurry : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
+
+let uncurry f = function
+| (x, y) -> f x y
+
+(** val prod_curry_subdef : ('a1 -> 'a2 -> 'a3) -> ('a1 * 'a2) -> 'a3 **)
+
+let prod_curry_subdef =
+  uncurry
+
 (** val length : 'a1 list -> Big_int_Z.big_int **)
 
 let rec length = function
@@ -77,6 +87,19 @@ let id x =
 
 type 'a sig0 = 'a
   (* singleton inductive, whose constructor was exist *)
+
+type ('a, 'p) sigT =
+| ExistT of 'a * 'p
+
+(** val projT1 : ('a1, 'a2) sigT -> 'a1 **)
+
+let projT1 = function
+| ExistT (a, _) -> a
+
+(** val projT2 : ('a1, 'a2) sigT -> 'a2 **)
+
+let projT2 = function
+| ExistT (_, h) -> h
 
 
 
@@ -2392,6 +2415,13 @@ let kmap h h0 h1 f m =
     (fmap (Obj.magic (fun _ _ -> list_fmap)) (prod_map f id)
       (map_to_list (h1 __) m))
 
+(** val map_fold :
+    ('a1, 'a2, 'a3) finMapToList -> ('a1 -> 'a2 -> 'a4 -> 'a4) -> 'a4 -> 'a3
+    -> 'a4 **)
+
+let map_fold h f b =
+  compose (fold_right (prod_curry_subdef f) b) (map_to_list h)
+
 type 'a pmap_raw =
 | PLeaf
 | PNode of 'a option * 'a pmap_raw * 'a pmap_raw
@@ -2611,6 +2641,23 @@ let list_error l_opt =
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun acc -> Ok (e :: acc))
         acc_opt) (Obj.magic e_opt)) (Ok []) l_opt
 
+(** val update_nth_error :
+    'a1 list -> Big_int_Z.big_int -> 'a1 -> 'a1 list option **)
+
+let rec update_nth_error l n0 e =
+  (fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+    (fun _ -> match l with
+              | [] -> None
+              | _ :: l0 -> Some (e :: l0))
+    (fun n1 ->
+    match l with
+    | [] -> None
+    | x :: l' ->
+      mbind (Obj.magic (fun _ _ -> option_bind)) (fun upd_l -> Some
+        (x :: upd_l)) (update_nth_error l' n1 e))
+    n0
+
 (** val list_to_gmap :
     ('a2, 'a2) relDecision -> 'a2 countable -> ('a2, 'a2) relDecision -> 'a1
     list -> 'a2 -> ('a2 -> 'a2) -> ('a2, 'a1) gmap **)
@@ -2625,6 +2672,16 @@ let rec list_to_gmap eqDecision0 h eqDecision1 l k incr =
 type nbar =
 | Finite of Big_int_Z.big_int
 | P_infty
+
+(** val nbar_ltb : nbar -> nbar -> bool **)
+
+let nbar_ltb x y =
+  match x with
+  | Finite x0 ->
+    (match y with
+     | Finite y0 -> Coq_Nat.ltb x0 y0
+     | P_infty -> true)
+  | P_infty -> false
 
 (** val nbar_leb : nbar -> nbar -> bool **)
 
@@ -2647,6 +2704,26 @@ let nbar_plus x y =
      | Finite y' -> Finite (add x' y')
      | P_infty -> P_infty)
   | P_infty -> P_infty
+
+(** val nbar_minus' : nbar -> nbar -> nbar option **)
+
+let nbar_minus' x y =
+  match x with
+  | Finite x' ->
+    (match y with
+     | Finite y' -> Some (Finite (sub x' y'))
+     | P_infty -> None)
+  | P_infty ->
+    (match y with
+     | Finite _ -> Some P_infty
+     | P_infty -> Some (Finite Big_int_Z.zero_big_int))
+
+(** val nbar_minus : nbar -> nbar -> nbar **)
+
+let nbar_minus x y =
+  match nbar_minus' x y with
+  | Some z0 -> z0
+  | None -> Finite Big_int_Z.zero_big_int
 
 (** val nbar_eqb : nbar -> nbar -> bool **)
 
@@ -2968,8 +3045,7 @@ type cerise_linkable_object = { c_code : abstract_word list;
                                 c_main : section_offset option;
                                 c_exports : (symbols, section_offset) gmap;
                                 c_imports : (symbols, Big_int_Z.big_int) gmap;
-                                c_init : (symbols,
-                                         (Big_int_Z.big_int * section_offset)
+                                c_init : (symbols, (Big_int_Z.big_int * word)
                                          list) gmap }
 
 type cerise_executable_object = { segment : word list; main : word }
@@ -3079,6 +3155,15 @@ let max_reg_instr = function
   max (get_reg_num r1) tmp
 | PromoteU r0 -> get_reg_num r0
 | _ -> Big_int_Z.zero_big_int
+
+(** val executeAllowed : perm -> bool **)
+
+let executeAllowed = function
+| RX -> true
+| E -> true
+| RWX -> true
+| RWLX -> true
+| _ -> false
 
 (** val list_to_mem : 'a1 list -> addr -> (addr, 'a1) gmap **)
 
@@ -3423,8 +3508,8 @@ type labeled_cerise_component = { l_code : labeled_function list;
                                   l_imports : (symbols, Big_int_Z.big_int)
                                               gmap;
                                   l_init : (symbols,
-                                           (Big_int_Z.big_int * section_offset)
-                                           list) gmap }
+                                           (Big_int_Z.big_int * word) list)
+                                           gmap }
 
 type machineParameters = { decodeInstr : (Big_int_Z.big_int ->
                                          cerise_instruction);
@@ -4615,12 +4700,13 @@ let len_frame module0 =
           (add
             (add
               (add
-                (add (len_imports_functions module0)
-                  (len_defined_functions module0))
-                (len_imports_lin_mems module0))
-              (len_defined_lin_mems module0)) (len_imports_globals module0))
-          (len_defined_globals module0)) (len_imports_itables module0))
-      len_safe_mem) len_linking_table
+                (add
+                  (add (len_imports_functions module0)
+                    (len_defined_functions module0))
+                  (len_imports_lin_mems module0))
+                (len_defined_lin_mems module0)) (len_imports_globals module0))
+            (len_defined_globals module0)) (len_imports_itables module0))
+        (len_defined_itables module0)) len_safe_mem) len_linking_table
 
 type compilation_state = { regidx : Big_int_Z.big_int;
                            current_scope : scope_state }
@@ -5710,8 +5796,7 @@ let compile_indirect_table cP it =
     | None -> cP.max_size_indirection_table
   in
   let indirect_table =
-    allocate_data nb_entry
-      ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
+    allocate_data nb_entry (Big_int_Z.mult_int_big_int 2
       ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
       ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
       Big_int_Z.unit_big_int)))
@@ -5994,6 +6079,147 @@ let compile_imports cP m =
         (Obj.magic compile_import cP imp m)) er_acc) (Ok
     (gmap_empty string_eq_dec string_countable)) m.mod_imports
 
+type itableType = abstract_word list
+
+type initType = (symbols, (Big_int_Z.big_int * word) list) gmap
+
+(** val update_table :
+    itableType -> Big_int_Z.big_int -> word -> itableType error **)
+
+let update_table itable offset_entry entry_word =
+  match update_nth_error itable offset_entry (Inl entry_word) with
+  | Some _ -> Ok itable
+  | None ->
+    error_msg
+      ('['::('u'::('p'::('d'::('a'::('t'::('e'::('_'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('e'::('r'::('r'::('o'::('r'::(' '::('u'::('p'::('d'::('a'::('t'::('e'::(' '::('i'::('t'::('a'::('b'::('l'::('e'::[]))))))))))))))))))))))))))))))))))
+
+(** val update_tables :
+    itableType list -> Big_int_Z.big_int -> Big_int_Z.big_int -> word list ->
+    itableType list error **)
+
+let rec update_tables itables n_tbl offset_entry = function
+| [] -> Ok itables
+| w :: entry_words' ->
+  mbind (Obj.magic (fun _ _ -> error_bind)) (fun itables' ->
+    match nth_error itables' n_tbl with
+    | Some itable ->
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun itable' ->
+        match update_nth_error itables' n_tbl itable' with
+        | Some itables'' -> Ok itables''
+        | None ->
+          error_msg
+            ('['::('u'::('p'::('d'::('a'::('t'::('e'::('_'::('t'::('a'::('b'::('l'::('e'::('s'::(']'::(' '::('e'::('r'::('r'::('o'::('r'::(' '::('u'::('p'::('d'::('a'::('t'::('e'::(' '::('i'::('t'::('a'::('b'::('l'::('e'::('s'::[])))))))))))))))))))))))))))))))))))))
+        (Obj.magic update_table itable offset_entry w)
+    | None ->
+      error_msg
+        ('['::('u'::('p'::('d'::('a'::('t'::('e'::('_'::('t'::('a'::('b'::('l'::('e'::('s'::(']'::(' '::('t'::('a'::('b'::('l'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))
+    (update_tables itables n_tbl
+      (add offset_entry (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+      entry_words')
+
+(** val imported_entries :
+    symbols -> Big_int_Z.big_int -> word list ->
+    ((symbols * Big_int_Z.big_int) * word) list **)
+
+let rec imported_entries sym offset_entry = function
+| [] -> []
+| w :: entry_words' ->
+  ((sym, offset_entry),
+    w) :: (imported_entries sym
+            (add offset_entry (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+            entry_words')
+
+(** val init_entries :
+    funcidx list -> abstract_word list -> word list error **)
+
+let rec init_entries fidxs frame_data =
+  match fidxs with
+  | [] -> Ok []
+  | f :: fidxs' ->
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun words ->
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun word0 -> Ok
+        (word0 :: words))
+        (match nth_error frame_data f with
+         | Some a ->
+           (match a with
+            | Inl w -> Ok (Obj.magic w)
+            | Inr _ ->
+              error_msg
+                ('['::('i'::('n'::('i'::('t'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('i'::('n'::('i'::('t'::(' '::('e'::('l'::('e'::('m'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
+         | None ->
+           error_msg
+             ('['::('i'::('n'::('i'::('t'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))
+      (init_entries fidxs' frame_data)
+
+(** val compile_element :
+    module_element -> itableType list -> abstract_word list ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> (itableType list,
+    ((symbols * Big_int_Z.big_int) * word) list) sum error **)
+
+let compile_element element itables frame_data idx_imports_itables idx_defined_itables =
+  let tidx = element.modelem_table in
+  let offset_entry = element.modelem_offset in
+  mbind (Obj.magic (fun _ _ -> error_bind)) (fun entry_words ->
+    match nth_error frame_data (add idx_imports_itables tidx) with
+    | Some a ->
+      (match a with
+       | Inl _ ->
+         let size_imports_itables =
+           sub idx_defined_itables idx_imports_itables
+         in
+         let n_tbl = sub tidx size_imports_itables in
+         mbind (Obj.magic (fun _ _ -> error_bind)) (fun upd_tbl -> Ok (Inl
+           upd_tbl))
+           (Obj.magic update_tables itables n_tbl offset_entry entry_words)
+       | Inr s -> Ok (Inr (imported_entries s offset_entry entry_words)))
+    | None ->
+      error_msg
+        ('['::('c'::('o'::('m'::('p'::('i'::('l'::('e'::('_'::('e'::('l'::('e'::('m'::('e'::('n'::('t'::(']'::(' '::('i'::('t'::('a'::('b'::('l'::('e'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('f'::('r'::('a'::('m'::('e'::[]))))))))))))))))))))))))))))))))))))))))))))))))
+    (Obj.magic init_entries element.modelem_init frame_data)
+
+(** val update_inits :
+    initType -> symbols -> Big_int_Z.big_int -> word -> initType **)
+
+let update_inits inits sym off w =
+  let new_elem = (off, w) in
+  (match lookup0 (gmap_lookup string_eq_dec string_countable) sym inits with
+   | Some l ->
+     insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
+       sym (new_elem :: l) inits
+   | None ->
+     insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable))
+       sym (new_elem :: []) inits)
+
+(** val update_linits :
+    initType -> ((symbols * Big_int_Z.big_int) * word) list -> initType **)
+
+let rec update_linits inits = function
+| [] -> inits
+| p :: linits' ->
+  let (p0, w) = p in
+  let (sym, off) = p0 in
+  let inits' = update_inits inits sym off w in update_linits inits' linits'
+
+(** val compile_elements :
+    module_element list -> itableType list -> abstract_word list ->
+    Big_int_Z.big_int -> Big_int_Z.big_int -> (itableType list * initType)
+    error **)
+
+let rec compile_elements elements itables frame_data idx_imports_itables idx_defined_itables =
+  match elements with
+  | [] -> Ok (itables, (gmap_empty string_eq_dec string_countable))
+  | e :: elements' ->
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_elems ->
+      let (itables', inits) = compiled_elems in
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun compiled_elem ->
+        match compiled_elem with
+        | Inl itbl -> Ok (itbl, inits)
+        | Inr linits -> Ok (itables', (update_linits inits linits)))
+        (Obj.magic compile_element e itables' frame_data idx_imports_itables
+          idx_defined_itables))
+      (compile_elements elements' itables frame_data idx_imports_itables
+        idx_defined_itables)
+
 (** val compile_module :
     compilerParameters -> machineParameters -> ws_module -> name ->
     labeled_cerise_component error **)
@@ -6009,23 +6235,26 @@ let compile_module cP mP m module_name =
     let e_frm = add b_frm (len_frame m) in
     mbind (Obj.magic (fun _ _ -> error_bind)) (fun func_closure_section ->
       mbind (Obj.magic (fun _ _ -> error_bind)) (fun data_frame ->
-        mbind (Obj.magic (fun _ _ -> error_bind)) (fun imports ->
-          let init = gmap_empty string_eq_dec string_countable in
-          let len_fc = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-            (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
-          in
-          let offset_lin_mem_section =
-            add e_frm (mul len_fc (length func_closure_section))
-          in
-          let data_section =
-            app (concat (lin_mem_section offset_lin_mem_section))
-              (app (concat globals_section) (concat uninit_itables))
-          in
-          Ok { l_code = compiled_functions; l_data = { l_data_frame =
-          data_frame; l_data_func_closures = func_closure_section;
-          l_data_section = data_section }; l_main = (get_start m);
-          l_exports = exports; l_imports = imports; l_init = init })
-          (Obj.magic compile_imports cP m))
+        mbind (Obj.magic (fun _ _ -> error_bind)) (fun elems ->
+          let (itable_section, inits) = elems in
+          mbind (Obj.magic (fun _ _ -> error_bind)) (fun imports ->
+            let len_fc = Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))
+            in
+            let offset_lin_mem_section =
+              add e_frm (mul len_fc (length func_closure_section))
+            in
+            let data_section =
+              app (concat (lin_mem_section offset_lin_mem_section))
+                (app (concat globals_section) (concat itable_section))
+            in
+            Ok { l_code = compiled_functions; l_data = { l_data_frame =
+            data_frame; l_data_func_closures = func_closure_section;
+            l_data_section = data_section }; l_main = (get_start m);
+            l_exports = exports; l_imports = imports; l_init = inits })
+            (Obj.magic compile_imports cP m))
+          (Obj.magic compile_elements m.mod_elem uninit_itables data_frame
+            frm.idx_imports_itable frm.idx_defined_itable))
         (Obj.magic compile_frame cP m e_frm func_closure_section
           (lin_mem_section Big_int_Z.zero_big_int) globals_section
           uninit_itables))
@@ -6593,8 +6822,8 @@ let relocate_eaddr_left =
 (** val relocate_word :
     (Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
     Big_int_Z.big_int) -> (nbar -> cerise_linkable_object ->
-    cerise_linkable_object -> nbar) -> abstract_word ->
-    cerise_linkable_object -> cerise_linkable_object -> abstract_word **)
+    cerise_linkable_object -> nbar) -> word -> cerise_linkable_object ->
+    cerise_linkable_object -> word **)
 
 let relocate_word relocate_addr relocate_eaddr w p_left p_right =
   let relocate_sealable = fun sb ->
@@ -6606,121 +6835,142 @@ let relocate_word relocate_addr relocate_eaddr w p_left p_right =
     | SSealRange (p0, b, e, a) -> SSealRange (p0, b, e, a)
   in
   (match w with
-   | Inl w0 ->
-     Inl
-       (match w0 with
-        | WInt z0 -> WInt z0
-        | WSealable sb -> WSealable (relocate_sealable sb)
-        | WSealed (ot, sb) -> WSealed (ot, (relocate_sealable sb)))
-   | Inr s -> Inr s)
+   | WInt z0 -> WInt z0
+   | WSealable sb -> WSealable (relocate_sealable sb)
+   | WSealed (ot, sb) -> WSealed (ot, (relocate_sealable sb)))
+
+(** val relocate_abstract_word :
+    (Big_int_Z.big_int -> cerise_linkable_object -> cerise_linkable_object ->
+    Big_int_Z.big_int) -> (nbar -> cerise_linkable_object ->
+    cerise_linkable_object -> nbar) -> abstract_word ->
+    cerise_linkable_object -> cerise_linkable_object -> abstract_word **)
+
+let relocate_abstract_word relocate_addr relocate_eaddr w p_left p_right =
+  match w with
+  | Inl w0 ->
+    Inl (relocate_word relocate_addr relocate_eaddr w0 p_left p_right)
+  | Inr s -> Inr s
 
 (** val relocate_word_right :
-    abstract_word -> cerise_linkable_object -> cerise_linkable_object ->
-    abstract_word **)
+    word -> cerise_linkable_object -> cerise_linkable_object -> word **)
 
 let relocate_word_right =
   relocate_word relocate_addr_right relocate_eaddr_right
 
-(** val relocate_word_left :
+(** val relocate_abstract_word_right :
     abstract_word -> cerise_linkable_object -> cerise_linkable_object ->
     abstract_word **)
 
-let relocate_word_left =
-  relocate_word relocate_addr_left relocate_eaddr_left
+let relocate_abstract_word_right =
+  relocate_abstract_word relocate_addr_right relocate_eaddr_right
+
+(** val relocate_abstract_word_left :
+    abstract_word -> cerise_linkable_object -> cerise_linkable_object ->
+    abstract_word **)
+
+let relocate_abstract_word_left =
+  relocate_abstract_word relocate_addr_left relocate_eaddr_left
 
 (** val check_global :
     compilerParameters -> word -> global_type -> abstract_word list -> unit
     error **)
 
 let check_global h0 w glob_t mem =
-  match w with
-  | WSealed (o, s) ->
-    (match s with
-     | SCap (p, gb, ge, ga) ->
-       let (p0, l) = p in
-       (match p0 with
-        | RW ->
-          (match l with
-           | Global ->
-             if negb (Nat.eqb o h0.otype_global)
-             then error_msg1
-                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('o'::('t'::('y'::('p'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))
-             else if negb
-                       (nbar_eqb ge
-                         (nbar_plus (Finite gb) (Finite
-                           (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-                           (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))
-                  then error_msg1
-                         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('s'::('i'::('z'::('e'::[]))))))))))))))))))))))))))))))))))))))))
-                  else if negb (Nat.eqb ga gb)
-                       then error_msg1
-                              ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                       else (match nth_error mem gb with
-                             | Some a ->
-                               (match a with
-                                | Inl g_val ->
-                                  (match nth_error mem
-                                           (add gb (Big_int_Z.succ_big_int
-                                             Big_int_Z.zero_big_int)) with
-                                   | Some a0 ->
-                                     (match a0 with
-                                      | Inl w0 ->
-                                        (match w0 with
-                                         | WInt g_type ->
-                                           (match nth_error mem
-                                                    (add gb
-                                                      (Big_int_Z.succ_big_int
-                                                      (Big_int_Z.succ_big_int
-                                                      Big_int_Z.zero_big_int))) with
-                                            | Some a1 ->
-                                              (match a1 with
-                                               | Inl _ ->
-                                                 mbind
-                                                   (Obj.magic (fun _ _ ->
-                                                     error_bind)) (fun _ ->
-                                                   mbind
-                                                     (Obj.magic (fun _ _ ->
-                                                       error_bind)) (fun _ ->
-                                                     Ok ())
-                                                     (match glob_t.tg_mut with
-                                                      | MUT_immut ->
-                                                        if Z.eqb g_type
-                                                             Big_int_Z.zero_big_int
-                                                        then Ok ()
-                                                        else error_msg1
-                                                               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[])))))))))))))))))))))))))))))
-                                                      | MUT_mut ->
-                                                        if Z.eqb g_type
-                                                             Big_int_Z.unit_big_int
-                                                        then Ok ()
-                                                        else error_msg1
-                                                               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[])))))))))))))))))))))))))))))))
-                                                   (match glob_t.tg_t with
-                                                    | T_int ->
-                                                      if Z.eqb g_type
-                                                           Big_int_Z.zero_big_int
-                                                      then (match g_val with
-                                                            | WInt _ -> Ok ()
-                                                            | _ ->
-                                                              error_msg1
-                                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                                      else error_msg1
-                                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::[]))))))))))))))))))))))))))))))
-                                                    | T_handle ->
-                                                      if Z.eqb g_type
-                                                           Big_int_Z.unit_big_int
-                                                      then (match g_val with
-                                                            | WSealable sb ->
-                                                              (match sb with
-                                                               | SCap (
-                                                                   p1, a2,
-                                                                   n0, a3) ->
-                                                                 let (
-                                                                   p2, l0) =
-                                                                   p1
-                                                                 in
-                                                                 (match p2 with
-                                                                  | RW ->
+  let error_msg3 = fun s ->
+    error_msg1
+      (append
+        ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::[])))))))))))))))
+        s)
+  in
+  (match w with
+   | WSealed (o, s) ->
+     (match s with
+      | SCap (p, gb, ge, ga) ->
+        let (p0, l) = p in
+        (match p0 with
+         | RW ->
+           (match l with
+            | Global ->
+              if negb (Nat.eqb o h0.otype_global)
+              then error_msg3
+                     ('t'::('h'::('e'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('o'::('t'::('y'::('p'::('e'::[]))))))))))))))))))))))))))))))
+              else if negb
+                        (nbar_eqb ge
+                          (nbar_plus (Finite gb) (Finite
+                            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                            (Big_int_Z.succ_big_int
+                            Big_int_Z.zero_big_int))))))
+                   then error_msg3
+                          ('g'::('l'::('o'::('b'::('a'::('l'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('s'::('i'::('z'::('e'::[])))))))))))))))))))))))))
+                   else if negb (Nat.eqb ga gb)
+                        then error_msg3
+                               ('g'::('l'::('o'::('b'::('a'::('l'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))
+                        else (match nth_error mem gb with
+                              | Some a ->
+                                (match a with
+                                 | Inl g_val ->
+                                   (match nth_error mem
+                                            (add gb (Big_int_Z.succ_big_int
+                                              Big_int_Z.zero_big_int)) with
+                                    | Some a0 ->
+                                      (match a0 with
+                                       | Inl w0 ->
+                                         (match w0 with
+                                          | WInt g_type ->
+                                            (match nth_error mem
+                                                     (add gb
+                                                       (Big_int_Z.succ_big_int
+                                                       (Big_int_Z.succ_big_int
+                                                       Big_int_Z.zero_big_int))) with
+                                             | Some a1 ->
+                                               (match a1 with
+                                                | Inl _ ->
+                                                  mbind
+                                                    (Obj.magic (fun _ _ ->
+                                                      error_bind)) (fun _ ->
+                                                    mbind
+                                                      (Obj.magic (fun _ _ ->
+                                                        error_bind))
+                                                      (fun _ -> Ok ())
+                                                      (match glob_t.tg_mut with
+                                                       | MUT_immut ->
+                                                         if Z.eqb g_type
+                                                              Big_int_Z.zero_big_int
+                                                         then Ok ()
+                                                         else error_msg3
+                                                                ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[]))))))))))))))
+                                                       | MUT_mut ->
+                                                         if Z.eqb g_type
+                                                              Big_int_Z.unit_big_int
+                                                         then Ok ()
+                                                         else error_msg3
+                                                                ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('m'::('u'::('t'::(' '::('1'::[]))))))))))))))))
+                                                    (match glob_t.tg_t with
+                                                     | T_int ->
+                                                       if Z.eqb g_type
+                                                            Big_int_Z.zero_big_int
+                                                       then (match g_val with
+                                                             | WInt _ -> Ok ()
+                                                             | _ ->
+                                                               error_msg3
+                                                                 ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))
+                                                       else error_msg3
+                                                              ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('Z'::[])))))))))))))))
+                                                     | T_handle ->
+                                                       if Z.eqb g_type
+                                                            Big_int_Z.unit_big_int
+                                                       then (match g_val with
+                                                             | WSealable sb ->
+                                                               (match sb with
+                                                                | SCap (
+                                                                    p1, a2,
+                                                                    n0, a3) ->
+                                                                  let (
+                                                                    p2, l0) =
+                                                                    p1
+                                                                  in
+                                                                  (match p2 with
+                                                                   | RW ->
                                                                     (match l0 with
                                                                     | Global ->
                                                                     ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
@@ -6737,126 +6987,600 @@ let check_global h0 w glob_t mem =
                                                                     Ok
                                                                     ())
                                                                     (fun _ ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
                                                                     a3)
                                                                     (fun _ ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
                                                                     n1)
                                                                     | P_infty ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
                                                                     (fun _ ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
                                                                     a2)
                                                                     | _ ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                                                  | _ ->
-                                                                    error_msg1
-                                                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                                               | SSealRange (
-                                                                   _, _, _, _) ->
-                                                                 error_msg1
-                                                                   ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                                            | _ ->
-                                                              error_msg1
-                                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                                      else error_msg1
-                                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::[])))))))))))))))))))))))))))))))))
-                                               | Inr _ ->
-                                                 error_msg1
-                                                   ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                            | None ->
-                                              error_msg1
-                                                ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-                                         | _ ->
-                                           error_msg1
-                                             ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('m'::('u'::('s'::('t'::(' '::('b'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
-                                      | Inr _ ->
-                                        error_msg1
-                                          ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
-                                   | None ->
-                                     error_msg1
-                                       ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
-                                | Inr _ ->
-                                  error_msg1
-                                    ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
-                             | None ->
-                               error_msg1
-                                 ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))
-           | _ ->
-             error_msg1
-               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
-        | _ ->
-          error_msg1
-            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
-     | SSealRange (_, _, _, _) ->
-       error_msg1
-         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
-  | _ ->
-    error_msg1
-      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('g'::('l'::('o'::('b'::('a'::('l'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                   | _ ->
+                                                                    error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                                | SSealRange (
+                                                                    _, _, _, _) ->
+                                                                  error_msg3
+                                                                    ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                             | _ ->
+                                                               error_msg3
+                                                                 ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::(','::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('a'::('c'::('t'::('u'::('a'::('l'::(' '::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('t'::('h'::('e'::(' '::('n'::('u'::('l'::('l'::(' '::('p'::('o'::('i'::('n'::('t'::('e'::('r'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                                                       else error_msg3
+                                                              ('e'::('x'::('p'::('e'::('c'::('t'::('e'::('d'::(' '::('t'::('y'::('p'::('e'::(' '::('C'::('a'::('p'::[]))))))))))))))))))
+                                                | Inr _ ->
+                                                  error_msg3
+                                                    ('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))))))))))
+                                             | None ->
+                                               error_msg3
+                                                 ('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('m'::('u'::('t'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[]))))))))))))))))))))))))))))))))))))))))))
+                                          | _ ->
+                                            error_msg3
+                                              ('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('m'::('u'::('s'::('t'::(' '::('b'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[])))))))))))))))))))))))))))))))))))
+                                       | Inr _ ->
+                                         error_msg3
+                                           ('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))))
+                                    | None ->
+                                      error_msg3
+                                        ('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('t'::('y'::('p'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[]))))))))))))))))))))))))))))))))))))
+                                 | Inr _ ->
+                                   error_msg3
+                                     ('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))
+                              | None ->
+                                error_msg3
+                                  ('n'::('o'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::('_'::('v'::('a'::('l'::('u'::('e'::(' '::('i'::('n'::(' '::('t'::('h'::('e'::(' '::('g'::('l'::('o'::('b'::('a'::('l'::(' '::('r'::('e'::('g'::('i'::('o'::('n'::[])))))))))))))))))))))))))))))))))))))
+            | _ ->
+              error_msg3
+                ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+         | _ ->
+           error_msg3
+             ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+      | SSealRange (_, _, _, _) ->
+        error_msg3
+          ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+   | _ ->
+     error_msg3
+       ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
 
-(** val check_itable :
-    word -> table_type -> abstract_word list -> unit error **)
+(** val check_limits :
+    Big_int_Z.big_int -> Big_int_Z.big_int option -> Big_int_Z.big_int ->
+    nbar -> unit error **)
 
-let check_itable w _ _ =
-  match w with
-  | WSealable sb ->
-    (match sb with
-     | SCap (p, _, _, _) ->
-       let (p0, l) = p in
-       (match p0 with
-        | RO ->
-          (match l with
-           | Global -> Ok ()
-           | _ ->
-             error_msg1
-               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
-        | _ ->
-          error_msg1
-            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
-     | SSealRange (_, _, _, _) ->
-       error_msg1
-         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
-  | _ ->
-    error_msg1
-      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))))))))))))))))
-
-(** val check_lin_mem :
-    word -> memory_type -> abstract_word list -> unit error **)
-
-let check_lin_mem w _ _ =
-  match w with
-  | WSealed (_, s) ->
-    (match s with
-     | SCap (p, _, _, _) ->
-       let (p0, l) = p in
-       (match p0 with
-        | RW ->
-          (match l with
-           | Global -> Ok ()
-           | _ ->
-             error_msg1
-               ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
-        | _ ->
-          error_msg1
-            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
-     | SSealRange (_, _, _, _) ->
-       error_msg1
-         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))
-  | _ ->
-    error_msg1
-      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))
+let check_limits imp_min imp_max exp_min exp_max =
+  if negb (Coq_Nat.leb imp_min exp_min)
+  then error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('m'::('i'::('t'::('s'::(']'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('m'::('i'::('n'::(' '::('n'::('e'::('e'::('d'::('s'::(' '::('t'::('o'::(' '::('b'::('e'::(' '::('l'::('a'::('r'::('g'::('e'::('r'::(' '::('o'::('r'::(' '::('e'::('q'::('u'::('a'::('l'::(' '::('t'::('h'::('a'::('n'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('m'::('i'::('n'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  else (match imp_max with
+        | Some imp_max0 ->
+          if negb (nbar_leb (Finite imp_max0) exp_max)
+          then error_msg1
+                 ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('m'::('i'::('t'::('s'::(']'::(' '::('i'::('m'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('m'::('a'::('x'::(' '::('n'::('e'::('e'::('d'::('s'::(' '::('t'::('o'::(' '::('b'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('o'::('r'::(' '::('e'::('q'::('u'::('a'::('l'::(' '::('t'::('h'::('a'::('n'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::('e'::('d'::(' '::('m'::('a'::('x'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+          else Ok ()
+        | None -> Ok ())
 
 (** val check_function_closure :
-    word -> function_type -> abstract_word list -> unit error **)
+    compilerParameters -> word -> function_type option -> abstract_word list
+    -> unit error **)
 
-let check_function_closure _ _ _ =
-  Ok ()
+let check_function_closure h0 w ft mem =
+  let error_msg3 = fun s ->
+    error_msg1
+      (append
+        ('['::('c'::('h'::('e'::('c'::('k'::('_'::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::('_'::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(']'::(' '::[])))))))))))))))))))))))))
+        s)
+  in
+  (match w with
+   | WSealable sb ->
+     (match sb with
+      | SCap (p, fcb, fce, fca) ->
+        let (p0, l) = p in
+        (match p0 with
+         | RO ->
+           (match l with
+            | Global ->
+              if negb (Nat.eqb fca fcb)
+              then error_msg3
+                     ('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))
+              else if negb
+                        (nbar_eqb fce
+                          (nbar_plus (Finite fcb) (Finite
+                            (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+                            (Big_int_Z.succ_big_int
+                            Big_int_Z.zero_big_int))))))
+                   then error_msg3
+                          ('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('h'::('a'::('s'::(' '::('t'::('h'::('e'::(' '::('w'::('r'::('o'::('n'::('g'::(' '::('s'::('i'::('z'::('e'::[]))))))))))))))))))))))))))
+                   else (match nth_error mem fcb with
+                         | Some a ->
+                           (match a with
+                            | Inl w_code ->
+                              (match nth_error mem
+                                       (add fcb (Big_int_Z.succ_big_int
+                                         Big_int_Z.zero_big_int)) with
+                               | Some a0 ->
+                                 (match a0 with
+                                  | Inl w_data ->
+                                    (match nth_error mem
+                                             (add fcb (Big_int_Z.succ_big_int
+                                               (Big_int_Z.succ_big_int
+                                               Big_int_Z.zero_big_int))) with
+                                     | Some a1 ->
+                                       (match a1 with
+                                        | Inl w_ftype ->
+                                          (match w_ftype with
+                                           | WInt ft_exp ->
+                                             (match w_code with
+                                              | WSealed (ot_code, s) ->
+                                                (match s with
+                                                 | SCap (p1, fb, fe, fa) ->
+                                                   let (p_code, l0) = p1 in
+                                                   (match l0 with
+                                                    | Global ->
+                                                      if negb
+                                                           (executeAllowed
+                                                             p_code)
+                                                      then error_msg3
+                                                             ('c'::('o'::('d'::('e'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('e'::('x'::('e'::('c'::('u'::('t'::('a'::('b'::('l'::('e'::[])))))))))))))))))))))))))))))))))
+                                                      else (match w_data with
+                                                            | WSealed (
+                                                                ot_data, s0) ->
+                                                              (match s0 with
+                                                               | SCap (
+                                                                   p2, fmb,
+                                                                   fme, fma) ->
+                                                                 let (
+                                                                   p_data, l1) =
+                                                                   p2
+                                                                 in
+                                                                 (match l1 with
+                                                                  | Global ->
+                                                                    if 
+                                                                    executeAllowed
+                                                                    p_data
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('d'::('a'::('t'::('a'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('i'::('s'::(' '::('e'::('x'::('e'::('c'::('u'::('t'::('a'::('b'::('l'::('e'::[])))))))))))))))))))))))))))))
+                                                                    else 
+                                                                    if 
+                                                                    negb
+                                                                    (Nat.eqb
+                                                                    ot_code
+                                                                    ot_data)
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('d'::('i'::('f'::('f'::('e'::('r'::('e'::('n'::('t'::(' '::('c'::('o'::('d'::('e'::(' '::('a'::('n'::('d'::(' '::('d'::('a'::('t'::('a'::(' '::('o'::('t'::('y'::('p'::('e'::('s'::[]))))))))))))))))))))))))))))))
+                                                                    else 
+                                                                    if 
+                                                                    negb
+                                                                    (Coq_Nat.leb
+                                                                    ot_code
+                                                                    ot_data)
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('o'::('t'::('y'::('p'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('o'::('t'::('y'::('p'::('e'::[])))))))))))))))))))))))))))))
+                                                                    else 
+                                                                    if 
+                                                                    negb
+                                                                    ((&&)
+                                                                    (Coq_Nat.leb
+                                                                    fb fa)
+                                                                    (nbar_ltb
+                                                                    (Finite
+                                                                    fb) fe))
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('c'::('o'::('d'::('e'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('m'::('a'::('l'::('f'::('o'::('r'::('m'::('e'::('d'::[])))))))))))))))))))))))))
+                                                                    else 
+                                                                    if 
+                                                                    negb
+                                                                    ((&&)
+                                                                    (Coq_Nat.leb
+                                                                    fmb fma)
+                                                                    (nbar_ltb
+                                                                    (Finite
+                                                                    fmb) fme))
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('d'::('a'::('t'::('a'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('m'::('a'::('l'::('f'::('o'::('r'::('m'::('e'::('d'::[])))))))))))))))))))))))))
+                                                                    else 
+                                                                    (match ft with
+                                                                    | Some ft0 ->
+                                                                    if 
+                                                                    Z.eqb
+                                                                    (h0.encode_function_type
+                                                                    ft0)
+                                                                    ft_exp
+                                                                    then Ok ()
+                                                                    else 
+                                                                    error_msg3
+                                                                    ('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::('s'::(' '::('d'::('o'::('n'::('\''::('t'::(' '::('m'::('a'::('t'::('c'::('h'::[]))))))))))))))))))))))))))
+                                                                    | None ->
+                                                                    Ok ())
+                                                                  | _ ->
+                                                                    error_msg3
+                                                                    ('d'::('a'::('t'::('a'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                                               | SSealRange (
+                                                                   _, _, _, _) ->
+                                                                 error_msg3
+                                                                   ('d'::('a'::('t'::('a'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                                            | _ ->
+                                                              error_msg3
+                                                                ('d'::('a'::('t'::('a'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                                    | _ ->
+                                                      error_msg3
+                                                        ('c'::('o'::('d'::('e'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                                 | SSealRange (_, _, _, _) ->
+                                                   error_msg3
+                                                     ('c'::('o'::('d'::('e'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                              | _ ->
+                                                error_msg3
+                                                  ('c'::('o'::('d'::('e'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+                                           | _ ->
+                                             error_msg3
+                                               ('c'::('o'::('d'::('e'::(' '::('c'::('l'::('o'::('s'::('u'::('r'::('e'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[])))))))))))))))))))))))))))))))
+                                        | Inr _ ->
+                                          error_msg3
+                                            ('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))
+                                     | None ->
+                                       error_msg3
+                                         ('f'::('u'::('n'::('c'::('t'::('i'::('o'::('n'::(' '::('t'::('y'::('p'::('e'::(' '::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))
+                                  | Inr _ ->
+                                    error_msg3
+                                      ('d'::('a'::('t'::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))
+                               | None ->
+                                 error_msg3
+                                   ('d'::('a'::('t'::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))
+                            | Inr _ ->
+                              error_msg3
+                                ('c'::('o'::('d'::('e'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))
+                         | None ->
+                           error_msg3
+                             ('c'::('o'::('d'::('e'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))
+            | _ ->
+              error_msg3
+                ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+         | _ ->
+           error_msg3
+             ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+      | SSealRange (_, _, _, _) ->
+        error_msg3
+          ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+   | _ ->
+     error_msg3
+       ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+
+(** val check_itable_entry :
+    compilerParameters -> Big_int_Z.big_int -> addr -> abstract_word list ->
+    unit error **)
+
+let check_itable_entry h0 i tb mem =
+  match nth_error mem (add tb i) with
+  | Some a ->
+    (match a with
+     | Inl w ->
+       (match w with
+        | WInt z0 ->
+          ((fun fO fp fn z -> let s = Big_int_Z.sign_big_int z in
+  if s = 0 then fO () else if s > 0 then fp z
+  else fn (Big_int_Z.minus_big_int z))
+             (fun _ -> Ok ())
+             (fun _ -> check_function_closure h0 w None mem)
+             (fun _ -> check_function_closure h0 w None mem)
+             z0)
+        | _ -> check_function_closure h0 w None mem)
+     | Inr _ ->
+       error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))))))))))))))))))
+  | None ->
+    error_msg1
+      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))
+
+(** val check_itable_entries_func :
+    compilerParameters -> (nbar, (addr, abstract_word list) sigT) sigT ->
+    unit error **)
+
+let rec check_itable_entries_func h0 x =
+  let i = projT1 x in
+  let tb = projT1 (projT2 x) in
+  let mem = projT2 (projT2 x) in
+  let check_itable_entries0 = fun i0 tb0 mem0 ->
+    check_itable_entries_func h0 (ExistT (i0, (ExistT (tb0, mem0))))
+  in
+  (match i with
+   | Finite n0 ->
+     ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+        (fun _ ->
+        check_itable_entry h0 Big_int_Z.zero_big_int tb mem)
+        (fun n1 ->
+        mbind (Obj.magic (fun _ _ -> error_bind)) (fun _ ->
+          check_itable_entries0 (Finite n1) tb mem)
+          (check_itable_entry h0 (Big_int_Z.succ_big_int n1) tb mem))
+        n0)
+   | P_infty ->
+     error_msg1
+       ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('t'::('a'::('b'::('l'::('e'::(' '::('c'::('a'::('n'::('\''::('t'::(' '::('h'::('a'::('v'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('f'::('i'::('n'::('i'::('t'::('y'::(' '::('s'::('i'::('z'::('e'::(' '::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
+(** val check_itable_entries :
+    compilerParameters -> nbar -> addr -> abstract_word list -> unit error **)
+
+let check_itable_entries h0 i tb mem =
+  check_itable_entries_func h0 (ExistT (i, (ExistT (tb, mem))))
+
+(** val check_itable :
+    compilerParameters -> word -> table_type -> abstract_word list -> unit
+    error **)
+
+let check_itable h0 w tbl_t mem =
+  let error_msg3 = fun s ->
+    error_msg1
+      (append
+        ('['::('c'::('h'::('e'::('c'::('k'::('_'::('i'::('t'::('a'::('b'::('l'::('e'::(']'::(' '::[])))))))))))))))
+        s)
+  in
+  (match w with
+   | WSealable sb ->
+     (match sb with
+      | SCap (p, tb, te, ta) ->
+        let (p0, l) = p in
+        (match p0 with
+         | RO ->
+           (match l with
+            | Global ->
+              if negb (nbar_eqb (Finite ta) (Finite tb))
+              then error_msg3
+                     ('i'::('t'::('a'::('b'::('l'::('e'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))))))))))))))))))
+              else let imp_min = (tt_limits tbl_t).lim_min in
+                   let imp_max = (tt_limits tbl_t).lim_max in
+                   let exp_min = Big_int_Z.zero_big_int in
+                   let exp_max = nbar_minus te (Finite tb) in
+                   mbind (Obj.magic (fun _ _ -> error_bind)) (fun _ ->
+                     check_itable_entries h0 (nbar_minus te (Finite tb)) tb
+                       mem) (check_limits imp_min imp_max exp_min exp_max)
+            | _ ->
+              error_msg3
+                ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+         | _ ->
+           error_msg3
+             ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+      | SSealRange (_, _, _, _) ->
+        error_msg3
+          ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+   | _ ->
+     error_msg3
+       ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('R'::('O'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))
+
+(** val check_lin_mem_entry :
+    Big_int_Z.big_int -> addr -> abstract_word list -> unit error **)
+
+let check_lin_mem_entry i tb mem =
+  match nth_error mem (add tb i) with
+  | Some a ->
+    (match a with
+     | Inl w ->
+       (match w with
+        | WInt _ -> Ok ()
+        | _ ->
+          error_msg1
+            ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::('_'::('e'::('n'::('t'::('r'::('y'::(']'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('m'::('u'::('s'::('t'::(' '::('b'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('t'::('e'::('g'::('e'::('r'::[])))))))))))))))))))))))))))))))))))))))))))))))
+     | Inr _ ->
+       error_msg1
+         ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::('_'::('e'::('n'::('t'::('r'::('y'::(']'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))))))))))))))))))
+  | None ->
+    error_msg1
+      ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::('_'::('e'::('n'::('t'::('r'::('y'::(']'::(' '::('e'::('n'::('t'::('r'::('y'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))
+
+(** val check_lin_mem_entries_func :
+    compilerParameters -> (nbar, (addr, abstract_word list) sigT) sigT ->
+    unit error **)
+
+let rec check_lin_mem_entries_func h0 x =
+  let i = projT1 x in
+  let tb = projT1 (projT2 x) in
+  let mem = projT2 (projT2 x) in
+  let check_lin_mem_entries0 = fun i0 tb0 mem0 ->
+    check_lin_mem_entries_func h0 (ExistT (i0, (ExistT (tb0, mem0))))
+  in
+  (match i with
+   | Finite n0 ->
+     ((fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
+  else fS (Big_int_Z.pred_big_int n))
+        (fun _ ->
+        check_itable_entry h0 Big_int_Z.zero_big_int tb mem)
+        (fun n1 ->
+        mbind (Obj.magic (fun _ _ -> error_bind)) (fun _ ->
+          check_lin_mem_entries0 (Finite n1) tb mem)
+          (check_lin_mem_entry (Big_int_Z.succ_big_int n1) tb mem))
+        n0)
+   | P_infty ->
+     error_msg1
+       ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::('_'::('e'::('n'::('t'::('r'::('i'::('e'::('s'::(']'::(' '::('t'::('a'::('b'::('l'::('e'::(' '::('c'::('a'::('n'::('\''::('t'::(' '::('h'::('a'::('v'::('e'::(' '::('a'::('n'::(' '::('i'::('n'::('f'::('i'::('n'::('i'::('t'::('y'::(' '::('s'::('i'::('z'::('e'::(' '::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
+(** val check_lin_mem_entries :
+    compilerParameters -> nbar -> addr -> abstract_word list -> unit error **)
+
+let check_lin_mem_entries h0 i tb mem =
+  check_lin_mem_entries_func h0 (ExistT (i, (ExistT (tb, mem))))
+
+(** val check_lin_mem :
+    compilerParameters -> word -> memory_type -> abstract_word list -> unit
+    error **)
+
+let check_lin_mem h0 w mem_t mem =
+  let error_msg3 = fun s ->
+    error_msg1
+      (append
+        ('['::('c'::('h'::('e'::('c'::('k'::('_'::('l'::('i'::('n'::('_'::('m'::('e'::('m'::(']'::(' '::[]))))))))))))))))
+        s)
+  in
+  (match w with
+   | WSealed (_, s) ->
+     (match s with
+      | SCap (p, lmb, lme, lma) ->
+        let (p0, l) = p in
+        (match p0 with
+         | RW ->
+           (match l with
+            | Global ->
+              if negb (Nat.eqb lma lmb)
+              then error_msg3
+                     ('l'::('i'::('n'::('e'::('a'::('r'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('d'::('o'::('e'::('s'::('n'::('\''::('t'::(' '::('p'::('o'::('i'::('n'::('t'::('s'::(' '::('t'::('o'::(' '::('t'::('h'::('e'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))
+              else (match nth_error mem lmb with
+                    | Some a ->
+                      (match a with
+                       | Inl w_full_cap ->
+                         (match nth_error mem
+                                  (add lmb (Big_int_Z.succ_big_int
+                                    Big_int_Z.zero_big_int)) with
+                          | Some a0 ->
+                            (match a0 with
+                             | Inl w_cur_cap ->
+                               (match w_full_cap with
+                                | WSealable sb ->
+                                  (match sb with
+                                   | SCap (p1, fmb, fme, fma) ->
+                                     let (p2, l0) = p1 in
+                                     (match p2 with
+                                      | RW ->
+                                        (match l0 with
+                                         | Global ->
+                                           (match w_cur_cap with
+                                            | WSealable sb0 ->
+                                              (match sb0 with
+                                               | SCap (p3, fcb, fce, fca) ->
+                                                 let (p4, l1) = p3 in
+                                                 (match p4 with
+                                                  | RW ->
+                                                    (match l1 with
+                                                     | Global ->
+                                                       if negb
+                                                            (Nat.eqb fmb
+                                                              (add lmb
+                                                                (Big_int_Z.succ_big_int
+                                                                (Big_int_Z.succ_big_int
+                                                                Big_int_Z.zero_big_int))))
+                                                       then error_msg3
+                                                              ('b'::('a'::('d'::(' '::('f'::('u'::('l'::('l'::(' '::('c'::('a'::('p'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))
+                                                       else if negb
+                                                                 (nbar_eqb
+                                                                   fme lme)
+                                                            then error_msg3
+                                                                   ('b'::('a'::('d'::(' '::('f'::('u'::('l'::('l'::(' '::('c'::('a'::('p'::(' '::('u'::('p'::('p'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))))
+                                                            else if negb
+                                                                    (Nat.eqb
+                                                                    fcb fmb)
+                                                                 then 
+                                                                   error_msg3
+                                                                    ('b'::('a'::('d'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('c'::('a'::('p'::(' '::('l'::('o'::('w'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))
+                                                                 else 
+                                                                   if 
+                                                                    negb
+                                                                    (nbar_eqb
+                                                                    fce
+                                                                    (Finite
+                                                                    fma))
+                                                                   then 
+                                                                    error_msg3
+                                                                    ('b'::('a'::('d'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('c'::('a'::('p'::(' '::('u'::('p'::('p'::('e'::('r'::(' '::('b'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))
+                                                                   else 
+                                                                    if 
+                                                                    negb
+                                                                    (nbar_eqb
+                                                                    (Finite
+                                                                    fca)
+                                                                    (Finite
+                                                                    fcb))
+                                                                    then 
+                                                                    error_msg3
+                                                                    ('b'::('a'::('d'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('c'::('a'::('p'::(' '::('a'::('d'::('d'::('r'::('e'::('s'::('s'::[])))))))))))))))))))))))
+                                                                    else 
+                                                                    let imp_min =
+                                                                    mem_t.lim_min
+                                                                    in
+                                                                    let imp_max =
+                                                                    mem_t.lim_max
+                                                                    in
+                                                                    let exp_min =
+                                                                    Big_int_Z.zero_big_int
+                                                                    in
+                                                                    let exp_max =
+                                                                    nbar_minus
+                                                                    fme
+                                                                    (Finite
+                                                                    fmb)
+                                                                    in
+                                                                    mbind
+                                                                    (Obj.magic
+                                                                    (fun _ _ ->
+                                                                    error_bind))
+                                                                    (fun _ ->
+                                                                    check_lin_mem_entries
+                                                                    h0
+                                                                    (nbar_minus
+                                                                    fme
+                                                                    (Finite
+                                                                    fmb)) fmb
+                                                                    mem)
+                                                                    (check_limits
+                                                                    imp_min
+                                                                    imp_max
+                                                                    exp_min
+                                                                    exp_max)
+                                                     | _ ->
+                                                       error_msg3
+                                                         ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))
+                                                  | _ ->
+                                                    error_msg3
+                                                      ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))
+                                               | SSealRange (_, _, _, _) ->
+                                                 error_msg3
+                                                   ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))
+                                            | _ ->
+                                              error_msg3
+                                                ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('c'::('u'::('r'::('r'::('e'::('n'::('t'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))
+                                         | _ ->
+                                           error_msg3
+                                             ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('f'::('u'::('l'::('l'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))
+                                      | _ ->
+                                        error_msg3
+                                          ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('f'::('u'::('l'::('l'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))
+                                   | SSealRange (_, _, _, _) ->
+                                     error_msg3
+                                       ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('f'::('u'::('l'::('l'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))
+                                | _ ->
+                                  error_msg3
+                                    ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('f'::('u'::('l'::('l'::(' '::('m'::('e'::('m'::('o'::('r'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))
+                             | Inr _ ->
+                               error_msg3
+                                 ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[])))))))))))))))))))))))))))))))
+                          | None ->
+                            error_msg3
+                              ('c'::('u'::('r'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[]))))))))))))))))))))))
+                       | Inr _ ->
+                         error_msg3
+                           ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('c'::('a'::('n'::('n'::('o'::('t'::(' '::('b'::('e'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::[]))))))))))))))))))))))))))))))))
+                    | None ->
+                      error_msg3
+                        ('f'::('u'::('l'::('l'::('_'::('m'::('e'::('m'::('_'::('c'::('a'::('p'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))
+            | _ ->
+              error_msg3
+                ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+         | _ ->
+           error_msg3
+             ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+      | SSealRange (_, _, _, _) ->
+        error_msg3
+          ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
+   | _ ->
+     error_msg3
+       ('b'::('u'::('t'::(' '::('t'::('h'::('e'::(' '::('w'::('o'::('r'::('d'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::(' '::('s'::('e'::('a'::('l'::('e'::('d'::[])))))))))))))))))))))))))))))
 
 (** val check_symbol_type :
     compilerParameters -> word -> Big_int_Z.big_int -> abstract_word list ->
@@ -6866,9 +7590,9 @@ let check_symbol_type h0 w et mem =
   match h0.decode_extern_t et with
   | Some e ->
     (match e with
-     | ET_func ft -> check_function_closure w ft mem
-     | ET_tab tbl_t -> check_itable w tbl_t mem
-     | ET_mem mem_t -> check_lin_mem w mem_t mem
+     | ET_func ft -> check_function_closure h0 w (Some ft) mem
+     | ET_tab tbl_t -> check_itable h0 w tbl_t mem
+     | ET_mem mem_t -> check_lin_mem h0 w mem_t mem
      | ET_glob glob_t -> check_global h0 w glob_t mem)
   | None -> Ok ()
 
@@ -6975,6 +7699,92 @@ let get_max_otype l =
                 | _ -> acc)
     | Inr _ -> acc) Big_int_Z.zero_big_int l
 
+(** val initialize_init_entry :
+    (Big_int_Z.big_int * word) -> word -> abstract_word list ->
+    Big_int_Z.big_int -> abstract_word list error **)
+
+let initialize_init_entry init_value tbl_cap data_left offset_left_data =
+  match tbl_cap with
+  | WSealable sb ->
+    (match sb with
+     | SCap (p, tb, te, _) ->
+       let (p0, l) = p in
+       (match p0 with
+        | RO ->
+          (match l with
+           | Global ->
+             let addr_entry = add tb (fst init_value) in
+             if negb (nbar_ltb (Finite addr_entry) te)
+             then error_msg1
+                    ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('o'::('n'::('l'::('y'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::(' '::('w'::('i'::('t'::('h'::(' '::('s'::('u'::('f'::('f'::('i'::('c'::('i'::('e'::('n'::('t'::(' '::('s'::('i'::('z'::('e'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+             else let offset_tbl = sub addr_entry offset_left_data in
+                  (match update_nth_error data_left offset_tbl (Inl
+                           (snd init_value)) with
+                   | Some updated_data -> Ok updated_data
+                   | None ->
+                     error_msg1
+                       ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('u'::('p'::('d'::('a'::('t'::('e'::(' '::('f'::('a'::('i'::('l'::('e'::('d'::[]))))))))))))))))))))))))))))))))))
+           | _ ->
+             error_msg1
+               ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('o'::('n'::('l'::('y'::(' '::('R'::('O'::(','::(' '::('G'::('l'::('o'::('b'::('a'::('l'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+        | _ ->
+          error_msg1
+            ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('o'::('n'::('l'::('y'::(' '::('R'::('O'::(','::(' '::('G'::('l'::('o'::('b'::('a'::('l'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+     | SSealRange (_, _, _, _) ->
+       error_msg1
+         ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('o'::('n'::('l'::('y'::(' '::('R'::('O'::(','::(' '::('G'::('l'::('o'::('b'::('a'::('l'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+  | _ ->
+    error_msg1
+      ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('o'::('n'::('l'::('y'::(' '::('R'::('O'::(','::(' '::('G'::('l'::('o'::('b'::('a'::('l'::(' '::('c'::('a'::('p'::('a'::('b'::('i'::('l'::('i'::('t'::('y'::[])))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
+(** val initialize_symbol :
+    symbols -> (Big_int_Z.big_int * word) list -> (symbols, section_offset)
+    gmap -> abstract_word list -> abstract_word list -> Big_int_Z.big_int ->
+    abstract_word list error **)
+
+let initialize_symbol sym init_values exports_left code_left data_left offset_left_data =
+  match lookup0 (gmap_lookup string_eq_dec string_countable) sym exports_left with
+  | Some y ->
+    let (sec, off) = y in
+    let data = match sec with
+               | Code -> code_left
+               | Data -> data_left in
+    (match nth_error data off with
+     | Some w ->
+       (match w with
+        | Inl w' ->
+          foldl (fun acc ival ->
+            mbind (Obj.magic (fun _ _ -> error_bind)) (fun ldata ->
+              initialize_init_entry ival w' ldata offset_left_data) acc) (Ok
+            data_left) init_values
+        | Inr _ ->
+          error_msg1
+            ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::(' '::('w'::('i'::('t'::('h'::(' '::('a'::(' '::('s'::('y'::('m'::('b'::('o'::('l'::(' '::('i'::('s'::(' '::('n'::('o'::('t'::(' '::('a'::('l'::('l'::('o'::('w'::('e'::('d'::[]))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+     | None ->
+       error_msg1
+         ('['::('i'::('n'::('i'::('t'::('i'::('a'::('l'::('i'::('z'::('e'::('_'::('s'::('y'::('m'::('b'::('o'::('l'::(']'::(' '::('o'::('f'::('f'::('s'::('e'::('t'::(' '::('o'::('f'::(' '::('t'::('h'::('e'::(' '::('e'::('x'::('p'::('o'::('r'::('t'::(' '::('n'::('o'::('t'::(' '::('f'::('o'::('u'::('n'::('d'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
+  | None -> Ok data_left
+
+(** val initialize_symbols :
+    (symbols, (Big_int_Z.big_int * word) list) gmap -> (symbols,
+    section_offset) gmap -> abstract_word list -> abstract_word list ->
+    Big_int_Z.big_int -> abstract_word list error **)
+
+let initialize_symbols inits exports_left code_left data_left offset_left_data =
+  map_fold (gmap_to_list string_eq_dec string_countable)
+    (fun sym init_val acc ->
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun mem ->
+      initialize_symbol sym init_val exports_left code_left mem
+        offset_left_data) acc) (Ok data_left) inits
+
+(** val relocate_init_right :
+    (Big_int_Z.big_int * word) list -> cerise_linkable_object ->
+    cerise_linkable_object -> (Big_int_Z.big_int * word) list **)
+
+let relocate_init_right init_entry p_left p_right =
+  map (fun i -> ((fst i), (relocate_word_right (snd i) p_left p_right)))
+    init_entry
+
 (** val link_seq :
     compilerParameters -> cerise_linkable_object -> cerise_linkable_object ->
     cerise_linkable_object error **)
@@ -6982,76 +7792,85 @@ let get_max_otype l =
 let link_seq h0 p_left p_right =
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun main_word ->
     let relocated_right_code =
-      map (fun w -> relocate_word_right w p_left p_right) p_right.c_code
+      map (fun w -> relocate_abstract_word_right w p_left p_right)
+        p_right.c_code
     in
     let relocated_right_data =
-      map (fun w -> relocate_word_right w p_left p_right) p_right.c_data
+      map (fun w -> relocate_abstract_word_right w p_left p_right)
+        p_right.c_data
     in
     let relocated_left_code =
-      map (fun w -> relocate_word_left w p_left p_right) p_left.c_code
+      map (fun w -> relocate_abstract_word_left w p_left p_right)
+        p_left.c_code
     in
     let relocated_left_data =
-      map (fun w -> relocate_word_left w p_left p_right) p_left.c_data
+      map (fun w -> relocate_abstract_word_left w p_left p_right)
+        p_left.c_data
     in
-    mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_left ->
-      mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_left ->
-        mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_right ->
-          mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_right ->
-            let relocated_right_exports =
-              fmap
-                (Obj.magic (fun _ _ ->
-                  gmap_fmap string_eq_dec string_countable)) (fun e ->
-                relocate_export_right e p_left p_right) p_right.c_exports
-            in
-            let relocated_left_exports =
-              fmap
-                (Obj.magic (fun _ _ ->
-                  gmap_fmap string_eq_dec string_countable)) (fun e ->
-                relocate_export_left e p_left p_right) p_left.c_exports
-            in
-            let max_otype_left =
-              get_max_otype (app linked_code_left linked_data_left)
-            in
-            let otypes_code_right =
-              offsets_otype h0 linked_code_right max_otype_left
-            in
-            let otypes_data_right =
-              offsets_otype h0 linked_data_right max_otype_left
-            in
-            Ok { c_code = (app linked_code_left otypes_code_right); c_data =
-            (app linked_data_left otypes_data_right); c_main = main_word;
-            c_exports =
-            (union0
-              (map_union
-                (Obj.magic (fun _ _ _ ->
-                  gmap_merge string_eq_dec string_countable)))
-              relocated_left_exports relocated_right_exports); c_imports =
-            (union0
-              (map_union
-                (Obj.magic (fun _ _ _ ->
-                  gmap_merge string_eq_dec string_countable)))
-              p_left.c_imports p_right.c_imports); c_init =
-            (union0
-              (map_union
-                (Obj.magic (fun _ _ _ ->
-                  gmap_merge string_eq_dec string_countable))) p_left.c_init
-              p_right.c_init) })
-            (Obj.magic resolve_data h0 relocated_right_data
-              relocated_left_code relocated_left_data p_left.c_exports
-              p_right.c_imports))
-          (Obj.magic resolve_data h0 relocated_right_code relocated_left_code
-            relocated_left_data p_left.c_exports p_right.c_imports))
-        (Obj.magic resolve_data h0 relocated_left_data relocated_right_code
-          relocated_right_data p_right.c_exports p_left.c_imports))
-      (Obj.magic resolve_data h0 relocated_left_code relocated_right_code
-        relocated_right_data p_right.c_exports p_left.c_imports))
+    mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_code_right ->
+      mbind (Obj.magic (fun _ _ -> error_bind)) (fun linked_data_right ->
+        let relocated_right_exports =
+          fmap
+            (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+            (fun e -> relocate_export_right e p_left p_right)
+            p_right.c_exports
+        in
+        let relocated_left_exports =
+          fmap
+            (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+            (fun e -> relocate_export_left e p_left p_right) p_left.c_exports
+        in
+        let max_otype_left =
+          get_max_otype (app relocated_left_code relocated_left_data)
+        in
+        let otypes_code_right =
+          offsets_otype h0 linked_code_right max_otype_left
+        in
+        let otypes_data_right =
+          offsets_otype h0 linked_data_right max_otype_left
+        in
+        let relocated_right_init =
+          fmap
+            (Obj.magic (fun _ _ -> gmap_fmap string_eq_dec string_countable))
+            (fun i -> relocate_init_right i p_left p_right) p_right.c_init
+        in
+        let offset_left_data =
+          length (app relocated_left_code otypes_code_right)
+        in
+        mbind (Obj.magic (fun _ _ -> error_bind))
+          (fun initialized_data_left -> Ok { c_code =
+          (app relocated_left_code otypes_code_right); c_data =
+          (app initialized_data_left otypes_data_right); c_main = main_word;
+          c_exports =
+          (union0
+            (map_union
+              (Obj.magic (fun _ _ _ ->
+                gmap_merge string_eq_dec string_countable)))
+            relocated_left_exports relocated_right_exports); c_imports =
+          (union0
+            (map_union
+              (Obj.magic (fun _ _ _ ->
+                gmap_merge string_eq_dec string_countable))) p_left.c_imports
+            p_right.c_imports); c_init =
+          (union0
+            (map_union
+              (Obj.magic (fun _ _ _ ->
+                gmap_merge string_eq_dec string_countable))) p_left.c_init
+            p_right.c_init) })
+          (Obj.magic initialize_symbols relocated_right_init
+            relocated_left_exports relocated_left_code relocated_left_data
+            offset_left_data))
+        (Obj.magic resolve_data h0 relocated_right_data relocated_left_code
+          relocated_left_data p_left.c_exports p_right.c_imports))
+      (Obj.magic resolve_data h0 relocated_right_code relocated_left_code
+        relocated_left_data p_left.c_exports p_right.c_imports))
     (Obj.magic resolve_main p_left p_right)
 
-(** val instantiation :
+(** val instantiation' :
     compilerParameters -> cerise_linkable_object list ->
     cerise_linkable_object error **)
 
-let rec instantiation h0 = function
+let rec instantiation' h0 = function
 | [] ->
   error_msg1
     ('['::('i'::('n'::('s'::('t'::('a'::('n'::('t'::('i'::('a'::('t'::('i'::('o'::('n'::(']'::(' '::('r'::('e'::('q'::('u'::('i'::('r'::('e'::('s'::(' '::('a'::('t'::(' '::('l'::('e'::('a'::('s'::('t'::(' '::('o'::('n'::('e'::(' '::('c'::('e'::('r'::('i'::('s'::('e'::(' '::('o'::('b'::('j'::('e'::('c'::('t'::[])))))))))))))))))))))))))))))))))))))))))))))))))))
@@ -7060,7 +7879,14 @@ let rec instantiation h0 = function
    | [] -> Ok p_left
    | _ :: _ ->
      mbind (Obj.magic (fun _ _ -> error_bind)) (fun p_right ->
-       link_seq h0 p_left p_right) (instantiation h0 p_right'))
+       link_seq h0 p_left p_right) (instantiation' h0 p_right'))
+
+(** val instantiation :
+    compilerParameters -> cerise_linkable_object list ->
+    cerise_linkable_object error **)
+
+let instantiation h0 p_list =
+  instantiation' h0 (rev1 p_list)
 
 (** val error_msg2 : char list -> 'a1 error **)
 
@@ -7257,7 +8083,7 @@ let linkable_to_executable mP cP cerise_obj =
           (Obj.magic get_main_word linked_obj code data))
         (Obj.magic loadable linked_obj.c_data))
       (Obj.magic loadable linked_obj.c_code))
-    (Obj.magic link_seq cP cerise_obj (common_module mP cP))
+    (Obj.magic link_seq cP (common_module mP cP) cerise_obj)
 
 (** val boot_code : machineParameters -> word list **)
 
@@ -8213,10 +9039,9 @@ let loaded_external_example mP cP =
   load_example mP cP ((Inl (main_module,
     ('M'::('a'::('i'::('n'::[])))))) :: ((Inr (env_object mP cP)) :: []))
 
-(** val exports_insert :
-    (symbols, section_offset) gmap -> symbols -> section -> Big_int_Z.big_int
-    -> (symbols, section_offset) gmap **)
+(** val gmap_insert :
+    (symbols, 'a1) gmap -> symbols -> 'a1 -> (symbols, 'a1) gmap **)
 
-let exports_insert g k sec v =
+let gmap_insert g k v =
   insert0 (map_insert (gmap_partial_alter string_eq_dec string_countable)) k
-    (sec, v) g
+    v g

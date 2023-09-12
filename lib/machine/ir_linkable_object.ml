@@ -21,7 +21,7 @@ type linkable_object =
     data_section : section;
     exports_section : section_offset SymbolMap.t;
     imports_section : int SymbolMap.t;
-    init_section : (int * section_offset) SymbolMap.t;
+    init_section : ((int * machine_op) list) SymbolMap.t;
     start_offset : section_offset option;
   }
 
