@@ -1,5 +1,5 @@
 %token EOF
-%token PC STK
+%token PC STK DDC
 %token <int> REG
 %token <int> INT
 %token <string> SYMBOL
@@ -120,7 +120,8 @@ sealed_def:
 
 reg:
   | PC; { PC }
-  | STK; { STK }
+  | STK; { stk }
+  | DDC; { ddc }
   | i = REG; { Reg i }
 
 reg_const:

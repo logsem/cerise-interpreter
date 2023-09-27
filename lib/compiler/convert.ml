@@ -38,7 +38,6 @@ module ConvertExtractAst = struct
   let regname (r : regName) : Ast.regname =
     match r with
     | PC -> Ast.PC
-    | STK -> Ast.STK
     | R n -> Ast.Reg (Big_int_Z.int_of_big_int n)
 
   let sum (s : (Big_int_Z.big_int, regName) sum) : Ast.reg_or_const =
@@ -126,7 +125,6 @@ module ConvertAstExtract = struct
   let reg (r : Ast.regname) : regName =
     match r with
     | Ast.PC -> PC
-    | Ast.STK -> STK
     | Ast.Reg n -> R (Big_int_Z.big_int_of_int n)
 
   let sum (c : Ast.reg_or_const) : (Big_int_Z.big_int, regName) sum =

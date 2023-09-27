@@ -1960,21 +1960,6 @@ let union_with unionWith0 =
 let unit_eq_dec _ _ =
   true
 
-(** val sum_eq_dec :
-    ('a1, 'a1) relDecision -> ('a2, 'a2) relDecision -> (('a1, 'a2) sum,
-    ('a1, 'a2) sum) relDecision **)
-
-let sum_eq_dec eqDecision0 eqDecision1 x y =
-  match x with
-  | Inl a ->
-    (match y with
-     | Inl a0 -> decide_rel eqDecision0 a a0
-     | Inr _ -> false)
-  | Inr b ->
-    (match y with
-     | Inl _ -> false
-     | Inr b0 -> decide_rel eqDecision1 b b0)
-
 (** val from_option : ('a1 -> 'a2) -> 'a2 -> 'a1 option -> 'a2 **)
 
 let from_option f y = function
@@ -2922,8 +2907,28 @@ let nbar_eqb x y =
 
 type regName =
 | PC
-| STK
 | R of Big_int_Z.big_int
+
+(** val rstk : regName **)
+
+let rstk =
+  R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+    (Big_int_Z.succ_big_int
+    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))
+
+(** val rddc : regName **)
+
+let rddc =
+  R Big_int_Z.zero_big_int
 
 (** val all_registers : regName list **)
 
@@ -3122,7 +3127,7 @@ let all_registers =
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int
-    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))) :: (PC :: (STK :: [])))))))))))))))))))))))))))))))))
+    Big_int_Z.zero_big_int)))))))))))))))))))))))))))))))) :: (PC :: []))))))))))))))))))))))))))))))))
 
 (** val r : Big_int_Z.big_int -> (Big_int_Z.big_int, regName) sum **)
 
@@ -3243,34 +3248,24 @@ let reg_eq_dec r1 r2 =
   match r1 with
   | PC -> (match r2 with
            | PC -> true
-           | _ -> false)
-  | STK -> (match r2 with
-            | STK -> true
-            | _ -> false)
+           | R _ -> false)
   | R n0 -> (match r2 with
-             | R n1 -> Coq0_Nat.eq_dec n0 n1
-             | _ -> false)
+             | PC -> false
+             | R n1 -> Coq0_Nat.eq_dec n0 n1)
 
 (** val reg_countable : regName countable **)
 
 let reg_countable =
   { encode = (fun r0 ->
-    (sum_countable (sum_eq_dec unit_eq_dec unit_eq_dec)
-      (sum_countable unit_eq_dec unit_countable unit_eq_dec unit_countable)
-      Coq0_Nat.eq_dec nat_countable).encode
+    (sum_countable unit_eq_dec unit_countable Coq0_Nat.eq_dec nat_countable).encode
       (match r0 with
-       | PC -> Inl (Inl ())
-       | STK -> Inl (Inr ())
+       | PC -> Inl ()
        | R n0 -> Inr n0)); decode = (fun n0 ->
-    match (sum_countable (sum_eq_dec unit_eq_dec unit_eq_dec)
-            (sum_countable unit_eq_dec unit_countable unit_eq_dec
-              unit_countable) Coq0_Nat.eq_dec nat_countable).decode n0 with
-    | Some y ->
-      (match y with
-       | Inl y0 -> (match y0 with
-                    | Inl _ -> Some PC
-                    | Inr _ -> Some STK)
-       | Inr n1 -> Some (R n1))
+    match (sum_countable unit_eq_dec unit_countable Coq0_Nat.eq_dec
+            nat_countable).decode n0 with
+    | Some y -> (match y with
+                 | Inl _ -> Some PC
+                 | Inr n1 -> Some (R n1))
     | None -> None) }
 
 (** val reg_insert : (regName, word, (regName, word) gmap empty) insert **)
@@ -3281,8 +3276,8 @@ let reg_insert =
 (** val get_reg_num : regName -> Big_int_Z.big_int **)
 
 let get_reg_num = function
+| PC -> Big_int_Z.zero_big_int
 | R n0 -> n0
-| _ -> Big_int_Z.zero_big_int
 
 (** val get_zreg_num :
     (Big_int_Z.big_int, regName) sum -> Big_int_Z.big_int **)
@@ -3377,7 +3372,7 @@ type labeled_instr =
 | Label of Big_int_Z.big_int list
 | BInstr of cerise_instruction
 | Br_Jmp of Big_int_Z.big_int list
-| Br_Jnz of Big_int_Z.big_int list * Big_int_Z.big_int
+| Br_Jnz of Big_int_Z.big_int list * regName
 
 (** val instrs : cerise_function -> labeled_instr list **)
 
@@ -3390,7 +3385,7 @@ type labeled_function = labeled_instr list
 
 let max_reg_instr0 = function
 | BInstr i' -> max_reg_instr i'
-| Br_Jnz (_, r0) -> r0
+| Br_Jnz (_, r0) -> get_reg_num r0
 | _ -> Big_int_Z.zero_big_int
 
 (** val max_reg : labeled_instr list -> Big_int_Z.big_int **)
@@ -3486,11 +3481,6 @@ type compilerParameters = { encode_function_type : (function_type ->
                             common_safe_memory_symbol : symbols;
                             common_linking_table_symbol : symbols }
 
-(** val r_stk : regName **)
-
-let r_stk =
-  STK
-
 (** val eq_instrs :
     regName -> regName -> regName -> regName -> cerise_function **)
 
@@ -3550,14 +3540,14 @@ let rclear_instrs r0 =
     (Big_int_Z.big_int, regName) sum list -> cerise_function **)
 
 let push_instrs _UU03c1_s =
-  map (fun _UU03c1_ -> StoreU (r_stk, (Inl Big_int_Z.zero_big_int),
-    _UU03c1_)) _UU03c1_s
+  map (fun _UU03c1_ -> StoreU (rstk, (Inl Big_int_Z.zero_big_int), _UU03c1_))
+    _UU03c1_s
 
 (** val pop_instrs : regName -> cerise_function **)
 
 let pop_instrs r0 =
-  (LoadU (r0, r_stk, (Inl (Big_int_Z.minus_big_int
-    Big_int_Z.unit_big_int)))) :: ((Lea (r_stk, (Inl (Big_int_Z.minus_big_int
+  (LoadU (r0, rstk, (Inl (Big_int_Z.minus_big_int
+    Big_int_Z.unit_big_int)))) :: ((Lea (rstk, (Inl (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int)))) :: [])
 
 (** val push_env_instrs : cerise_function **)
@@ -3565,13 +3555,13 @@ let pop_instrs r0 =
 let push_env_instrs =
   push_instrs
     (map (fun r0 -> Inr r0)
-      (list_difference reg_eq_dec all_registers (PC :: (r_stk :: []))))
+      (list_difference reg_eq_dec all_registers (PC :: (rstk :: []))))
 
 (** val pop_env_instrs : cerise_function **)
 
 let pop_env_instrs =
   foldl (fun b r0 -> app (pop_instrs r0) b) []
-    (list_difference reg_eq_dec all_registers (PC :: (r_stk :: [])))
+    (list_difference reg_eq_dec all_registers (PC :: (rstk :: [])))
 
 (** val activation_record :
     machineParameters -> regName -> cerise_function **)
@@ -3584,8 +3574,8 @@ let activation_record h rtmp =
     (app ((Inl (h.encodeInstr (Mov (rtmp, (Inr PC))))) :: ((Inl
       (h.encodeInstr (Lea (rtmp, (Inl (Big_int_Z.minus_big_int
         Big_int_Z.unit_big_int)))))) :: ((Inl
-      (h.encodeInstr (Load (r_stk, rtmp)))) :: []))) ((Inl
-      (h.encodeInstr (LoadU (PC, r_stk, (Inl (Z.opp offset_ret)))))) :: []))
+      (h.encodeInstr (Load (rstk, rtmp)))) :: []))) ((Inl
+      (h.encodeInstr (LoadU (PC, rstk, (Inl (Z.opp offset_ret)))))) :: []))
 
 (** val call_instrs_prologue_1 :
     machineParameters -> regName -> cerise_function **)
@@ -3594,7 +3584,7 @@ let call_instrs_prologue_1 h rtmp =
   app (push_instrs ((Inl Big_int_Z.zero_big_int) :: []))
     (app (push_instrs ((Inl Big_int_Z.zero_big_int) :: []))
       (app push_env_instrs
-        (app (push_instrs ((Inr r_stk) :: [])) (activation_record h rtmp))))
+        (app (push_instrs ((Inr rstk) :: [])) (activation_record h rtmp))))
 
 (** val call_instrs_prologue :
     machineParameters -> regName list -> regName -> cerise_function **)
@@ -3616,7 +3606,7 @@ let call_instrs_prologue h rargs rtmp =
   in
   app (call_instrs_prologue_1 h rtmp)
     (app ((Mov (rtmp, (Inr PC))) :: ((Lea (rtmp, (Inl offset_ret))) :: []))
-      ((StoreU (r_stk, (Inl (Z.opp offset_pc)), (Inr rtmp))) :: []))
+      ((StoreU (rstk, (Inl (Z.opp offset_pc)), (Inr rtmp))) :: []))
 
 (** val call_instrs :
     machineParameters -> regName -> regName -> regName list -> cerise_function **)
@@ -3642,14 +3632,14 @@ let call_instrs h rcode rdata rargs =
       (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))), (Inr
-        r_stk))) :: ((GetA ((R (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (R
+        rstk))) :: ((GetA ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
+        Big_int_Z.zero_big_int))), (R (Big_int_Z.succ_big_int
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))))) :: ((Sub ((R
+        Big_int_Z.zero_big_int)))))))) :: ((Sub ((R (Big_int_Z.succ_big_int
+        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inr (R
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-        Big_int_Z.zero_big_int))), (Inr (R (Big_int_Z.succ_big_int
-        (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))), (Inl
+        Big_int_Z.zero_big_int)))), (Inl
         (Z.of_nat (length rargs))))) :: ((GetA ((R (Big_int_Z.succ_big_int
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         Big_int_Z.zero_big_int)))), (R (Big_int_Z.succ_big_int
@@ -3664,7 +3654,7 @@ let call_instrs h rcode rdata rargs =
         (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
         Big_int_Z.zero_big_int))))))) :: [])))))
         (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (Inr
-          r_stk))) :: ((Lea ((R (Big_int_Z.succ_big_int
+          rstk))) :: ((Lea ((R (Big_int_Z.succ_big_int
           Big_int_Z.zero_big_int)), (Inl (Z.opp offset_ret_val)))) :: ((GetA
           ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
           Big_int_Z.zero_big_int))), (R (Big_int_Z.succ_big_int
@@ -3682,7 +3672,7 @@ let call_instrs h rcode rdata rargs =
           (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
           (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))))) :: []))))))
           (app ((Mov ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-            Big_int_Z.zero_big_int))), (Inr r_stk))) :: ((PromoteU (R
+            Big_int_Z.zero_big_int))), (Inr rstk))) :: ((PromoteU (R
             (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
             Big_int_Z.zero_big_int)))) :: ((Lea ((R (Big_int_Z.succ_big_int
             (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))), (Inl
@@ -3692,10 +3682,10 @@ let call_instrs h rcode rdata rargs =
             (h.encodePermPair (E, Directed))))) :: []))))
             (app ((GetA ((R (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
               (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
-              Big_int_Z.zero_big_int))))), r_stk)) :: ((GetE ((R
+              Big_int_Z.zero_big_int))))), rstk)) :: ((GetE ((R
               (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
               (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))),
-              r_stk)) :: ((Subseg (r_stk, (Inr (R (Big_int_Z.succ_big_int
+              rstk)) :: ((Subseg (rstk, (Inr (R (Big_int_Z.succ_big_int
               (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
               (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))), (Inr (R
               (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -3711,15 +3701,12 @@ let call_instrs h rcode rdata rargs =
                       (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                       (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                       Big_int_Z.zero_big_int))))))) :: []))
-                    (app ((Mov ((R Big_int_Z.zero_big_int), (Inr
-                      rdata))) :: [])
+                    (app ((Mov (rddc, (Inr rdata))) :: [])
                       (app
                         (rclear_instrs
                           (list_difference reg_eq_dec all_registers
-                            (PC :: ((R
-                            Big_int_Z.zero_big_int) :: (rcode :: (r_stk :: []))))))
-                        (app ((Invoke (rcode, (R
-                          Big_int_Z.zero_big_int))) :: []) pop_env_instrs)))))))))))
+                            (PC :: (rddc :: (rcode :: (rstk :: []))))))
+                        (app ((Invoke (rcode, rddc)) :: []) pop_env_instrs)))))))))))
 
 (** val reqloc_instrs :
     machineParameters -> regName -> Big_int_Z.big_int -> cerise_instruction
@@ -4710,15 +4697,15 @@ let error_msg s =
       ('['::('c'::('e'::('r'::('i'::('s'::('e'::('_'::('l'::('a'::('b'::('e'::('l'::('e'::('d'::('_'::('g'::('e'::('n'::('.'::('v'::(']'::(' '::[])))))))))))))))))))))))
       s)
 
-(** val r_stk0 : regName **)
+(** val r_stk : regName **)
 
-let r_stk0 =
-  STK
+let r_stk =
+  rstk
 
 (** val r_frame : regName **)
 
 let r_frame =
-  R Big_int_Z.zero_big_int
+  rddc
 
 (** val r_tmp : Big_int_Z.big_int **)
 
@@ -4746,7 +4733,7 @@ let base_reg =
 
 let call_template h r_fun r_data r_res prologue args _ ret_type new_state0 =
   let call = instrs (call_instrs h r_fun r_data args) in
-  let epilogue1 = (BInstr (Lea (r_stk0, (Inl (Big_int_Z.minus_big_int
+  let epilogue1 = (BInstr (Lea (r_stk, (Inl (Big_int_Z.minus_big_int
     Big_int_Z.unit_big_int))))) :: []
   in
   mbind (Obj.magic (fun _ _ -> error_bind)) (fun epilogue2 -> Ok
@@ -4754,15 +4741,15 @@ let call_template h r_fun r_data r_res prologue args _ ret_type new_state0 =
     (match ret_type with
      | [] ->
        Ok
-         (Obj.magic ((BInstr (Lea (r_stk0, (Inl (Big_int_Z.minus_big_int
+         (Obj.magic ((BInstr (Lea (r_stk, (Inl (Big_int_Z.minus_big_int
            Big_int_Z.unit_big_int))))) :: []))
      | ret_type0 :: l ->
        (match l with
         | [] ->
           Ok
             (Obj.magic instrs
-              (app ((LoadU (r_res, r_stk0, (Inl (Big_int_Z.minus_big_int
-                Big_int_Z.unit_big_int)))) :: ((Lea (r_stk0, (Inl
+              (app ((LoadU (r_res, r_stk, (Inl (Big_int_Z.minus_big_int
+                Big_int_Z.unit_big_int)))) :: ((Lea (r_stk, (Inl
                 (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: []))
                 (dyn_typecheck_instrs h r_res ret_type0)))
         | _ :: _ ->
@@ -4785,10 +4772,10 @@ let prologue_return f_type _ ret off tmp =
    | _ :: l ->
      (match l with
       | [] ->
-        Ok ((GetB ((R tmp), r_stk0)) :: ((GetA ((R off), r_stk0)) :: ((Sub
-          ((R off), (r tmp), (r off))) :: ((Add ((R off), (r off), (Inl
+        Ok ((GetB ((R tmp), r_stk)) :: ((GetA ((R off), r_stk)) :: ((Sub ((R
+          off), (r tmp), (r off))) :: ((Add ((R off), (r off), (Inl
           (Z.sub local_offset Big_int_Z.unit_big_int)))) :: ((LoadU ((R tmp),
-          r_stk0, (r off))) :: ((StoreU ((R tmp), (Inl
+          r_stk, (r off))) :: ((StoreU ((R tmp), (Inl
           Big_int_Z.zero_big_int), (r ret))) :: []))))))
       | _ :: _ ->
         error_msg
@@ -4840,7 +4827,7 @@ let rec compile_binstr cP h module0 f_type i s =
      let new_state0 = new_state s.regidx sf in
      let lbl_v1 = generate_label s1 Big_int_Z.zero_big_int in
      let lbl_v2 = generate_label s2 Big_int_Z.zero_big_int in
-     Ok (((Br_Jnz (lbl_v1, c)) :: ((BInstr (Mov ((R res), (Inr (R
+     Ok (((Br_Jnz (lbl_v1, (R c))) :: ((BInstr (Mov ((R res), (Inr (R
      v2))))) :: ((Br_Jmp lbl_v2) :: ((Label lbl_v1) :: ((BInstr (Mov ((R
      res), (Inr (R v1))))) :: ((Label lbl_v2) :: [])))))),
      (sub_reg new_state0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -4916,8 +4903,8 @@ let rec compile_binstr cP h module0 f_type i s =
          (match leave_scope end_state with
           | Some new_state0 ->
             Ok
-              ((app ((Br_Jnz (lbl_true,
-                 (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: [])
+              ((app ((Br_Jnz (lbl_true, (R
+                 (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: [])
                  (app bodyF
                    (app ((Br_Jmp lbl_end) :: ((Label lbl_true) :: []))
                      (app bodyT ((Label lbl_end) :: []))))), new_state0)
@@ -4971,8 +4958,8 @@ let rec compile_binstr cP h module0 f_type i s =
         let rt = scopen.scope_ret_type in
         (match rt with
          | [] ->
-           Ok (((Br_Jnz (lbl,
-             (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: []),
+           Ok (((Br_Jnz (lbl, (R
+             (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: []),
              (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
          | _ :: l ->
            (match l with
@@ -4984,8 +4971,8 @@ let rec compile_binstr cP h module0 f_type i s =
               let base0 = scopen.scope_reg_base in
               let code = (BInstr (Mov ((R r_tmp), (Inr (R
                 base0))))) :: ((BInstr (Mov ((R base0), (Inr (R
-                rval))))) :: ((Br_Jnz (lbl,
-                (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))) :: ((BInstr
+                rval))))) :: ((Br_Jnz (lbl, (R
+                (sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))))) :: ((BInstr
                 (Mov ((R base0), (Inr (R r_tmp))))) :: [])))
               in
               Ok (code,
@@ -5012,13 +4999,13 @@ let rec compile_binstr cP h module0 f_type i s =
        Ok
        ((instrs
           (app prepare_return_instrs
-            (app ((GetB ((R tmp1), r_stk0)) :: ((GetA ((R tmp2),
-              r_stk0)) :: ((Sub ((R tmp1), (r tmp1), (r tmp2))) :: ((LoadU
-              ((R jaddr), r_stk0, (r tmp1))) :: []))))
+            (app ((GetB ((R tmp1), r_stk)) :: ((GetA ((R tmp2),
+              r_stk)) :: ((Sub ((R tmp1), (r tmp1), (r tmp2))) :: ((LoadU ((R
+              jaddr), r_stk, (r tmp1))) :: []))))
               (app
                 (rclear_instrs
                   (list_difference reg_eq_dec all_registers (PC :: ((R
-                    jaddr) :: (r_stk0 :: []))))) ((Jmp (R jaddr)) :: []))))),
+                    jaddr) :: (r_stk :: []))))) ((Jmp (R jaddr)) :: []))))),
        s)) (Obj.magic prologue_return f_type nreg ret r_tmp tmp2)
    | BI_call i0 ->
      (match get_function_type module0 i0 with
@@ -5120,28 +5107,28 @@ let rec compile_binstr cP h module0 f_type i s =
    | BI_get_local i0 ->
      let off = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      Ok
-     ((instrs ((GetB ((R r_tmp), r_stk0)) :: ((Add ((R r_tmp), (r r_tmp),
-        (Inl (Z.of_nat i0)))) :: ((GetA ((R off), r_stk0)) :: ((Sub ((R off),
+     ((instrs ((GetB ((R r_tmp), r_stk)) :: ((Add ((R r_tmp), (r r_tmp), (Inl
+        (Z.of_nat i0)))) :: ((GetA ((R off), r_stk)) :: ((Sub ((R off),
         (r r_tmp), (r off))) :: ((Add ((R off), (r off), (Inl
-        local_offset))) :: ((LoadU ((R nreg), r_stk0, (r off))) :: []))))))),
+        local_offset))) :: ((LoadU ((R nreg), r_stk, (r off))) :: []))))))),
      (add_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
    | BI_set_local i0 ->
      let v = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      let off = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      Ok
-     ((instrs ((GetB ((R r_tmp), r_stk0)) :: ((Add ((R r_tmp), (r r_tmp),
-        (Inl (Z.of_nat i0)))) :: ((GetA ((R off), r_stk0)) :: ((Sub ((R off),
+     ((instrs ((GetB ((R r_tmp), r_stk)) :: ((Add ((R r_tmp), (r r_tmp), (Inl
+        (Z.of_nat i0)))) :: ((GetA ((R off), r_stk)) :: ((Sub ((R off),
         (r r_tmp), (r off))) :: ((Add ((R off), (r off), (Inl
-        local_offset))) :: ((StoreU (r_stk0, (r off), (r v))) :: []))))))),
+        local_offset))) :: ((StoreU (r_stk, (r off), (r v))) :: []))))))),
      (sub_reg s (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))
    | BI_tee_local i0 ->
      let v = sub nreg (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      let off = add r_tmp (Big_int_Z.succ_big_int Big_int_Z.zero_big_int) in
      Ok
-     ((instrs ((GetB ((R r_tmp), r_stk0)) :: ((Add ((R r_tmp), (r r_tmp),
-        (Inl (Z.of_nat i0)))) :: ((GetA ((R off), r_stk0)) :: ((Sub ((R off),
+     ((instrs ((GetB ((R r_tmp), r_stk)) :: ((Add ((R r_tmp), (r r_tmp), (Inl
+        (Z.of_nat i0)))) :: ((GetA ((R off), r_stk)) :: ((Sub ((R off),
         (r r_tmp), (r off))) :: ((Add ((R off), (r off), (Inl
-        local_offset))) :: ((StoreU (r_stk0, (r off), (r v))) :: []))))))), s)
+        local_offset))) :: ((StoreU (r_stk, (r off), (r v))) :: []))))))), s)
    | BI_get_global i0 ->
      let tmp_sentry =
        add r_tmp (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
@@ -5561,7 +5548,7 @@ let rec load_args mP arg tmp tmp1 tmp2 tf =
              (r tmp1))) :: ((Mov ((R (Big_int_Z.succ_big_int
              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int))),
              (r tmp2))) :: []))
-             (app ((StoreU (r_stk0, (Inl Big_int_Z.zero_big_int), (Inr
+             (app ((StoreU (r_stk, (Inl Big_int_Z.zero_big_int), (Inr
                rtmp))) :: []) (load_args mP arg tmp tmp1 tmp2 tf'))))))
 
 (** val prologue_function :
@@ -5574,7 +5561,7 @@ let prologue_function mP tf size_locals max_spilled_reg =
       (fun fO fS n -> if Big_int_Z.sign_big_int n <= 0 then fO ()
   else fS (Big_int_Z.pred_big_int n))
         (fun _ -> [])
-        (fun n' -> (StoreU (r_stk0, (Inl Big_int_Z.zero_big_int), (Inl
+        (fun n' -> (StoreU (r_stk, (Inl Big_int_Z.zero_big_int), (Inl
         Big_int_Z.zero_big_int))) :: (prepare_stack_pointer n'))
         n0
     in prepare_stack_pointer
@@ -5590,9 +5577,9 @@ let prologue_function mP tf size_locals max_spilled_reg =
       (match rt with
        | [] -> []
        | _ :: _ ->
-         (LoadU ((R (tmp Big_int_Z.zero_big_int)), r_stk0, (Inl
+         (LoadU ((R (tmp Big_int_Z.zero_big_int)), r_stk, (Inl
            (Big_int_Z.minus_big_int Big_int_Z.unit_big_int)))) :: ((Lea
-           (r_stk0, (Inl (Big_int_Z.minus_big_int
+           (r_stk, (Inl (Big_int_Z.minus_big_int
            Big_int_Z.unit_big_int)))) :: []))
       (app
         (load_args mP (tmp Big_int_Z.zero_big_int)
@@ -5999,13 +5986,13 @@ let boot_code offset0 =
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int)))), (Inl (Big_int_Z.mult_int_big_int 2
     ((fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))
-    Big_int_Z.unit_big_int))))) :: ((StoreU (STK, (Inl
+    Big_int_Z.unit_big_int))))) :: ((StoreU (rstk, (Inl
     Big_int_Z.zero_big_int), (Inr (R (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int))))))) :: ((Mov ((R (Big_int_Z.succ_big_int
     (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
     Big_int_Z.zero_big_int)))), (Inl Big_int_Z.zero_big_int))) :: ((StoreU
-    (STK, (Inl Big_int_Z.zero_big_int), (Inr STK))) :: ((Invoke ((R
+    (rstk, (Inl Big_int_Z.zero_big_int), (Inr rstk))) :: ((Invoke ((R
     (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (R
     Big_int_Z.zero_big_int))) :: (Halt :: []))))))))))))
 
@@ -6327,8 +6314,8 @@ let rec branch_labels' il label_map addr0 =
             (app ((Mov ((R (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
               (Inr PC))) :: ((Lea ((R (Big_int_Z.succ_big_int
               Big_int_Z.zero_big_int)), (Inl off))) :: ((Jnz ((R
-              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)), (R
-              reg_cond))) :: []))) next))
+              (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)),
+              reg_cond)) :: []))) next))
             (branch_labels' il' label_map
               (add addr0 (Big_int_Z.succ_big_int (Big_int_Z.succ_big_int
                 (Big_int_Z.succ_big_int Big_int_Z.zero_big_int)))))
@@ -6441,7 +6428,7 @@ let get_spilling_offset reg_num =
 
 let load_spilled reg_num tmp =
   match get_spilling_offset reg_num with
-  | Some offset0 -> (((LoadU ((R tmp), r_stk0, (Inl offset0))) :: []), tmp)
+  | Some offset0 -> (((LoadU ((R tmp), r_stk, (Inl offset0))) :: []), tmp)
   | None -> ([], reg_num)
 
 (** val load_spilled_reg :
@@ -6449,8 +6436,8 @@ let load_spilled reg_num tmp =
 
 let load_spilled_reg reg tmp =
   match reg with
+  | PC -> ([], reg)
   | R n0 -> let (li, n') = load_spilled n0 tmp in (li, (R n'))
-  | _ -> ([], reg)
 
 (** val load_spilled_zreg :
     (Big_int_Z.big_int, regName) sum -> Big_int_Z.big_int ->
@@ -6466,12 +6453,12 @@ let load_spilled_zreg zreg tmp =
 
 let store_spilled_reg dst tmp =
   match dst with
+  | PC -> ([], dst)
   | R n0 ->
     (match get_spilling_offset n0 with
      | Some offset0 ->
-       (((StoreU (r_stk0, (Inl offset0), (Inr tmp))) :: []), tmp)
+       (((StoreU (r_stk, (Inl offset0), (Inr tmp))) :: []), tmp)
      | None -> ([], (R n0)))
-  | _ -> ([], dst)
 
 (** val spill_instruction : cerise_instruction -> cerise_function **)
 
@@ -6725,7 +6712,7 @@ let spill_instruction = function
 let spill_labeled_instr = function
 | BInstr i0 -> instrs (spill_instruction i0)
 | Br_Jnz (lbl, reg) ->
-  let (il, r0) = load_spilled reg r_tmp in
+  let (il, r0) = load_spilled_reg reg r_tmp in
   app (instrs il) ((Br_Jnz (lbl, r0)) :: [])
 | x -> x :: []
 
@@ -8211,8 +8198,8 @@ let init_state prog start_stack =
     start_stack))
   in
   let regfile =
-    insert0 reg_insert (R Big_int_Z.zero_big_int) prog.main_data
-      (insert0 reg_insert STK stk_cap
+    insert0 reg_insert rddc prog.main_data
+      (insert0 reg_insert rstk stk_cap
         (insert0 reg_insert PC prog.main_code
           (gmap_empty reg_eq_dec reg_countable)))
   in
