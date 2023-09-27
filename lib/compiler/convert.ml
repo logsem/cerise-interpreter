@@ -233,7 +233,7 @@ module ConvertWasmExtract = struct
       Extract.offset = h.offset;
       Extract.bound = h.bound;
       Extract.valid = h.valid;
-      Extract.id0 = h.id0;
+      Extract.id = h.id0;
     }
 
   let extract_value (v : value) : Extract.value =
@@ -535,7 +535,8 @@ module ConvertLinkableExtract = struct
     {
       c_code = List.map extract_symbolic_word o.text_section;
       c_data = List.map extract_symbolic_word o.data_section;
-      c_main = Option.map (fun off -> (extract_section_type (fst off), Big_int_Z.big_int_of_int (snd off))) o.start_offset;
+      c_main = None;
+        (* Option.map (fun off -> (extract_section_type (fst off), Big_int_Z.big_int_of_int (snd off))) o.start_offset; *)
       c_exports = extract_export_map o.exports_section;
       c_imports = extract_imports o.imports_section;
       c_init = extract_init_section o.init_section
