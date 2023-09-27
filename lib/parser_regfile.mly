@@ -1,5 +1,5 @@
 %token EOF
-%token PC STK
+%token PC DDC STK
 %token <int> REG
 %token <int> INT
 %token INF
@@ -23,6 +23,7 @@ main:
 
 reg:
   | PC; { PC }
+  | DDC; { DDC }
   | STK; { STK }
   | i = REG; { Reg i }
 
