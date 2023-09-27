@@ -1,5 +1,5 @@
 %token EOF
-%token PC STK
+%token PC STK DDC
 %token <int> REG
 %token <int> INT
 %token INF
@@ -74,6 +74,7 @@ sealed_def:
 reg:
   | PC; { PC }
   | STK; { stk }
+  | DDC; { ddc }
   | i = REG; { Reg i }
 
 reg_const:
