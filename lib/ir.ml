@@ -3,7 +3,10 @@
 exception UnknownLabelException of string
 exception ExprException of string
 
-type regname = PC | STK | Reg of int
+type regname = PC | Reg of int
+let ddc = Reg 0
+let stk = Reg 31
+
 type expr
   = IntLit of Infinite_z.t
   | Label of string
@@ -113,7 +116,6 @@ let translate_wt (wt : wtype) : Ast.wtype =
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
-  | STK -> Ast.STK
   | Reg i -> Ast.Reg i
 
 (* Check whether the encoded constant is supported *)

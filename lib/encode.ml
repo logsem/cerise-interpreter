@@ -259,16 +259,12 @@ let decode_seal_perm_loc_pair (i : Z.t) : (seal_perm * locality) =
 let encode_reg (r : regname) : Z.t =
   match r with
   | PC -> Z.zero
-  | STK -> Z.succ @@ Z.zero
-  | Reg i -> Z.succ @@ Z.succ @@ Z.of_int i
+  | Reg i -> Z.succ @@ Z.of_int i
 
 let decode_reg (i : Z.t) : regname =
   if i = Z.zero
   then PC
-  else
-  if i = Z.succ @@ Z.zero
-  then STK else
-    Reg (Z.to_int @@ Z.pred @@ Z.pred i)
+  else Reg (Z.to_int @@ Z.pred i)
 
 
 let rec split_int (i : Z.t) : Z.t * Z.t =

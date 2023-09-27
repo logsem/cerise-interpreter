@@ -211,9 +211,6 @@ let check_locality (g : locality) =
 
 let check_register (r : regname) =
   match r with
-  | STK ->
-    if not !flags.stack
-    then not_supported "STK register not supported."
   | _ -> ()
 
 let check_machine_op (i : Ast.machine_op)=

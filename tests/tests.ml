@@ -43,7 +43,7 @@ let instr_tests = [
   ("jnz r1 r2", Op (Jnz (Reg 1, Reg 2)));
   ("mov pc 25", Op (Move (PC, const (25))));
   ("mov r3 -25", Op (Move (Reg 3, const (-25))));
-  ("mov r30 stk", Op (Move (Reg 30, Register STK)));
+  ("mov r30 stk", Op (Move (Reg 30, Register stk)));
   ("mov r30 RW", Op (Move (Reg 30, (encode_perm RW))));
   ("mov r30 U", Op (Move (Reg 30, (encode_seal_perm (false,true)))));
   ("mov r30 DIRECTED", Op (Move (Reg 30, (encode_locality Directed))));
@@ -170,7 +170,7 @@ let test_enc_dec_stm_list = [
   (Move (PC, (encode_perm RWX)), "encode-decode Move PC RWX");
   (Move (PC, (encode_seal_perm (true,false))), "encode-decode Move PC U");
   (Move (PC, (encode_locality Directed)), "encode-decode Move PC DIRECTED");
-  (Move (Reg 0, Register STK), "encode-decode Move R0 STK");
+  (Move (Reg 0, Register stk), "encode-decode Move R0 stk");
   (Load (Reg 9, PC), "encode-decode Load R9 PC");
   (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
   (Store (PC, const (-35)), "encode-decode Store PC (-35)");
@@ -236,18 +236,18 @@ let test_enc_dec_stm_list = [
   (Invoke (Reg 6, Reg 28), "encode-decode Invoke R6 R28");
   (StoreU (Reg 5, Register (Reg 6), const 8128), "encode-decode StoreU R5 R6 8128");
   (StoreU (Reg 5, Register (Reg 6), encode_perm_loc RO Global), "encode-decode StoreU R5 R6 RO");
-  (StoreU (Reg 5, Register (Reg 6), Register STK), "encode-decode StoreU R5 R6 STK");
-  (StoreU (Reg 5, const (-549), Register STK), "encode-decode StoreU R5 (-549) STK");
+  (StoreU (Reg 5, Register (Reg 6), Register stk), "encode-decode StoreU R5 R6 stk");
+  (StoreU (Reg 5, const (-549), Register stk), "encode-decode StoreU R5 (-549) stk");
   (StoreU (Reg 5, const (102), const 8128), "encode-decode StoreU R5 102 8128");
   (StoreU (Reg 5, const (83), encode_perm_loc RO Global), "encode-decode StoreU R5 83 RO");
-  (StoreU (Reg 5, encode_perm_loc E Global, Register STK), "encode-decode StoreU R5 E STK");
+  (StoreU (Reg 5, encode_perm_loc E Global, Register stk), "encode-decode StoreU R5 E stk");
   (StoreU (Reg 5, encode_perm_loc O Global, const 8128), "encode-decode StoreU R5 O 8128");
   (StoreU (Reg 5, encode_perm_loc RWX Global, encode_perm_loc RO Global), "encode-decode StoreU R5 RWX RO");
-  (LoadU (Reg 30, STK, Register (Reg 31)), "encore-decode LoadU R30 STK R31");
-  (LoadU (Reg 30, STK, const 8129), "encore-decode LoadU R30 STK 8129");
-  (LoadU (Reg 30, STK, encode_perm_loc URWL Local), "encore-decode LoadU R30 STK URWL Local");
-  (LoadU (Reg 31, STK, encode_perm_loc URWLX Directed), "encore-decode LoadU R31 STK URWLX Directed");
-  (PromoteU STK, "encore-decode PromoteU STK");
+  (LoadU (Reg 30, stk, Register (Reg 31)), "encore-decode LoadU R30 stk R31");
+  (LoadU (Reg 30, stk, const 8129), "encore-decode LoadU R30 stk 8129");
+  (LoadU (Reg 30, stk, encode_perm_loc URWL Local), "encore-decode LoadU R30 stk URWL Local");
+  (LoadU (Reg 31, stk, encode_perm_loc URWLX Directed), "encore-decode LoadU R31 stk URWLX Directed");
+  (PromoteU stk, "encore-decode PromoteU stk");
   (Fail, "encode-decode Fail");
   (Halt, "encode-decode Halt");
 ]

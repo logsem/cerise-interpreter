@@ -426,7 +426,7 @@ module MkUi (Cfg: MachineConfig) : Ui = struct
             (term_height - 1 - I.height regs_img) term_width mem
             (Machine.RegMap.find Ast.PC reg)
             (if !flags.stack
-             then (Machine.RegMap.find Ast.STK reg)
+             then (Machine.RegMap.find Ast.stk reg)
              else Ast.I Z.zero)
             !prog_panel_start
             !stk_panel_start

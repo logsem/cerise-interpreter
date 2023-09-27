@@ -7,7 +7,7 @@ let in_list (e :'a) (l : 'a list) : bool =
   | Some _ -> true
 
 let all_registers : regname list =
-  [PC; STK] @ List.init 32 (fun i -> Reg i)
+  [PC; stk] @ List.init 32 (fun i -> Reg i)
 
 let rec rclear (regs : regname list) : (machine_op list) =
   match regs with
@@ -21,7 +21,7 @@ let mclearU : machine_op list =
   let mclear_off_end = 9 in
   let mclear_off_iter = 2 in
   [
-    Move (Reg 4, Register STK);
+    Move (Reg 4, Register stk);
     GetB (Reg 1, Reg 4);
     GetB (Reg 2, Reg 4);
     Sub (Reg 2, Register (Reg 1), Register (Reg 2));
@@ -41,11 +41,11 @@ let mclearU : machine_op list =
     (* end *)
   ] @ rclear [Reg 1; Reg 2; Reg 3; Reg 4; Reg 5; Reg 6]
 
-let pushU r = StoreU (STK, const 0, r)
+let pushU r = StoreU (stk, const 0, r)
 let popU r =
-  [ LoadU (r, STK, (const (-1)));
+  [ LoadU (r, stk, (const (-1)));
     Sub (Reg 1, const 0, const 1);
-    Lea (STK, (Register (Reg 1)))
+    Lea (stk, (Register (Reg 1)))
   ]
 
 (* TODO the macro is wrong *)
@@ -105,9 +105,9 @@ let prepstack r minsize =
 let epilogue_scall radv : (machine_op list) =
   let w1 = Encode.encode_machine_op (Move (Reg 1, Register PC)) in
   let w2 = Encode.encode_machine_op (Lea (Reg 1, const 6)) in
-  let w3 = Encode.encode_machine_op (Load (STK, Reg 1)) in
+  let w3 = Encode.encode_machine_op (Load (stk, Reg 1)) in
   let w4a = Encode.encode_machine_op (Sub (Reg 1, const 0, const 1)) in
-  let w4b = Encode.encode_machine_op (LoadU (PC, STK, Register (Reg 1))) in
+  let w4b = Encode.encode_machine_op (LoadU (PC, stk, Register (Reg 1))) in
   let epilogue_b =
   [
     (* Push activation record *)
@@ -129,18 +129,18 @@ let epilogue_scall radv : (machine_op list) =
       (* push stack pointer *)
       (* Note that the stored r_stk will not be able to read itself, *)
       (*  but that should not be a problem. *)
-      pushU (Register STK);
+      pushU (Register stk);
       (* set up protected return pointer *)
       (* since a URWLX capability cannot be made into an E, we have to promote r_t0 first *)
-      Move (Reg 0, Register STK);
+      Move (Reg 0, Register stk);
       PromoteU (Reg 0);
       Lea (Reg 0, const (-7));
       Restrict (Reg 0, e_local_perm);
       (* restrict stack capability *)
-      GetA (Reg 1, STK);
-      GetE (Reg 2, STK);
-      SubSeg (STK, Register (Reg 1), Register (Reg 2))
-    ] @ rclear_inv [PC;STK;Reg 0;radv]
+      GetA (Reg 1, stk);
+      GetE (Reg 2, stk);
+      SubSeg (stk, Register (Reg 1), Register (Reg 2))
+    ] @ rclear_inv [PC;stk;Reg 0;radv]
   in
   let off = List.length (epilogue_e (Z.of_int 0)) in
   epilogue_b @ epilogue_e (Z.of_int off)
@@ -151,7 +151,7 @@ let awkward_example radv =
   (* let awkward_epilogue_off = 40 in *)
 
   reqglob_instrs radv @
-  prepstack STK (Z.of_int 10)  @
+  prepstack stk (Z.of_int 10)  @
   [ Store (renv, const 0);
     (* Local encapsulation *)
     pushU (Register renv);
@@ -161,9 +161,9 @@ let awkward_example radv =
   @ epilogue_scall radv
   @ [
     Jmp radv;
-    StoreU (STK, const 0, const 0);
+    StoreU (stk, const 0, const 0);
     Sub (Reg 1, const 0, const 7);
-    Lea (STK, Register (Reg 1))
+    Lea (stk, Register (Reg 1))
   ]
   @ popU radv
   @ popU (Reg 0)
@@ -176,15 +176,15 @@ let awkward_example radv =
   @ [
     Jmp radv;
     Sub (Reg 1, const 0, const 6);
-    Lea (STK, Register (Reg 1))
+    Lea (stk, Register (Reg 1))
   ]
   @ popU (Reg 0)
   @ popU renv
     (* Skip the assert *)
   @ [
-    GetB (Reg 1, STK);
+    GetB (Reg 1, stk);
     Add (Reg 2, Register (Reg 1), Register (Reg 2));
-    SubSeg (STK, Register (Reg 1), Register (Reg 2));
+    SubSeg (stk, Register (Reg 1), Register (Reg 2));
   ]
   @ mclearU
   @ rclear_inv [PC; (Reg 0)]

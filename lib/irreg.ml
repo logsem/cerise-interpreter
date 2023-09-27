@@ -2,7 +2,7 @@
 
 exception ExprException of string
 
-type regname = PC | STK | Reg of int
+type regname = PC | STK | DDC | Reg of int
 type expr
   = IntLit of Infinite_z.t
   | AddOp of expr * expr
@@ -53,7 +53,8 @@ let translate_locality (g : locality) : Ast.locality =
 let translate_regname (r : regname) : Ast.regname =
   match r with
   | PC -> Ast.PC
-  | STK -> Ast.STK
+  | DDC -> Ast.ddc
+  | STK -> Ast.stk
   | Reg i -> Ast.Reg i
 
 let eval_to_z (e : expr) (max_addr : Infinite_z.t) (stk_addr : Z.t) (except_str : string) =

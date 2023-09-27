@@ -10,7 +10,7 @@ let in_list (e :'a) (l : 'a list) : bool =
   | Some _ -> true
 
 let all_registers : regname list =
-  [PC; STK] @ List.init 32 (fun i -> Reg i)
+  [PC; stk] @ List.init 32 (fun i -> Reg i)
 
 let rstk : regname = (Reg 0)
 

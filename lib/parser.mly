@@ -73,7 +73,7 @@ sealed_def:
 
 reg:
   | PC; { PC }
-  | STK; { STK }
+  | STK; { stk }
   | i = REG; { Reg i }
 
 reg_const:

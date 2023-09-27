@@ -6,8 +6,10 @@ let (^-) s1 s2 = s1 ^ " " ^ s2
 let string_of_regname (r: regname) : string =
   match r with
   | PC -> "pc"
-  | STK -> "stk"
-  | Reg i -> "r" ^ (string_of_int i)
+  | Reg i ->
+    if (!Parameters.flags).stack && r = stk
+    then "stk"
+    else if r = ddc then "ddc" else "r" ^ (string_of_int i)
 
 let string_of_seal_perm (p : seal_perm) : string =
   match p with

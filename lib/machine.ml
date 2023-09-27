@@ -41,7 +41,7 @@ let init_reg_state (stk_addr : Z.t) : reg_state =
     then
       let stk_locality = !flags.locality in
       let stk_perm = if !flags.unitialized then URWLX else RWLX in
-      [(STK, Sealable (Cap (stk_perm, stk_locality, stk_addr, max_stk_addr, stk_addr)))]
+      [(stk, Sealable (Cap (stk_perm, stk_locality, stk_addr, max_stk_addr, stk_addr)))]
     else []
   in
 
