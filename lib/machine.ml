@@ -28,13 +28,10 @@ let init_reg_state (stk_addr : Z.t) : reg_state =
   let l =
     let seal_reg = (if !flags.sealing then 1 else 0) in
     let n =
-      32 - seal_reg
+      31 - seal_reg
     in
     List.init n (fun i -> Reg (i+seal_reg), I Z.zero)
   in
-
-  (* The PC register starts with full permission over the entire "heap" segment *)
-  let pc_init = [(PC, Sealable (Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr)))] in
 
   let stk_init =
     if !flags.stack
@@ -45,13 +42,16 @@ let init_reg_state (stk_addr : Z.t) : reg_state =
     else []
   in
 
+  (* The PC register starts with full permission over the entire "heap" segment *)
+  let pc_init = [(PC, Sealable (Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr)))] in
+
   let pc_sealing =
     if !flags.sealing
     then [(Reg 0, Sealable (SealRange ((true,true), Global, start_heap_addr, stk_addr, start_heap_addr)))]
     else []
   in
   (* The stk register starts with full permission over the entire "stack" segment *)
-  let seq = List.to_seq (pc_init @ stk_init @ pc_sealing @ l) in
+  let seq = List.to_seq (pc_init @ pc_sealing @ (l @ stk_init)) in
   RegMap.of_seq seq
 
 let get_reg (r : regname) ({reg ; _} : exec_conf) : word = RegMap.find r reg
