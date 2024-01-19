@@ -12,28 +12,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get branch name
-        shell: bash
-        run: echo "##[{name=branch};]$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
-        id: get_branch
-
       - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          submodules: true
+        uses: actions/checkout@v4
 
-      - name: Install OCaml
-        uses: avsm/setup-ocaml@v2
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
         with:
-          ocaml-compiler: 4.14
-          opam-repositories: |
-            default: https://github.com/ocaml/opam-repository.git
-
-      - name: Install dependencies
-        run: opam install . --deps-only -y
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
-        run: opam exec -- make
-
-      - name: Tests
-        run: opam exec -- make test
+        run: nix build --print-build-logs
