@@ -1,6 +1,6 @@
 (executable
- (name        interpreter)
+ (name interpreter)
  (public_name cerise-interpreter)
- (modules     interpreter)
+ (modules interpreter)
  ; (libraries  containers libinterp notty notty.unix))
- (libraries  containers libinterp notty))
+ (libraries containers libinterp notty))
