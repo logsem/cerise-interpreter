@@ -22,3 +22,6 @@ jobs:
 
       - name: Build
         run: nix build --print-build-logs
+
+      - name: Format
+        run: nix develop --command dune fmt

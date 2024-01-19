@@ -42,7 +42,8 @@
         };
 
         devShell = pkgs.mkShell {
-          packages = [ ocaml-lsp merlin ocamlformat ];
+          packages = (with defaultPackage; [ buildInputs nativeBuildInputs ])
+            ++ [ merlin ocaml-lsp ocamlformat ];
 
           inputsFrom = [ defaultPackage ];
         };
