@@ -7,8 +7,8 @@ let string_of_regname (r : regname) : string =
   match r with
   | PC -> "pc"
   | Reg i ->
-      if !Parameters.flags.stack && r = stk then "stk"
-      else if r = ddc then "ddc"
+      if r = stk then "stk"
+      else if r = cgp then "cgp"
       else "r" ^ string_of_int i
 
 let string_of_seal_perm (p : seal_perm) : string =
@@ -24,13 +24,9 @@ let string_of_perm (p : perm) : string =
   | RWX -> "RWX"
   | RWL -> "RWL"
   | RWLX -> "RWLX"
-  | URW -> "URW"
-  | URWX -> "URWX"
-  | URWL -> "URWL"
-  | URWLX -> "URWLX"
 
 let string_of_locality (g : locality) : string =
-  match g with Local -> "Local" | Global -> "Global" | Directed -> "Directed"
+  match g with Local -> "Local" | Global -> "Global"
 
 let string_of_wtype (w : wtype) : string =
   match w with W_I -> "Int" | W_Cap -> "Cap" | W_SealRange -> "SealRange" | W_Sealed -> "Sealed"
@@ -65,8 +61,8 @@ let string_of_machine_op (s : machine_op) : string =
   and string_of_rc r c = string_of_regname r ^- string_of_reg_or_const c
   and string_of_rcc r c1 c2 =
     string_of_regname r ^- string_of_reg_or_const c1 ^- string_of_reg_or_const c2
-  and string_of_rrc r1 r2 c =
-    string_of_regname r1 ^- string_of_regname r2 ^- string_of_reg_or_const c
+  (* and string_of_rrc r1 r2 c = *)
+  (*   string_of_regname r1 ^- string_of_regname r2 ^- string_of_reg_or_const c *)
   in
   match s with
   | Jmp r -> "jmp" ^- string_of_regname r
@@ -94,10 +90,6 @@ let string_of_machine_op (s : machine_op) : string =
   | GetWType (r1, r2) -> "getwtype" ^- string_of_rr r1 r2
   | Seal (r1, r2, r3) -> "seal" ^- string_of_rrr r1 r2 r3
   | UnSeal (r1, r2, r3) -> "unseal" ^- string_of_rrr r1 r2 r3
-  | Invoke (r1, r2) -> "invoke" ^- string_of_rr r1 r2
-  | LoadU (r1, r2, c) -> "loadU" ^- string_of_rrc r1 r2 c
-  | StoreU (r, c1, c2) -> "storeU" ^- string_of_rcc r c1 c2
-  | PromoteU r -> "promoteU" ^- string_of_regname r
   | Fail -> "fail"
   | Halt -> "halt"
 
@@ -105,7 +97,7 @@ let string_of_sealable (sb : sealable) : string =
   match sb with
   | Cap (p, g, b, e, a) ->
       Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
-        (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)
@@ -120,7 +112,7 @@ let string_of_ast_sealable (sb : Ast.sealable) : string =
   match sb with
   | Ast.Cap (p, g, b, e, a) ->
       Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
-        (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)

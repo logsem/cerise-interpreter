@@ -1,2 +1,0 @@
-PC := (RWX, Global, 0, STK_ADDR, 0)
-STK := (URWLX, Local, STK_ADDR, MAX_ADDR, STK_ADDR)

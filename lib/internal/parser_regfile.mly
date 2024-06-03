@@ -1,14 +1,13 @@
 %token EOF
-%token PC DDC STK
+%token PC CGP STK
 %token <int> REG
 %token <int> INT
-%token INF
 %token MAX_ADDR STK_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS AFFECT COMMA COLON
-%token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
+%token O E RO RX RW RWX RWL RWLX
 %token SO S U SU
-%token LOCAL GLOBAL DIRECTED
+%token LOCAL GLOBAL
 %left PLUS MINUS EXPR
 %left UMINUS
 
@@ -23,7 +22,7 @@ main:
 
 reg:
   | PC; { PC }
-  | DDC; { DDC }
+  | CGP; { CGP }
   | STK; { STK }
   | i = REG; { Reg i }
 
@@ -45,7 +44,6 @@ sealed_def:
 locality:
   | LOCAL; { Local }
   | GLOBAL; { Global }
-  | DIRECTED; { Directed }
 
 seal_perm:
   | SO; { (false, false) }
@@ -62,10 +60,6 @@ perm:
   | RWX; { RWX }
   | RWL; { RWL }
   | RWLX; { RWLX }
-  | URW; { URW }
-  | URWX; { URWX }
-  | URWL; { URWL }
-  | URWLX; { URWLX }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }
@@ -73,8 +67,7 @@ expr:
   | STK_ADDR { StkAddr }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
-  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Infinite_z.of_int 0),e) }
-  | i = INT { IntLit (Infinite_z.of_int i) }
-  | INF { IntLit (Infinite_z.Inf) }
+  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
+  | i = INT { IntLit (Z.of_int i) }
 
 %%

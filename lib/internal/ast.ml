@@ -1,17 +1,17 @@
 (* Type definitions for the syntax AST *)
 type regname = PC | Reg of int
 
-let ddc = Reg 0
+let cgp = Reg 0
 let stk = Reg 31
 
-type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
-type locality = Global | Local | Directed
+type perm = O | E | RO | RX | RW | RWX | RWL | RWLX
+type locality = Global | Local
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 type seal_perm = bool * bool
 type reg_or_const = Register of regname | Const of Z.t
 
 type sealable =
-  | Cap of perm * locality * Z.t * Infinite_z.t * Z.t
+  | Cap of perm * locality * Z.t * Z.t * Z.t
   | SealRange of seal_perm * locality * Z.t * Z.t * Z.t
 
 type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
@@ -19,7 +19,6 @@ type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
 type machine_op =
   | Jmp of regname
   | Jnz of regname * regname
-  | Invoke of regname * regname
   | Move of regname * reg_or_const
   | Load of regname * regname
   | Store of regname * reg_or_const
@@ -41,9 +40,6 @@ type machine_op =
   | GetWType of regname * regname
   | Seal of regname * regname * regname
   | UnSeal of regname * regname * regname
-  | LoadU of regname * regname * reg_or_const
-  | StoreU of regname * reg_or_const * reg_or_const
-  | PromoteU of regname
   | Fail
   | Halt
 

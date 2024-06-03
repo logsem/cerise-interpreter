@@ -17,7 +17,7 @@ let digit = ['0'-'9']
 let hex = (digit | ['a'-'f'] | ['A'-'F'])
 let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
 let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
-let locality = ("LOCAL" | "GLOBAL" | "DIRECTED" | "Local" | "Global" | "Directed")
+let locality = ("LOCAL" | "GLOBAL" | "Local" | "Global")
 let letter = ['a'-'z' 'A'-'Z']
 let label = ('_' | letter) (letter | '_' | digit)*
 
@@ -30,7 +30,6 @@ rule token = parse
                                   with Failure _ -> error lexbuf
                                     ("invalid integer '" ^ i
                                      ^ "'; use a value that fits in a machine integer")}
-| ("Inf" | "inf" | "∞") { INF }
 
 (* assembler directives and macro references *)
 | "&CURRENT_ADDR" { CURRENTADDR }
@@ -43,7 +42,7 @@ rule token = parse
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
-| ['d' 'D'] ['d' 'D'] ['c' 'C'] { DDC }
+| ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n) 
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
@@ -72,10 +71,6 @@ rule token = parse
 | "getl" { GETL }
 | "seal" { SEAL }
 | "unseal" { UNSEAL }
-| "invoke" { INVOKE }
-| "load" ['u' 'U'] { LOADU }
-| "store" ['u' 'U'] { STOREU }
-| "promote" ['u' 'U'] { PROMOTEU }
 | "fail" { FAIL }
 | "halt" { HALT }
 
@@ -95,7 +90,6 @@ rule token = parse
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }
 | "GLOBAL"   | "Global"  { GLOBAL }
-| "DIRECTED" | "Directed"  { DIRECTED }
 
 (* permissions *)
 | 'O' { O }
@@ -106,10 +100,6 @@ rule token = parse
 | "RWX" { RWX }
 | "RWL" { RWL }
 | "RWLX" { RWLX }
-| "URW" { URW }
-| "URWX" { URWX }
-| "URWL" { URWL }
-| "URWLX" { URWLX }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

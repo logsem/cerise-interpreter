@@ -6,16 +6,9 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
   try
     match Parser_driver.parse_program filebuf with
     | Error _ as error -> error
-    | Ok parsed -> (
-        match Macro_expander.expand parsed with
-        | Error _ as error -> error
-        | Ok expanded ->
-            let current_addresses_resolved = Current_address_resolver.resolve expanded in
-            let labels_resolved = Label_resolver.resolve current_addresses_resolved in
-            let expressions_evaluated = Expression_evaluator.evaluate labels_resolved in
-            let program = Asm_ir.translate_prog expressions_evaluated in
-            Parameters.check_program program;
-            Result.Ok program)
+    | Ok parsed ->
+        let program = Ir.translate_prog parsed in
+        Result.Ok program
   with
   | Label_resolver.Unknown_label label ->
       Result.Error
@@ -57,7 +50,6 @@ let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) (stk_addr : Z.t) :
     | Error _ as error -> error
     | Ok parsed ->
         let regfile = Irreg.translate_regfile parsed !Parameters.flags.max_addr stk_addr in
-        Machine.RegMap.iter (fun _ w -> Parameters.check_word w) regfile;
         Result.Ok regfile
   with
   | Irreg.ExprException message ->

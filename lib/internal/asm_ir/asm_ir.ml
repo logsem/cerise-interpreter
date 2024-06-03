@@ -19,38 +19,14 @@ type parameter_kind =
 type parameter = { name : string; kind : parameter_kind }
 type regname = PC | Reg of int | RegParam of string
 
-let ddc = Reg 0
+let cgp = Reg 0
 let stk = Reg 31
 
-type expr =
-  | IntLit of Infinite_z.t
-  | CurrentAddr
-  | Symbol of string
-  | Label of string
-  | AddOp of expr * expr
-  | SubOp of expr * expr
-  | ExprParam of string
-
-exception UnresolvedExpressionException of expr
-
-type perm =
-  | O
-  | E
-  | RO
-  | RX
-  | RW
-  | RWX
-  | RWL
-  | RWLX
-  | URW
-  | URWL
-  | URWX
-  | URWLX
-  | PermParam of string
-
-type locality = Global | Local | Directed | LocalityParam of string
-type seal_perm = SealPermLit of bool * bool | SealPermParam of string
-type wtype = W_I | W_Cap | W_SealRange | W_Sealed | WtypeParam of string
+type expr = IntLit of Z.t | Label of string | AddOp of expr * expr | SubOp of expr * expr
+type perm = O | E | RO | RX | RW | RWX | RWL | RWLX
+type locality = Global | Local
+type seal_perm = bool * bool
+type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 
 type const_encoded =
   | ConstExpr of expr
@@ -98,10 +74,6 @@ type machine_op =
   | GetWType of regname * regname
   | Seal of regname * regname * regname
   | UnSeal of regname * regname * regname
-  | Invoke of regname * regname
-  | LoadU of regname * regname * reg_or_const
-  | StoreU of regname * reg_or_const * reg_or_const
-  | PromoteU of regname
   | Fail
   | Halt
   | Lbl of string
@@ -119,6 +91,23 @@ and macro_definition = {
 
 type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
+type env = (string * int) list
+
+let rec compute_env (i : int) (prog : t) (envr : env) : env =
+  match prog with
+  | [] -> envr
+  | Lbl s :: p -> compute_env (i + 1) p ((s, i - List.length envr) :: envr)
+  | _ :: p -> compute_env (i + 1) p envr
+
+let rec eval_expr (envr : env) (e : expr) : Z.t =
+  match e with
+  | IntLit i -> i
+  | Label s -> (
+      match List.find_opt (fun p -> fst p = s) envr with
+      | Some (_, i) -> Z.of_int i
+      | None -> raise (UnknownLabelException s))
+  | AddOp (e1, e2) -> Z.(eval_expr envr e1 + eval_expr envr e2)
+  | SubOp (e1, e2) -> Z.(eval_expr envr e1 - eval_expr envr e2)
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -130,18 +119,9 @@ let translate_perm (p : perm) : Ast.perm =
   | RWX -> Ast.RWX
   | RWL -> Ast.RWL
   | RWLX -> Ast.RWLX
-  | URW -> Ast.URW
-  | URWL -> Ast.URWL
-  | URWX -> Ast.URWX
-  | URWLX -> Ast.URWLX
-  | PermParam name -> raise (UnexpandedMacroException ("permission parameter $" ^ name))
 
 let translate_locality (g : locality) : Ast.locality =
-  match g with
-  | Local -> Ast.Local
-  | Global -> Ast.Global
-  | Directed -> Ast.Directed
-  | LocalityParam name -> raise (UnexpandedMacroException ("locality parameter $" ^ name))
+  match g with Local -> Ast.Local | Global -> Ast.Global
 
 let translate_wt (wt : wtype) : Ast.wtype =
   match wt with
@@ -161,53 +141,14 @@ let translate_seal_perm = function
   | SealPermLit (seal, unseal) -> (seal, unseal)
   | SealPermParam name -> raise (UnexpandedMacroException ("sealing-permission parameter $" ^ name))
 
-(* Check whether the encoded constant is supported *)
-let check_ir_const (c : const_encoded) =
-  let open Parameters in
-  match c with
-  | Perm p -> (
-      match p with
-      | RWL | RWLX ->
-          if !flags.locality = Global then
-            not_supported "Parsing: Write-local permissions are not supported."
-      | URW | URWX ->
-          if not !flags.unitialized then not_supported "Parsing: U-permissions are not supported."
-      | URWL | URWLX ->
-          if not !flags.unitialized then not_supported "Parsing: U-permissions are not supported."
-          else if !flags.locality = Global then
-            not_supported "Parsing: Write-local permissions are not supported."
-      | _ -> ())
-  | SealPerm _ ->
-      if not !flags.sealing then not_supported "Parsing: Sealing permissions are not supported."
-  | PermLoc (_, _) | Locality _ ->
-      if !flags.locality = Global then not_supported "Parsing: Locality is not supported."
-  | SealPermLoc (_, _) ->
-      if !flags.locality = Global then not_supported "Parsing: Locality is not supported."
-      else if not !flags.sealing then
-        not_supported "Parsing: Sealing permissions are not supported."
-  | PairParam (name, _) -> raise (UnexpandedMacroException ("permission-pair parameter $" ^ name))
-  | Wtype _ | ConstExpr _ -> ()
-
-let resolved_expression (expression : expr) : Infinite_z.t =
-  match expression with
-  | IntLit value -> value
-  | _ -> raise (UnresolvedExpressionException expression)
-
-let resolved_finite_expression (expression : expr) (error : string) : Z.t =
-  match resolved_expression expression with
-  | Int value -> value
-  | Inf -> raise (ExprException error)
-
-let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
+let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | ValueParam name -> raise (UnexpandedMacroException ("value parameter $" ^ name))
   | Const c ->
-      check_ir_const c;
       Ast.Const
         (match c with
-        | ConstExpr expression ->
-            resolved_finite_expression expression "Constants expressions cannot be ∞"
+        | ConstExpr e -> eval_expr envr e
         | Locality l -> Encode.encode_locality (translate_locality l)
         | Perm p -> Encode.encode_perm (translate_perm p)
         | SealPerm sp -> Encode.encode_seal_perm (translate_seal_perm sp)
@@ -221,24 +162,24 @@ let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
 let translate_sealable (s : sealable) : Ast.sealable =
   match s with
   | Cap (p, l, b, e, a) ->
-      let b' = resolved_finite_expression b "Lower capability bound cannot be ∞" in
-      let a' = resolved_finite_expression a "Current capability address cannot be ∞" in
-      Ast.Cap (translate_perm p, translate_locality l, b', resolved_expression e, a')
+      let b' = eval_expr envr b in
+      let a' = eval_expr envr a in
+      Ast.Cap (translate_perm p, translate_locality l, b', eval_expr envr e, a')
   | SealRange (p, l, b, e, a) ->
-      let b' = resolved_finite_expression b "Lower otype bound cannot be ∞" in
-      let e' = resolved_finite_expression e "Upper otype bound cannot be ∞" in
-      let a' = resolved_finite_expression a "Current sealing otype cannot be ∞" in
-      Ast.SealRange (translate_seal_perm p, translate_locality l, b', e', a')
+      let b' = eval_expr envr b in
+      let e' = eval_expr envr e in
+      let a' = eval_expr envr a in
+      Ast.SealRange (p, translate_locality l, b', e', a')
 
 let translate_word (w : word) : Ast.statement =
   match w with
   | I e ->
-      let z' = resolved_finite_expression e "Integer machine word cannot be ∞" in
+      let z' = eval_expr envr e in
       Ast.Word (Ast.I z')
   | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable sb))
   | Sealed (o, sb) ->
-      let ot = resolved_finite_expression o "OType of sealed word cannot be ∞" in
-      Ast.Word (Ast.Sealed (ot, translate_sealable sb))
+      let ot = eval_expr envr o in
+      Ast.Word (Ast.Sealed (ot, translate_sealable envr sb))
 
 let translate_instr (instr : machine_op) : Ast.machine_op =
   match instr with
@@ -273,12 +214,6 @@ let translate_instr (instr : machine_op) : Ast.machine_op =
   | Seal (r1, r2, r3) -> Ast.Seal (translate_regname r1, translate_regname r2, translate_regname r3)
   | UnSeal (r1, r2, r3) ->
       Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
-  | Invoke (r1, r2) -> Ast.Invoke (translate_regname r1, translate_regname r2)
-  | LoadU (r1, r2, c) ->
-      Ast.LoadU (translate_regname r1, translate_regname r2, translate_reg_or_const c)
-  | StoreU (r, c1, c2) ->
-      Ast.StoreU (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
-  | PromoteU r -> Ast.PromoteU (translate_regname r)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
   | Word w -> raise (WordException w)
