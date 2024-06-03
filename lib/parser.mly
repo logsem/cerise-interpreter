@@ -1,17 +1,16 @@
 %token EOF
-%token PC STK DDC
+%token PC STK CGP
 %token <int> REG
 %token <int> INT
-%token INF
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP COLON
 %token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
-%token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL INVOKE
-%token LOADU STOREU PROMOTEU FAIL HALT
-%token LOCAL GLOBAL DIRECTED
-%token O E RO RX RW RWX RWL RWLX URW URWX URWL URWLX
+%token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
+%token FAIL HALT
+%token LOCAL GLOBAL
+%token O E RO RX RW RWX RWL RWLX
 %token SO S U SU
 %token Int Cap SealRange Sealed
 %left PLUS MINUS EXPR
@@ -47,10 +46,6 @@ main:
   | GETWTYPE; r1 = reg; r2 = reg; p = main; { GetWType (r1, r2) :: p }
   | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
   | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
-  | INVOKE; r1 = reg; r2 = reg; p = main; { Invoke (r1, r2) :: p }
-  | LOADU; r1 = reg; r2 = reg; c = reg_const; p = main; { LoadU (r1, r2, c) :: p }
-  | STOREU; r = reg; c1 = reg_const; c2 = reg_const; p = main; { StoreU (r, c1, c2) :: p }
-  | PROMOTEU; r = reg; p = main ; { PromoteU r :: p }
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }
   | lbl = LABELDEF; p = main; { Lbl lbl :: p }
@@ -74,7 +69,7 @@ sealed_def:
 reg:
   | PC; { PC }
   | STK; { stk }
-  | DDC; { ddc }
+  | CGP; { cgp }
   | i = REG; { Reg i }
 
 reg_const:
@@ -102,7 +97,6 @@ wtype:
 locality:
   | LOCAL; { Local }
   | GLOBAL; { Global }
-  | DIRECTED; { Directed }
 
 perm:
   | O; { O }
@@ -113,18 +107,13 @@ perm:
   | RWX; { RWX }
   | RWL; { RWL }
   | RWLX; { RWLX }
-  | URW; { URW }
-  | URWX; { URWX }
-  | URWL; { URWL }
-  | URWLX; { URWLX }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
-  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Infinite_z.of_int 0),e) }
-  | i = INT { IntLit (Infinite_z.of_int i) }
-  | INF { IntLit (Infinite_z.Inf) }
+  | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
+  | i = INT { IntLit (Z.of_int i) }
   | lbl = LABEL { Label lbl }
 
 %%

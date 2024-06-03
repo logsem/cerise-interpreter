@@ -24,7 +24,7 @@ let run_prog (filename : string) : mchn =
   let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
   let _ = close_in input in
 
-  let _ = Parameters.flags := Parameters.full_cerise in
+  let _ = Parameters.flags := Parameters.griotte in
 
   let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
   let init_regs = Machine.init_reg_state stk_addr in
@@ -85,45 +85,10 @@ let test_jmper =
       (test_perm E (get_reg_cap_perm (Reg 1) m O));
   ]
 
-let test_promote =
-  let open Alcotest in
-  let m = run_prog (test_path "pos/ucap_promote.s") in
-  [
-    test_case "ucap_promote.s should end in halted state" `Quick (test_state Halted (fst m));
-    test_case "ucap_promote.s should contain RWLX permission in r0" `Quick
-      (test_perm RWLX (get_reg_cap_perm (Reg 0) m O));
-    test_case "ucap_promote.s should contain RWL permission in r1" `Quick
-      (test_perm RWL (get_reg_cap_perm (Reg 1) m O));
-    test_case "ucap_promote.s should contain RWX permission in r2" `Quick
-      (test_perm RWX (get_reg_cap_perm (Reg 2) m O));
-    test_case "ucap_promote.s should contain RW permission in r3" `Quick
-      (test_perm RW (get_reg_cap_perm (Reg 3) m O));
-  ]
-
-let test_ucaps =
-  let open Alcotest in
-  let m = run_prog (test_path "pos/test_ucaps.s") in
-  [
-    test_case "test_ucaps.s should end in halted state" `Quick (test_state Halted (fst m));
-    test_case "test_ucaps.s should contain 42 in r0" `Quick
-      (test_const_word (Z.of_int 42) (get_reg_int_word (Reg 0) m Z.one));
-    test_case "test_ucaps.s should contain 43 in r1" `Quick
-      (test_const_word (Z.of_int 43) (get_reg_int_word (Reg 1) m Z.one));
-    test_case "test_ucaps.s should contain RWLX permission in r2" `Quick
-      (test_perm RWLX (get_reg_cap_perm (Reg 2) m O));
-  ]
-
 let test_locality_flow =
   let open Alcotest in
   let m = run_prog (test_path "pos/test_locality_flow.s") in
   [ test_case "test_locality.s should end in halted state" `Quick (test_state Halted (fst m)) ]
-
-let test_directed_store =
-  let open Alcotest in
-  let m = run_prog (test_path "pos/test_directed_store.s") in
-  [
-    test_case "test_directed_store.s should end in halted state" `Quick (test_state Halted (fst m));
-  ]
 
 let test_getotype =
   let open Alcotest in
@@ -174,8 +139,9 @@ let () =
   run "Run"
     [
       ( "Pos",
-        test_mov_test @ test_jmper @ test_promote @ test_ucaps @ test_locality_flow
-        @ test_directed_store @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+        test_mov_test
+        @ test_jmper @ test_locality_flow
+        @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
       );
       ("Neg", test_negatives);
     ]

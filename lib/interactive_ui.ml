@@ -1,7 +1,6 @@
 open Notty
 open Notty.Infix
 open Notty_unix
-open Parameters
 
 type side = Left | Right
 (* ui components *)
@@ -54,9 +53,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
        whichever is shortest *)
     let width = (2 * Addr.width) + 1
 
-    let ui ?(attr = A.empty) ((b, e) : Z.t * Infinite_z.t) =
+    let ui ?(attr = A.empty) ((b, e) : Z.t * Z.t) =
       let bs = Addr.to_hex b in
-      let es = match e with Inf -> "∞" | Int e -> Addr.to_hex e in
+      let es = Addr.to_hex e in
       (* determine whether we should use the XXXX-XXXX or XX[XX-XX] format *)
       let rec find_prefix i =
         if i = String.length bs then (* b = e, default to the default printing scheme *)
@@ -102,7 +101,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let width =
       (* NOTE If locality is Global, then do not show it *)
       Perm.width + 1
-      (* space *) + (if !flags.locality = Global then 0 else Locality.width + 1 (* space *))
+      (* space *) + Locality.width + 1 (* space *)
       + Addr_range.width + 1 (* space *) + Addr.width
 
     let ui ?(attr = A.empty) (sb : Ast.sealable) (s : side) =
@@ -117,8 +116,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           let attr = if attr = sealed_style then sealed_cap_style else cap_style in
           I.hsnap ~align:s_left width
             (Perm.ui ~attr p
-            <|> (if !flags.locality = Global then I.empty
-                 else I.string A.empty " " <|> Locality.ui ~attr g)
+            <|> I.string A.empty " " <|> Locality.ui ~attr g
             <|> I.string A.empty " "
             <|> Addr_range.ui ~attr (b, e))
           </> I.hsnap ~align:s_right width (Addr.ui ~attr a)
@@ -126,10 +124,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           let attr = if attr = sealed_style then sealed_sealrange_style else sealrange_style in
           I.hsnap ~align:s_left width
             (SealPerm.ui ~attr p
-            <|> (if !flags.locality = Global then I.empty
-                 else I.string A.empty " " <|> Locality.ui ~attr g)
+            <|> I.string A.empty " " <|> Locality.ui ~attr g
             <|> I.string A.empty " "
-            <|> Addr_range.ui ~attr (b, Int e))
+            <|> Addr_range.ui ~attr (b, e))
           </> I.hsnap ~align:s_right width (Addr.ui ~attr a)
   end
 
@@ -205,9 +202,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let is_in_r_range r a =
       match r with
       | Ast.Sealable (Cap (_, _, b, e, _)) ->
-          if a >= b && Infinite_z.z_lt a e then
+          if a >= b && a < e then
             if a = b then `AtStart
-            else if match e with Inf -> false | Int e -> a = Z.(e - ~$1) then `AtLast
+            else if a = Z.(e - ~$1) then `AtLast
             else `InRange
           else `No
       | _ -> `No
@@ -266,7 +263,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
             if r <= start_addr && start_addr > ~$0 then r - ~$off
             else if
               r >= start_addr + ~$height - ~$1
-              && (!Parameters.flags.max_addr = Inf || start_addr + ~$height < Cfg.addr_max)
+              && (start_addr + ~$height < Cfg.addr_max)
             then r - ~$off
             else start_addr)
       | _ -> start_addr
@@ -274,8 +271,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let next_page n (_ : Ast.word) height start_addr off =
       Z.(
         let new_addr = start_addr + (~$n * ~$height) - ~$off in
-        if !Parameters.flags.max_addr = Inf then new_addr
-        else if new_addr > Cfg.addr_max then start_addr
+        if new_addr > Cfg.addr_max then start_addr
         else new_addr)
 
     let previous_page n (_ : Ast.word) height start_addr off =
@@ -286,8 +282,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let next_addr (_ : Ast.word) (_ : int) start_addr (_ : int) =
       Z.(
         let new_addr = start_addr + ~$1 in
-        if !Parameters.flags.max_addr = Inf then new_addr
-        else if new_addr > Cfg.addr_max then start_addr
+        if new_addr > Cfg.addr_max then start_addr
         else new_addr)
 
     let previous_addr (_ : Ast.word) (_ : int) start_addr (_ : int) =
@@ -304,7 +299,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         let start_addr_int = Z.to_int start_addr in
         CCList.(start_addr_int --^ (start_addr_int + height))
         |> List.filter (fun a ->
-               a >= 0 && (!Parameters.flags.max_addr = Inf || a < Z.to_int Cfg.addr_max))
+               a >= 0 && (a < Z.to_int Cfg.addr_max))
         |> List.map (fun a ->
                Z.
                  ( ~$a,
@@ -350,7 +345,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
             (term_height - 1 - I.height regs_img)
             term_width mem (Machine.RegMap.find Ast.PC reg)
-            (if !flags.stack then Machine.RegMap.find Ast.stk reg else Ast.I Z.zero)
+            (Machine.RegMap.find Ast.stk reg)
             !prog_panel_start !stk_panel_start
         in
         prog_panel_start := panel_start;
@@ -402,7 +397,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
               let upd_fnt =
                 match l with [ `Ctrl ] -> Program_panel.next_page 1 | _ -> Program_panel.next_addr
               in
-              if x >= stack_x && !Parameters.flags.stack then
+              if x >= stack_x then
                 loop ~update_stk:upd_fnt show_stack m history
               else loop ~update_prog:upd_fnt show_stack m history
           | `Mouse (`Press (`Scroll `Up), (x, _), l) ->
@@ -412,7 +407,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
                 | [ `Ctrl ] -> Program_panel.previous_page 1
                 | _ -> Program_panel.previous_addr
               in
-              if x >= stack_x && !Parameters.flags.stack then
+              if x >= stack_x then
                 loop ~update_stk:upd_fnt show_stack m history
               else loop ~update_prog:upd_fnt show_stack m history
           | `Key (`Tab, l) -> (

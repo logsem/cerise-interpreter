@@ -4,7 +4,6 @@ let parse_prog (filename : string) : (Ast.t, string) Result.t =
     let filebuf = Lexing.from_channel input in
     let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
     close_in input;
-    Parameters.check_program parse_res;
     Result.Ok parse_res
   with Failure _ ->
     close_in input;
@@ -17,7 +16,6 @@ let parse_regfile (filename : string) (stk_addr : Z.t) :
     let filebuf = Lexing.from_channel input in
     let parse_res = Irreg.translate_regfile @@ Parser_regfile.main Lexer_regfile.token filebuf in
     let parse_regfile = parse_res !Parameters.flags.max_addr stk_addr in
-    Machine.RegMap.iter (fun _ w -> Parameters.check_word w) parse_regfile;
     close_in input;
     Result.Ok parse_regfile
   with Failure _ ->

@@ -14,7 +14,7 @@ let hex = (digit | ['a'-'f'] | ['A'-'F'])
 let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
 let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
 let addr = ("MAX_ADDR" | "STK_ADDR")
-let locality = ("LOCAL" | "GLOBAL" | "DIRECTED" | "Local" | "Global" | "Directed")
+let locality = ("LOCAL" | "GLOBAL" | "Local" | "Global")
 let letter = ['a'-'z' 'A'-'Z']
 
 rule token = parse
@@ -24,12 +24,11 @@ rule token = parse
 | ';' { comment lexbuf }
 | ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
                                   with Failure _ -> error lexbuf ("Invalid integer '" ^ i ^ "'.")}
-| ("Inf" | "inf" | "∞") { INF }
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
-| ['d' 'D'] ['d' 'D'] ['c' 'C'] { DDC }
+| ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n)
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 (* addresses *)
@@ -52,8 +51,6 @@ rule token = parse
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }
 | "GLOBAL"   | "Global"  { GLOBAL }
-| "DIRECTED" | "Directed"  { DIRECTED }
-
 
 (* permissions *)
 | 'O' { O }
@@ -64,10 +61,6 @@ rule token = parse
 | "RWX" { RWX }
 | "RWL" { RWL }
 | "RWLX" { RWLX }
-| "URW" { URW }
-| "URWX" { URWX }
-| "URWL" { URWL }
-| "URWLX" { URWLX }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

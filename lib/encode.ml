@@ -65,7 +65,7 @@ let decode_wtype (z : Z.t) : wtype =
 (** Locality *)
 
 let locality_encoding (g : locality) : Z.t =
-  Z.of_int @@ match g with Directed -> 0b00 | Local -> 0b01 | Global -> 0b10
+  Z.of_int @@ match g with Local -> 0b0 | Global -> 0b1
 
 let encode_locality (g : locality) : Z.t = encode_const _LOCALITY_ENC (locality_encoding g)
 
@@ -74,14 +74,11 @@ let locality_decoding (i : Z.t) : locality =
     raise @@ DecodeException "Error decoding locality: unexpected encoding"
   in
   let b0 = Z.testbit i 0 in
-  let b1 = Z.testbit i 1 in
-  if Z.(i > of_int 0b11) then dec_loc_exception ()
+  if Z.(i > of_int 0b1) then dec_loc_exception ()
   else
-    match (b1, b0) with
-    | false, false -> Directed
-    | false, true -> Local
-    | true, false -> Global
-    | _ -> dec_loc_exception ()
+    match b0 with
+    | false -> Local
+    | true -> Global
 
 (** Permission *)
 let decode_locality (i : Z.t) : locality =
@@ -103,10 +100,6 @@ let perm_encoding (p : perm) : Z.t =
   | RWX -> 0b00111
   | RWL -> 0b01110
   | RWLX -> 0b01111
-  | URW -> 0b10110
-  | URWX -> 0b10111
-  | URWL -> 0b11110
-  | URWLX -> 0b11111
 
 let perm_decoding (i : Z.t) : perm =
   let dec_perm_exception _ =
@@ -128,10 +121,6 @@ let perm_decoding (i : Z.t) : perm =
     | false, false, true, true, true -> RWX
     | false, true, true, true, false -> RWL
     | false, true, true, true, true -> RWLX
-    | true, false, true, true, false -> URW
-    | true, false, true, true, true -> URWX
-    | true, true, true, true, false -> URWL
-    | true, true, true, true, true -> URWLX
     | _ -> dec_perm_exception ()
 
 let encode_perm (p : perm) : Z.t = encode_const _PERM_ENC (perm_encoding p)
@@ -364,18 +353,8 @@ let encode_machine_op (s : machine_op) : Z.t =
       ~$0x2e ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
   | UnSeal (r1, r2, r3) ->
       ~$0x2f ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
-  | Invoke (r1, r2) -> ~$0x30 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | LoadU (r1, r2, c) ->
-      (* 0x31, 0x32 *)
-      let opc, c_enc = const_convert ~$0x31 c in
-      opc ^! encode_int_int (encode_int_int (encode_reg r1) (encode_reg r2)) c_enc
-  | StoreU (r, c1, c2) ->
-      (* 0x33, 0x34, 0x35, 0x36 *)
-      let opc, c_enc = two_const_convert ~$0x33 c1 c2 in
-      opc ^! encode_int_int (encode_reg r) c_enc
-  | PromoteU r -> ~$0x37 ^! encode_reg r
-  | Fail -> ~$0x38
-  | Halt -> ~$0x39
+  | Fail -> ~$0x30
+  | Halt -> ~$0x31
 
 let decode_machine_op (i : Z.t) : machine_op =
   (* let dec_perm = *)
@@ -498,7 +477,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let c2 = if opc = ~$0x23 || opc = ~$0x25 then Register (decode_reg c2_enc) else Const c2_enc in
     SubSeg (r, c1, c2)
   else if (* GetL *)
-          opc = ~$0x27 && Parameters.locality_allowed Local then
+          opc = ~$0x27 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
@@ -528,7 +507,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r2 = decode_reg r2_enc in
     GetP (r1, r2)
   else if (* GetOType *)
-          opc = ~$0x2c && !Parameters.flags.sealing then
+          opc = ~$0x2c then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
@@ -540,7 +519,7 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r2 = decode_reg r2_enc in
     GetWType (r1, r2)
   else if (* Seal *)
-          opc = ~$0x2e && !Parameters.flags.sealing then
+          opc = ~$0x2e then
     let r1_enc, payload' = decode_int payload in
     let r2_enc, r3_enc = decode_int payload' in
     let r1 = decode_reg r1_enc in
@@ -548,49 +527,17 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r3 = decode_reg r3_enc in
     Seal (r1, r2, r3)
   else if (* UnSeal *)
-          opc = ~$0x2f && !Parameters.flags.sealing then
+          opc = ~$0x2f then
     let r1_enc, payload' = decode_int payload in
     let r2_enc, r3_enc = decode_int payload' in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     let r3 = decode_reg r3_enc in
     UnSeal (r1, r2, r3)
-  else if (* Invoke *)
-          opc = ~$0x30 && !Parameters.flags.sealing then
-    let r1_enc, r2_enc = decode_int payload in
-    let r1 = decode_reg r1_enc in
-    let r2 = decode_reg r2_enc in
-    Invoke (r1, r2)
-  else if (* LoadU *)
-          opc = ~$0x31 && !Parameters.flags.unitialized (* register register register *)
-  then
-    let payload', c_enc = decode_int payload in
-    let r1_enc, r2_enc = decode_int payload' in
-    let r1 = decode_reg r1_enc in
-    let r2 = decode_reg r2_enc in
-    let c = Register (decode_reg c_enc) in
-    LoadU (r1, r2, c)
-  else if opc = ~$0x32 && !Parameters.flags.unitialized (* register register const *) then
-    let payload', c_enc = decode_int payload in
-    let r1_enc, r2_enc = decode_int payload' in
-    let r1 = decode_reg r1_enc in
-    let r2 = decode_reg r2_enc in
-    let c = Const c_enc in
-    LoadU (r1, r2, c)
-  else if (* StoreU *)
-          ~$0x33 <= opc && opc <= ~$0x36 && !Parameters.flags.unitialized then
-    let r_enc, payload' = decode_int payload in
-    let c1_enc, c2_enc = decode_int payload' in
-    let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x33 || opc = ~$0x34 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x33 || opc = ~$0x35 then Register (decode_reg c2_enc) else Const c2_enc in
-    StoreU (r, c1, c2)
-  else if (* PromoteU *)
-          opc = ~$0x37 && !Parameters.flags.unitialized then PromoteU (decode_reg payload)
   else if (* Fail *)
-          opc = ~$0x38 then Fail
+          opc = ~$0x30 then Fail
   else if (* Halt *)
-          opc = ~$0x39 then Halt
+          opc = ~$0x31 then Halt
   else
     raise
     @@ DecodeException

@@ -13,10 +13,7 @@ let () =
   in
 
   let stk_addr =
-    Z.(
-      if !Parameters.flags.stack then
-        match !Parameters.flags.max_addr with Int z -> z / ~$2 | Inf -> Parameters.max_addr / ~$2
-      else ~$0)
+    Z.( !Parameters.flags.max_addr / ~$2 )
   in
 
   (* Parse initial register file *)
@@ -38,7 +35,8 @@ let () =
         let addr_max : Z.t = Parameters.get_max_addr ()
       end in
       let module Ui = Interactive_ui.MkUi (Cfg) in
+      let show_stack = false in
       let prog_panel_start = ref Z.zero in
       let stk_panel_start = ref stk_addr in
-      Ui.render_loop ~show_stack:!Parameters.flags.stack prog_panel_start stk_panel_start m_init
+      Ui.render_loop ~show_stack:show_stack prog_panel_start stk_panel_start m_init
   | Cli_parser.Interpreter_mode -> Interpreter_ui.interpreter m_init
