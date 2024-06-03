@@ -3,15 +3,44 @@ type regname = PC | Reg of int
 
 let cgp = Reg 0
 let stk = Reg 31
+let sreg = Reg 30
 
-type perm = O | E | RO | RX | RW | RWX | RWL | RWLX
+module Perm =
+struct
+  type t =
+  | E   (* sentry                  ---  sealed value with otype 1, 2 or 3 *)
+  | R   (* read                    ---  LG, MC and LD *)
+  | X   (* execute                 ---  EX *)
+  | W   (* write                   ---  LM, MC and SD *)
+  | WL  (* write local             ---  SL *)
+  | SR  (* system register access  ---  SR *)
+  | DL  (* deep locality           ---  inverse of LG *)
+  | DI  (* deep immutability       ---  inverse of LM *)
+  let compare p1 p2 = if (p1 = p2) then 0 else 1
+  let allowed_with (p1 : t) (p2 : t) =
+    match (p1,p2) with
+    (* sentry are not allowed with any other capabilities *)
+    | E,_ -> false
+    (* system access permission only with X *)
+    | SR,X -> true
+    | SR,_ -> false
+
+    (* no write and execute permission at the same time *)
+    | W,X -> false
+    | WL,X -> false
+
+    | _,_ -> true
+end
+module PermSet = Set.Make(Perm)
+
+
 type locality = Global | Local
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 type seal_perm = bool * bool
 type reg_or_const = Register of regname | Const of Z.t
 
 type sealable =
-  | Cap of perm * locality * Z.t * Z.t * Z.t
+  | Cap of (PermSet.t) * locality * Z.t * Z.t * Z.t
   | SealRange of seal_perm * locality * Z.t * Z.t * Z.t
 
 type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
