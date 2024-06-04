@@ -12,7 +12,6 @@
 let digit = ['0'-'9']
 let hex = (digit | ['a'-'f'] | ['A'-'F'])
 let reg_num = ((digit) | ('1' digit) | ('2' digit) | "30" | "31")
-let perm = ('O' | 'E' | "RO" | "RW" | "RWX")
 let locality = ("LOCAL" | "GLOBAL" | "Local" | "Global")
 let letter = ['a'-'z' 'A'-'Z']
 let label = ('_' | letter) (letter | '_' | digit)*
@@ -29,12 +28,15 @@ rule token = parse
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
 | ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
+| ['m' 'M'] ['t' 'T'] ['c' 'C'] ['c' 'C'] { MTCC }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n) 
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
 (* machine_op *)
+| "jalr" { JALR }
 | "jmp" { JMP }
 | "jnz" { JNZ }
+| "movSR" { MOVESR }
 | "mov" { MOVE }
 | "load" { LOAD }
 | "store" { STORE }
@@ -80,12 +82,13 @@ rule token = parse
 (* permissions *)
 | 'O' { O }
 | 'E' { E }
-| "RO" { RO }
-| "RX" { RX }
-| "RW" { RW }
-| "RWX" { RWX }
-| "RWL" { RWL }
-| "RWLX" { RWLX }
+| 'R' { R }
+| 'X' { X }
+| 'W' { W }
+| "WL" { WL }
+| "SR" { SR }
+| "DL" { DL }
+| "DI" { DI }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

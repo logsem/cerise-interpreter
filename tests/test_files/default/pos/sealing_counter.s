@@ -21,45 +21,34 @@ init:
 	lea r0 (main+1-init)   	; r0 = (RWX, init, end, main+1)
 	subseg r0 main data		; r0 = (RWX, main, data, main+1)
 	restrict r0 (E, Global)	; r0 = (E, main, data, main+1)
-	jmp r0   				; jump to main main
+	jalr r0 r0   			; jump to main main
 
 main:
 	;; r0 = pc / r1 = {0: (RO, counter, counter+1, counter)}
-	#(RO, Global, linking_table, end, linking_table)
+	#(R, Global, linking_table, end, linking_table)
 
 	;; prepare the sentry for get and incr in r30 and r31
 	mov r0 pc
 	lea r0 (-1)				; r0 = (RX, main, data, main+1)
-	load r31 r0				; r30 = (RO, linking_table, end, linking_table)
-	load r30 r31 			; r30 = #(E, get, incr, get+1)
-	lea r31 1
-	load r31 r31 			; r31 = #(E, incr, end, incr+1)
+	load r29 r0				; r30 = (RO, linking_table, end, linking_table)
+	load r30 r29 			; r30 = #(E, get, incr, get+1)
+	lea r29 1
+	load r29 r29 			; r29 = #(E, incr, end, incr+1)
 
 	;; call get
-	mov r0 pc
-	lea r0 3				; r0 = callback
-	jmp r30					; call get
+	jalr r0 r30				; call get
 
 	;; call incr 3 times
-	mov r0 pc
-	lea r0 3				; r0 = callback
-	jmp r31					; call incr
-	mov r0 pc
-	lea r0 3				; r0 = callback
-	jmp r31					; call incr
-	mov r0 pc
-	lea r0 3				; r0 = callback
-	jmp r31					; call incr
-	mov r0 pc
+	jalr r0 r29				; call incr
+	jalr r0 r29				; call incr
+	jalr r0 r29				; call incr
 
 	;; call get
-	mov r0 pc
-	lea r0 3				; r0 = callback
-	jmp r30					; call get
+	jalr r0 r30				; call incr
 
 	halt
 data:
-	#{0: (RW, Global, counter, counter+1, counter)}
+	#{0: ([R W], Global, counter, counter+1, counter)}
 linking_table:
 	#(E, Global, get, incr, get+1) 		; get
 	#(E, Global, incr, end, incr+2)		; incr
@@ -76,15 +65,15 @@ get: 							; check whether the otype matches with the actual value
 	unseal r2 r2 r1				; r2 = (RO, counter, counter+1, counter)
 	load r2 r2					; r2 = val_counter
 	sub r3 r2 r3				; r3 = val_counter - ot
-	mov r2 pc
-	lea r2 5					; prepare jump to the fail instruction
-	jnz r2 r3					; if r3 != 0, then fail, else return
+	;; mov r2 pc
+	;; lea r2 5					; prepare jump to the fail instruction
+	jnz r3 3					; if r3 != 0, then fail, else return
 	getotype r2 r1				; Case r3 = 0, then get_value and jmp to callback
-	jmp r0						; r2 contains the return value
+	jalr r0 r0					; r2 contains the return value
 	fail 						; Case r3 != 0, then fail
 incr:
 	#[SU, Global, 0, 10, 0]
-	#(RW, Global, incr, incr+1, incr)
+	#([R W], Global, incr, incr+1, incr)
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, incr, end, incr+2)
 	lea r2 (-2)					; r2 = (RX, incr, end, incr)
@@ -101,5 +90,5 @@ incr:
 	mov r2 0
 	mov r3 0
 	mov r4 0
-	jmp r0
+	jalr r0 r0
 end:

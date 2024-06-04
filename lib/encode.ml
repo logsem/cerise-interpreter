@@ -64,9 +64,7 @@ let decode_wtype (z : Z.t) : wtype =
 
 (** Locality *)
 
-let locality_encoding (g : locality) : Z.t =
-  Z.of_int @@ match g with Local -> 0b0 | Global -> 0b1
-
+let locality_encoding (g : locality) : Z.t = Z.of_int @@ match g with Local -> 0b0 | Global -> 0b1
 let encode_locality (g : locality) : Z.t = encode_const _LOCALITY_ENC (locality_encoding g)
 
 let locality_decoding (i : Z.t) : locality =
@@ -75,10 +73,7 @@ let locality_decoding (i : Z.t) : locality =
   in
   let b0 = Z.testbit i 0 in
   if Z.(i > of_int 0b1) then dec_loc_exception ()
-  else
-    match b0 with
-    | false -> Local
-    | true -> Global
+  else match b0 with false -> Local | true -> Global
 
 (** Permission *)
 let decode_locality (i : Z.t) : locality =
@@ -88,49 +83,63 @@ let decode_locality (i : Z.t) : locality =
   let dec_type, dec_i = decode_const i in
   if dec_type != _LOCALITY_ENC then dec_loc_exception () else locality_decoding dec_i
 
-let perm_encoding (p : perm) : Z.t =
+let perm_encoding (p : Perm.t) : Z.t =
   Z.of_int
   @@
   match p with
-  | O -> 0b00000
-  | E -> 0b00001
-  | RO -> 0b00100
-  | RX -> 0b00101
-  | RW -> 0b00110
-  | RWX -> 0b00111
-  | RWL -> 0b01110
-  | RWLX -> 0b01111
+  | E -> 0b10000000
+  | R -> 0b01000000
+  | X -> 0b00100000
+  | W -> 0b00010000
+  | WL -> 0b00001000
+  | SR -> 0b00000100
+  | DL -> 0b00000010
+  | DI -> 0b00000001
 
-let perm_decoding (i : Z.t) : perm =
+let fperm_encoding (fp : PermSet.t) : Z.t =
+  PermSet.fold (fun p res -> Z.logor (perm_encoding p) res) fp (Z.of_int 0b0)
+
+let perm_decoding (i : Z.t) : Perm.t =
   let dec_perm_exception _ =
     raise @@ DecodeException "Error decoding permission: unexpected encoding"
   in
-  let b0 = Z.testbit i 0 in
-  let b1 = Z.testbit i 1 in
-  let b2 = Z.testbit i 2 in
-  let b3 = Z.testbit i 3 in
-  let b4 = Z.testbit i 4 in
-  if Z.(i > of_int 0b11111) then dec_perm_exception ()
+  if Z.(i > of_int 0b11111111) then dec_perm_exception ()
   else
-    match (b4, b3, b2, b1, b0) with
-    | false, false, false, false, false -> O
-    | false, false, false, false, true -> E
-    | false, false, true, false, false -> RO
-    | false, false, true, false, true -> RX
-    | false, false, true, true, false -> RW
-    | false, false, true, true, true -> RWX
-    | false, true, true, true, false -> RWL
-    | false, true, true, true, true -> RWLX
+    let b k = Z.testbit i k in
+    match (b 7, b 6, b 5, b 4, b 3, b 2, b 1, b 0) with
+    | true, false, false, false, false, false, false, false -> E
+    | false, true, false, false, false, false, false, false -> R
+    | false, false, true, false, false, false, false, false -> X
+    | false, false, false, true, false, false, false, false -> W
+    | false, false, false, false, true, false, false, false -> WL
+    | false, false, false, false, false, true, false, false -> SR
+    | false, false, false, false, false, false, true, false -> DL
+    | false, false, false, false, false, false, false, true -> DI
     | _ -> dec_perm_exception ()
 
-let encode_perm (p : perm) : Z.t = encode_const _PERM_ENC (perm_encoding p)
+let fperm_decoding (i : Z.t) : PermSet.t =
+  let dec_perm_exception _ =
+    raise @@ DecodeException "Error decoding permission: unexpected encoding"
+  in
+  if Z.(i > of_int 0b11111111) then dec_perm_exception ()
+  else
+    let perm_mask =
+      List.map Z.of_int
+        [ 0b10000000; 0b01000000; 0b00100000; 0b00010000; 0b00001000; 0b00000010; 0b00000001 ]
+    in
+    let masked = List.map (fun mask -> Z.logand mask i) perm_mask in
+    let filtered = List.filter (fun r -> not (r = Z.zero)) masked in
+    let decoded = List.map perm_decoding filtered in
+    PermSet.of_list decoded
 
-let decode_perm (i : Z.t) : perm =
+let encode_perm (p : PermSet.t) : Z.t = encode_const _PERM_ENC (fperm_encoding p)
+
+let decode_perm (i : Z.t) : PermSet.t =
   let dec_perm_exception _ =
     raise @@ DecodeException "Error decoding permission: does not recognize a permission"
   in
   let dec_type, dec_i = decode_const i in
-  if dec_type != _PERM_ENC then dec_perm_exception () else perm_decoding dec_i
+  if dec_type != _PERM_ENC then dec_perm_exception () else fperm_decoding dec_i
 
 (** Sealing Permission *)
 
@@ -162,29 +171,29 @@ let decode_seal_perm (i : Z.t) : seal_perm =
   if dec_type != _SEAL_PERM_ENC then decode_perm_exception () else seal_perm_decoding dec_i
 
 (** Permission-locality encoding *)
-let perm_loc_pair_encoding (p : perm) (g : locality) : Z.t =
-  let size_perm = 5 in
+let perm_loc_pair_encoding (p : PermSet.t) (g : locality) : Z.t =
+  let size_perm = 8 in
   let open Z in
   let encoded_g = locality_encoding g lsl size_perm in
-  let encoded_p = perm_encoding p in
+  let encoded_p = fperm_encoding p in
   encoded_g lor encoded_p
 
-let encode_perm_loc_pair (p : perm) (g : locality) : Z.t =
+let encode_perm_loc_pair (p : PermSet.t) (g : locality) : Z.t =
   encode_const _PERM_LOC_ENC (perm_loc_pair_encoding p g)
 
-let perm_loc_pair_decoding (i : Z.t) : perm * locality =
-  let size_perm = 5 in
+let perm_loc_pair_decoding (i : Z.t) : PermSet.t * locality =
+  let size_perm = 8 in
   let dec_perm_loc_exception _ =
     raise @@ DecodeException "Error decoding permission-locality pair: unexpected encoding"
   in
   let open Z in
-  if i > of_int 0b1111111 then dec_perm_loc_exception ()
+  if i > of_int 0b1111111111 then dec_perm_loc_exception ()
   else
-    let encoded_g = (i land of_int 0b1100000) asr size_perm in
-    let encoded_p = i land of_int 0b0011111 in
-    (perm_decoding encoded_p, locality_decoding encoded_g)
+    let encoded_g = (i land of_int 0b1100000000) asr size_perm in
+    let encoded_p = i land of_int 0b0011111111 in
+    (fperm_decoding encoded_p, locality_decoding encoded_g)
 
-let decode_perm_loc_pair (i : Z.t) : perm * locality =
+let decode_perm_loc_pair (i : Z.t) : PermSet.t * locality =
   let dec_perm_loc_exception _ =
     raise
     @@ DecodeException
@@ -295,66 +304,81 @@ let encode_machine_op (s : machine_op) : Z.t =
     (opc2, encode_int_int c1_enc c2_enc)
   in
   match s with
-  | Jmp r -> ~$0x00 ^! encode_reg r
-  | Jnz (r1, r2) -> ~$0x01 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | Move (r, c) ->
+  | Jmp c ->
+      (* 0x00, 0x01 *)
+      let opc, c_enc = const_convert ~$0x00 c in
+      opc ^! c_enc
+  | Jnz (r, c) ->
       (* 0x02, 0x03 *)
       let opc, c_enc = const_convert ~$0x02 c in
       opc ^! encode_int_int (encode_reg r) c_enc
-  | Load (r1, r2) -> ~$0x04 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | Store (r, c) ->
-      (* 0x05, 0x06  *)
+  | Jalr (r1, r2) ->
+      (* 0x04 *)
+      ~$0x04 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | MoveSR (r, c) ->
+      (* 0x05, 0x06 *)
       let opc, c_enc = const_convert ~$0x05 c in
       opc ^! encode_int_int (encode_reg r) c_enc
+  | Move (r, c) ->
+      (* 0x07, 0x08 *)
+      let opc, c_enc = const_convert ~$0x07 c in
+      opc ^! encode_int_int (encode_reg r) c_enc
+  | Load (r1, r2) ->
+      (* 0x09 *)
+      ~$0x09 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | Store (r, c) ->
+      (* 0x0a, 0x0b  *)
+      let opc, c_enc = const_convert ~$0x0a c in
+      opc ^! encode_int_int (encode_reg r) c_enc
   | Add (r, c1, c2) ->
-      (* 0x07, 0x08, 0x09, 0x0a *)
-      let opc, c_enc = two_const_convert ~$0x07 c1 c2 in
+      (* 0x0c, 0x0d, 0x0e, 0x0f *)
+      let opc, c_enc = two_const_convert ~$0x0c c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Sub (r, c1, c2) ->
-      (* 0x0b, 0x0c, 0x0d, 0x0e *)
-      let opc, c_enc = two_const_convert ~$0x0b c1 c2 in
+      (* 0x10, 0x11, 0x12, 0x13 *)
+      let opc, c_enc = two_const_convert ~$0x10 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Mul (r, c1, c2) ->
-      (* 0x0f, 0x10, 0x11, 0x12 *)
-      let opc, c_enc = two_const_convert ~$0x0f c1 c2 in
+      (* 0x14, 0x15, 0x16, 0x17 *)
+      let opc, c_enc = two_const_convert ~$0x14 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Rem (r, c1, c2) ->
-      (* 0x13, 0x14, 0x15, 0x16 *)
-      let opc, c_enc = two_const_convert ~$0x13 c1 c2 in
+      (* 0x18, 0x19, 0x1a, 0x1b *)
+      let opc, c_enc = two_const_convert ~$0x18 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Div (r, c1, c2) ->
-      (* 0x17, 0x18, 0x19, 0x1a *)
-      let opc, c_enc = two_const_convert ~$0x17 c1 c2 in
+      (* 0x1c, 0x1d, 0x1e, 0x1f *)
+      let opc, c_enc = two_const_convert ~$0x1c c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Lt (r, c1, c2) ->
-      (* 0x1b, 0x1c, 0x1d, 0x1e *)
-      let opc, c_enc = two_const_convert ~$0x1b c1 c2 in
+      (* 0x20, 0x21, 0x22, 0x23 *)
+      let opc, c_enc = two_const_convert ~$0x20 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Lea (r, c) ->
-      (* 0x1f, 0x20 *)
-      let opc, c_enc = const_convert ~$0x1f c in
+      (* 0x24, 0x25 *)
+      let opc, c_enc = const_convert ~$0x24 c in
       opc ^! encode_int_int (encode_reg r) c_enc
   | Restrict (r, c) ->
-      (* 0x21, 0x22 *)
-      let opc, c_enc = const_convert ~$0x21 c in
+      (* 0x26, 0x27 *)
+      let opc, c_enc = const_convert ~$0x26 c in
       opc ^! encode_int_int (encode_reg r) c_enc
   | SubSeg (r, c1, c2) ->
-      (* 0x23, 0x24, 0x25, 0x26 *)
-      let opc, c_enc = two_const_convert ~$0x23 c1 c2 in
+      (* 0x28, 0x29, 0x2a, 0x2b *)
+      let opc, c_enc = two_const_convert ~$0x28 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
-  | GetL (r1, r2) -> ~$0x27 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetB (r1, r2) -> ~$0x28 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetE (r1, r2) -> ~$0x29 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetA (r1, r2) -> ~$0x2a ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetP (r1, r2) -> ~$0x2b ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetOType (r1, r2) -> ~$0x2c ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | GetWType (r1, r2) -> ~$0x2d ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetL (r1, r2) -> ~$0x2c ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetB (r1, r2) -> ~$0x2d ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetE (r1, r2) -> ~$0x2e ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetA (r1, r2) -> ~$0x2f ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetP (r1, r2) -> ~$0x30 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetOType (r1, r2) -> ~$0x31 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | GetWType (r1, r2) -> ~$0x32 ^! encode_int_int (encode_reg r1) (encode_reg r2)
   | Seal (r1, r2, r3) ->
-      ~$0x2e ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
+      ~$0x33 ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
   | UnSeal (r1, r2, r3) ->
-      ~$0x2f ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
-  | Fail -> ~$0x30
-  | Halt -> ~$0x31
+      ~$0x34 ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
+  | Fail -> ~$0x35
+  | Halt -> ~$0x36
 
 let decode_machine_op (i : Z.t) : machine_op =
   (* let dec_perm = *)
@@ -362,164 +386,192 @@ let decode_machine_op (i : Z.t) : machine_op =
   (* in *)
   let opc = Z.extract i 0 8 in
   let payload = Z.(i asr 8) in
+
   (* Jmp *)
-  if opc = ~$0x00 then Jmp (decode_reg payload)
+  if opc = ~$0x00 (* register register *) then
+    let r = Register (decode_reg payload) in
+    Jmp r
+  else if opc = ~$0x01 (* register const *) then
+    let r = Const payload in
+    Jmp r
   else if (* Jnz *)
-          opc = ~$0x01 then
+          opc = ~$0x02 then
+    let r1_enc, r2_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = Register (decode_reg r2_enc) in
+    Jnz (r1, r2)
+  else if opc = ~$0x03 then
+    let r1_enc, c_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let c = Const c_enc in
+    Jnz (r1, c)
+  else if (* Jalr *)
+          opc = ~$0x04 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
-    Jnz (r1, r2)
+    Jalr (r1, r2)
+  else if (* MoveSR *)
+          opc = ~$0x05 (* register register *) then
+    let r_enc, c_enc = decode_int payload in
+    let r1 = decode_reg r_enc in
+    let r2 = Register (decode_reg c_enc) in
+    MoveSR (r1, r2)
+  else if opc = ~$0x06 (* register const *) then
+    let r_enc, c_enc = decode_int payload in
+    let r = decode_reg r_enc in
+    let c = Const c_enc in
+    MoveSR (r, c)
   else if (* Move *)
-          opc = ~$0x02 (* register register *) then
+          opc = ~$0x07 (* register register *) then
     let r_enc, c_enc = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Move (r1, r2)
-  else if opc = ~$0x03 (* register const *) then
+  else if opc = ~$0x08 (* register const *) then
     let r_enc, c_enc = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Move (r, c)
   else if (* Load *)
-          opc = ~$0x04 then
+          opc = ~$0x09 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     Load (r1, r2)
   else if (* Store *)
-          opc = ~$0x05 (* register register *) then
+          opc = ~$0x0a (* register register *) then
     let r_enc, c_enc = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Store (r1, r2)
-  else if opc = ~$0x06 (* register const *) then
+  else if opc = ~$0x0b (* register const *) then
     let r_enc, c_enc = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Store (r, c)
   else if (* Add *)
-          ~$0x07 <= opc && opc <= ~$0x0a then
+          ~$0x0c <= opc && opc <= ~$0x0f then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x07 || opc = ~$0x08 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x07 || opc = ~$0x09 then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x0c || opc = ~$0x0d then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x0c || opc = ~$0x0e then Register (decode_reg c2_enc) else Const c2_enc in
     Add (r, c1, c2)
   else if (* Sub *)
-          ~$0x0b <= opc && opc <= ~$0x0e then
+          ~$0x10 <= opc && opc <= ~$0x13 then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x0b || opc = ~$0x0c then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x0b || opc = ~$0x0d then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x10 || opc = ~$0x11 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x10 || opc = ~$0x12 then Register (decode_reg c2_enc) else Const c2_enc in
     Sub (r, c1, c2)
   else if (* Mul *)
-          ~$0x0f <= opc && opc <= ~$0x12 then
+          ~$0x14 <= opc && opc <= ~$0x17 then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x0f || opc = ~$0x10 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x0f || opc = ~$0x11 then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x14 || opc = ~$0x15 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x14 || opc = ~$0x16 then Register (decode_reg c2_enc) else Const c2_enc in
     Mul (r, c1, c2)
   else if (* Rem *)
-          ~$0x13 <= opc && opc <= ~$0x16 then
+          ~$0x18 <= opc && opc <= ~$0x1b then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x13 || opc = ~$0x14 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x13 || opc = ~$0x15 then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x18 || opc = ~$0x19 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x18 || opc = ~$0x1a then Register (decode_reg c2_enc) else Const c2_enc in
     Rem (r, c1, c2)
   else if (* Div *)
-          ~$0x17 <= opc && opc <= ~$0x1a then
+          ~$0x1c <= opc && opc <= ~$0x1f then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x17 || opc = ~$0x18 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x17 || opc = ~$0x19 then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x1c || opc = ~$0x1d then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x1c || opc = ~$0x1e then Register (decode_reg c2_enc) else Const c2_enc in
     Div (r, c1, c2)
   else if (* Lt *)
-          ~$0x1b <= opc && opc <= ~$0x1e then
+          ~$0x20 <= opc && opc <= ~$0x23 then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x1b || opc = ~$0x1c then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x1b || opc = ~$0x1d then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x20 || opc = ~$0x21 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x20 || opc = ~$0x22 then Register (decode_reg c2_enc) else Const c2_enc in
     Lt (r, c1, c2)
   else if (* Lea *)
-          opc = ~$0x1f (* register register *) then
+          opc = ~$0x24 (* register register *) then
     let r_enc, c_enc = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Lea (r1, r2)
-  else if opc = ~$0x20 (* register const *) then
+  else if opc = ~$0x25 (* register const *) then
     let r_enc, c_enc = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Lea (r, c)
   else if (* Restrict *)
-          opc = ~$0x21 (* register register *) then
+          opc = ~$0x26 (* register register *) then
     let r_enc, c_enc = decode_int payload in
     let r1 = decode_reg r_enc in
     let r2 = Register (decode_reg c_enc) in
     Restrict (r1, r2)
-  else if opc = ~$0x22 (* register const *) then
+  else if opc = ~$0x27 (* register const *) then
     let r_enc, c_enc = decode_int payload in
     let r = decode_reg r_enc in
     let c = Const c_enc in
     Restrict (r, c)
   else if (* Subseg *)
-          ~$0x23 <= opc && opc <= ~$0x26 then
+          ~$0x28 <= opc && opc <= ~$0x2b then
     let r_enc, payload' = decode_int payload in
     let c1_enc, c2_enc = decode_int payload' in
     let r = decode_reg r_enc in
-    let c1 = if opc = ~$0x23 || opc = ~$0x24 then Register (decode_reg c1_enc) else Const c1_enc in
-    let c2 = if opc = ~$0x23 || opc = ~$0x25 then Register (decode_reg c2_enc) else Const c2_enc in
+    let c1 = if opc = ~$0x28 || opc = ~$0x29 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x28 || opc = ~$0x2a then Register (decode_reg c2_enc) else Const c2_enc in
     SubSeg (r, c1, c2)
   else if (* GetL *)
-          opc = ~$0x27 then
+          opc = ~$0x2c then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetL (r1, r2)
   else if (* GetB *)
-          opc = ~$0x28 then
+          opc = ~$0x2d then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetB (r1, r2)
   else if (* GetE *)
-          opc = ~$0x29 then
+          opc = ~$0x2e then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetE (r1, r2)
   else if (* GetA *)
-          opc = ~$0x2a then
+          opc = ~$0x2f then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetA (r1, r2)
   else if (* GetP *)
-          opc = ~$0x2b then
+          opc = ~$0x30 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetP (r1, r2)
   else if (* GetOType *)
-          opc = ~$0x2c then
+          opc = ~$0x31 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetOType (r1, r2)
   else if (* GetWType *)
-          opc = ~$0x2d then
+          opc = ~$0x32 then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     GetWType (r1, r2)
   else if (* Seal *)
-          opc = ~$0x2e then
+          opc = ~$0x33 then
     let r1_enc, payload' = decode_int payload in
     let r2_enc, r3_enc = decode_int payload' in
     let r1 = decode_reg r1_enc in
@@ -527,17 +579,15 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r3 = decode_reg r3_enc in
     Seal (r1, r2, r3)
   else if (* UnSeal *)
-          opc = ~$0x2f then
+          opc = ~$0x34 then
     let r1_enc, payload' = decode_int payload in
     let r2_enc, r3_enc = decode_int payload' in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     let r3 = decode_reg r3_enc in
     UnSeal (r1, r2, r3)
-  else if (* Fail *)
-          opc = ~$0x30 then Fail
-  else if (* Halt *)
-          opc = ~$0x31 then Halt
+  else if (* Fail *) opc = ~$0x35 then Fail
+  else if (* Halt *) opc = ~$0x36 then Halt
   else
     raise
     @@ DecodeException

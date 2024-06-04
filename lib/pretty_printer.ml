@@ -6,24 +6,28 @@ let ( ^- ) s1 s2 = s1 ^ " " ^ s2
 let string_of_regname (r : regname) : string =
   match r with
   | PC -> "pc"
-  | Reg i ->
-      if r = stk then "stk"
-      else if r = cgp then "cgp"
-      else "r" ^ string_of_int i
+  | Reg i -> if r = stk then "stk" else if r = cgp then "cgp" else "r" ^ string_of_int i
 
 let string_of_seal_perm (p : seal_perm) : string =
   match p with false, false -> "SO" | true, false -> "S" | false, true -> "U" | true, true -> "SU"
 
-let string_of_perm (p : perm) : string =
+let string_of_perm (p : Perm.t) : string =
   match p with
-  | O -> "O"
   | E -> "E"
-  | RO -> "RO"
-  | RX -> "RX"
-  | RW -> "RW"
-  | RWX -> "RWX"
-  | RWL -> "RWL"
-  | RWLX -> "RWLX"
+  | R -> "R"
+  | X -> "X"
+  | W -> "W"
+  | WL -> "WL"
+  | SR -> "SR"
+  | DL -> "DL"
+  | DI -> "DI"
+
+let string_of_fperm (fp : PermSet.t) : string =
+  if fp = PermSet.empty then "O"
+  else
+    let l = List.sort Perm.compare (PermSet.fold (fun p l -> p :: l) fp []) in
+    let s = List.fold_left (fun str p -> string_of_perm p ^ "_" ^ str) "" l in
+    String.sub s 0 (String.length s - 1)
 
 let string_of_locality (g : locality) : string =
   match g with Local -> "Local" | Global -> "Global"
@@ -42,7 +46,7 @@ let string_of_reg_or_const_restrict (c : reg_or_const) : string =
       try
         if dec_type = Encode._PERM_LOC_ENC then
           let p, g = Encode.perm_loc_pair_decoding dec_z in
-          "(" ^ string_of_perm p ^ "," ^- string_of_locality g ^ ")"
+          "(" ^ string_of_fperm p ^ "," ^- string_of_locality g ^ ")"
         else if dec_type = Encode._SEAL_LOC_ENC then
           let p, g = Encode.seal_perm_loc_pair_decoding dec_z in
           "(" ^ string_of_seal_perm p ^ "," ^- string_of_locality g ^ ")"
@@ -61,12 +65,14 @@ let string_of_machine_op (s : machine_op) : string =
   and string_of_rc r c = string_of_regname r ^- string_of_reg_or_const c
   and string_of_rcc r c1 c2 =
     string_of_regname r ^- string_of_reg_or_const c1 ^- string_of_reg_or_const c2
-  (* and string_of_rrc r1 r2 c = *)
-  (*   string_of_regname r1 ^- string_of_regname r2 ^- string_of_reg_or_const c *)
+    (* and string_of_rrc r1 r2 c = *)
+    (*   string_of_regname r1 ^- string_of_regname r2 ^- string_of_reg_or_const c *)
   in
   match s with
-  | Jmp r -> "jmp" ^- string_of_regname r
-  | Jnz (r1, r2) -> "jnz" ^- string_of_rr r1 r2
+  | Jalr (r1, r2) -> "jalr" ^- string_of_rr r1 r2
+  | Jmp c -> "jmp" ^- string_of_reg_or_const c
+  | Jnz (r, c) -> "jnz" ^- string_of_rc r c
+  | MoveSR (r, c) -> "movSR" ^- string_of_rc r c
   | Move (r, c) -> "mov" ^- string_of_rc r c
   | Load (r1, r2) -> "load" ^- string_of_rr r1 r2
   | Store (r, c) -> "store" ^- string_of_rc r c
@@ -96,7 +102,7 @@ let string_of_machine_op (s : machine_op) : string =
 let string_of_sealable (sb : sealable) : string =
   match sb with
   | Cap (p, g, b, e, a) ->
-      Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
+      Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_fperm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)
@@ -111,7 +117,7 @@ let string_of_word (w : word) : string =
 let string_of_ast_sealable (sb : Ast.sealable) : string =
   match sb with
   | Ast.Cap (p, g, b, e, a) ->
-      Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
+      Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_fperm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)

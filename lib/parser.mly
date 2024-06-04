@@ -1,30 +1,36 @@
 %token EOF
-%token PC STK CGP
+%token PC STK CGP MTCC
 %token <int> REG
 %token <int> INT
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS COMMA SHARP COLON
-%token JMP JNZ MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
+%token JALR JMP JNZ MOVESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
 %token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
 %token FAIL HALT
 %token LOCAL GLOBAL
-%token O E RO RX RW RWX RWL RWLX
+%token O E R X W WL SR DI DL
 %token SO S U SU
 %token Int Cap SealRange Sealed
 %left PLUS MINUS EXPR
 %left UMINUS
 
 %start <Ir.t> main
+%{ open! Ast %}
 %{ open! Ir %}
 
 %%
 
 main:
   | EOF; { ([]: Ir.t) }
-  | JMP; r = reg; p = main; { Jmp r :: p }
-  | JNZ; r1 = reg; r2 = reg; p = main; { Jnz (r1, r2) :: p }
+
+  | JALR; r1 = reg; r2 = reg; p = main; { Jalr (r1,r2) :: p }
+  | JMP; c = reg_const; p = main; { Jmp c :: p }
+  | JNZ; r = reg; c = reg_const; p = main; { Jnz (r, c) :: p }
+
+  | MOVESR; r = reg; c = reg_const; p = main; { MoveSR (r, c) :: p }
+
   | MOVE; r = reg; c = reg_const; p = main; { Move (r, c) :: p }
   | LOAD; r1 = reg; r2 = reg; p = main; { Load (r1, r2) :: p }
   | STORE; r = reg; c = reg_const; p = main; { Store (r, c) :: p }
@@ -37,6 +43,7 @@ main:
   | LEA; r = reg; c = reg_const; p = main; { Lea (r, c) :: p }
   | RESTRICT; r = reg; c = reg_const; p = main; { Restrict (r, c) :: p }
   | SUBSEG; r = reg; c1 = reg_const; c2 = reg_const; p = main; { SubSeg (r, c1, c2) :: p }
+
   | GETL; r1 = reg; r2 = reg; p = main; { GetL (r1, r2) :: p }
   | GETB; r1 = reg; r2 = reg; p = main; { GetB (r1, r2) :: p }
   | GETE; r1 = reg; r2 = reg; p = main; { GetE (r1, r2) :: p }
@@ -44,10 +51,13 @@ main:
   | GETP; r1 = reg; r2 = reg; p = main; { GetP (r1, r2) :: p }
   | GETOTYPE; r1 = reg; r2 = reg; p = main; { GetOType (r1, r2) :: p }
   | GETWTYPE; r1 = reg; r2 = reg; p = main; { GetWType (r1, r2) :: p }
+
   | SEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { Seal (r1, r2, r3) :: p }
   | UNSEAL; r1 = reg; r2 = reg; r3 = reg; p = main; { UnSeal (r1, r2, r3) :: p }
+
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }
+
   | lbl = LABELDEF; p = main; { Lbl lbl :: p }
   | SHARP ; w = word_def; p = main { Word w :: p }
 
@@ -70,6 +80,7 @@ reg:
   | PC; { PC }
   | STK; { stk }
   | CGP; { cgp }
+  | MTCC; { mtcc }
   | i = REG; { Reg i }
 
 reg_const:
@@ -92,21 +103,29 @@ wtype:
   | Int ; { W_I }
   | Cap ; { W_Cap }
   | SealRange ; { W_SealRange }
-  | Sealed ; { W_Sealed }
+  | Sealed ; { Ast.W_Sealed }
 
 locality:
   | LOCAL; { Local }
   | GLOBAL; { Global }
 
+perm_enc:
+  | E; { E: Perm.t }
+  | R; { R: Perm.t }
+  | X; { X: Perm.t }
+  | W; { W: Perm.t }
+  | WL; { WL: Perm.t }
+  | SR; { SR: Perm.t }
+  | DL; { DL: Perm.t }
+  | DI; { DI: Perm.t }
+
 perm:
-  | O; { O }
-  | E; { E }
-  | RO; { RO }
-  | RX; { RX }
-  | RW; { RW }
-  | RWX; { RWX }
-  | RWL; { RWL }
-  | RWLX; { RWLX }
+  | O; { PermSet.empty }
+  | p = perm_enc; { PermSet.singleton p }
+  | LSBRK; p = perm_list ; RSBRK ; { p }
+perm_list:
+  | p = perm_enc; { PermSet.singleton p }
+  | p = perm_enc ; tl = perm_list { PermSet.add p tl }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }

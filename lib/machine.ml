@@ -1,5 +1,5 @@
 open Ast
-open Parameters
+(* open Parameters *)
 
 let ( ~$ ) = Z.( ~$ )
 
@@ -18,39 +18,61 @@ type reg_state = word RegMap.t
 type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state }
 
+(* Architectural roots *)
+(* - memory root, LD_LG_LM_MC_SD_SL     --> R_W_WL *)
+let arch_root_memory_perm = PermSet.of_list [ R; W; WL ]
+
+(* - executable root, EX_LD_LG_LM_MC_SR --> R_X_SR *)
+let arch_root_executable_perm = PermSet.of_list [ R; X; SR ]
+
+let is_derived_from (p_dst : PermSet.t) (p_src : PermSet.t) =
+  if PermSet.equal p_dst p_src (* p <= p *) then true
+  else if PermSet.mem E p_dst (* E <= RX *) then
+    PermSet.equal (PermSet.of_list [ E ]) p_dst
+    && PermSet.mem R p_src && PermSet.mem X p_src
+    && (not (PermSet.mem DL p_src))
+    && not (PermSet.mem DI p_src)
+  else
+    (* p_dst ⊆ p_src, except that we can add DI or DL *)
+    PermSet.subset (PermSet.remove DL (PermSet.remove DI p_dst)) p_src
+
 (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
 
-let init_reg_state (stk_addr : Z.t) : reg_state =
+let init_reg_state : reg_state =
   let start_heap_addr = ~$0 in
-  let max_heap_addr = !Parameters.flags.max_addr in
-  let max_stk_addr = !Parameters.flags.max_addr in
+  let max_heap_addr = Parameters.get_max_addr () in
+  let start_otype = ~$0 in
+  let max_otype = Parameters.get_max_otype () in
 
   let l =
-    let seal_reg = 1 in
-    let n = 31 - seal_reg in
-    List.init n (fun i -> (Reg (i + seal_reg), I Z.zero))
+    let n = 30 in
+    List.init n (fun i -> (Reg (i + 1), I Z.zero))
   in
 
-  let stk_init =
-    let stk_locality = Local in
-    let stk_perm = RWLX in
-    [ (stk, Sealable (Cap (stk_perm, stk_locality, stk_addr, max_stk_addr, stk_addr))) ]
+  let root_exec =
+    Sealable
+      (Cap (arch_root_executable_perm, Global, start_heap_addr, max_heap_addr, start_heap_addr))
+  in
+  let root_mem =
+    Sealable (Cap (arch_root_memory_perm, Global, start_heap_addr, max_heap_addr, start_heap_addr))
+  in
+  let root_sealing =
+    Sealable (SealRange ((true, true), Global, start_otype, max_otype, start_otype))
   in
 
-  (* The PC register starts with full permission over the entire "heap" segment *)
-  let pc_init =
-    [ (PC, Sealable (Cap (RWX, Global, start_heap_addr, max_heap_addr, start_heap_addr))) ]
+  (* The PC register starts with full exec permission over the entire "heap" segment *)
+  let pc_init = [ (PC, root_exec) ] in
+  (* The CGP register starts with full mem permission over the entire "heap" segment *)
+  let cgp_init = [ (cgp, root_mem) ] in
+  (* The R0 register starts with full sealing permission over the entire otypes region *)
+  let sealing_init =
+    let sealing_reg = Reg 0 in
+    [ (sealing_reg, root_sealing) ]
   in
 
-  let pc_sealing =
-    [
-      ( Reg 0,
-        Sealable (SealRange ((true, true), Global, start_heap_addr, stk_addr, start_heap_addr)) );
-    ]
-  in
   (* The stk register starts with full permission over the entire "stack" segment *)
-  let seq = List.to_seq (pc_init @ pc_sealing @ l @ stk_init) in
+  let seq = List.to_seq (pc_init @ l @ sealing_init @ cgp_init) in
   RegMap.of_seq seq
 
 let get_reg (r : regname) ({ reg; _ } : exec_conf) : word = RegMap.find r reg
@@ -106,7 +128,10 @@ let upd_pc (conf : exec_conf) : mchn =
 let ( !> ) conf = upd_pc conf
 
 let upd_pc_perm (w : word) =
-  match w with Sealable (Cap (E, g, b, e, a)) -> Sealable (Cap (RX, g, b, e, a)) | _ -> w
+  match w with
+  | Sealable (Cap (p, g, b, e, a)) when PermSet.equal p (PermSet.singleton E) ->
+      Sealable (Cap (PermSet.of_list [ R; X ], g, b, e, a))
+  | _ -> w
 
 let fetch_decode (conf : exec_conf) : machine_op option =
   match PC @! conf with
@@ -117,39 +142,27 @@ let fetch_decode (conf : exec_conf) : machine_op option =
       | _ -> None)
   | _ -> None
 
+let is_WLperm (p : PermSet.t) : bool = PermSet.mem WL p && PermSet.mem W p
+let is_exec (p : PermSet.t) : bool = PermSet.mem R p && PermSet.mem X p
+let can_write (p : PermSet.t) : bool = PermSet.mem W p
+let can_read (p : PermSet.t) : bool = PermSet.mem R p
+
 let is_pc_valid (conf : exec_conf) : bool =
   match PC @! conf with
-  | Sealable (Cap ((RX | RWX | RWLX), _, b, e, a)) ->
+  | Sealable (Cap (p, _, b, e, a)) when is_exec p ->
       if b <= a && a < e then Option.is_some @@ a @? conf else false
   | _ -> false
 
-let perm_flowsto (p1 : perm) (p2 : perm) : bool =
-  match p1 with
-  | O -> true
-  | E -> ( match p2 with E | RX | RWX | RWLX -> true | _ -> false)
-  | RX -> ( match p2 with RX | RWX | RWLX -> true | _ -> false)
-  | RWX -> ( match p2 with RWX | RWLX -> true | _ -> false)
-  | RWLX -> ( match p2 with RWLX -> true | _ -> false)
-  | RO -> ( match p2 with E | O -> false | _ -> true)
-  | RW -> ( match p2 with RW | RWX | RWL | RWLX -> true | _ -> false)
-  | RWL -> ( match p2 with RWL | RWLX -> true | _ -> false)
+let perm_flowsto (p1 : PermSet.t) (p2 : PermSet.t) : bool = is_derived_from p1 p2
 
 let locality_flowsto (g1 : locality) (g2 : locality) : bool =
-  match g1 with
-  | Local -> true
-  | Global -> ( match g2 with Global -> true | _ -> false)
-
-let is_WLperm (p : perm) : bool = match p with RWL | RWLX -> true | _ -> false
-let is_exec (p : perm) : bool = match p with RX | RWX | RWLX -> true | _ -> false
+  match g1 with Local -> true | Global -> ( match g2 with Global -> true | _ -> false)
 
 let sealperm_flowsto (p1 : seal_perm) (p2 : seal_perm) : bool =
   let p_flows p p' = match (p, p') with false, _ -> true | true, true -> true | _, _ -> false in
   let s1, u1 = p1 in
   let s2, u2 = p2 in
   p_flows s1 s2 && p_flows u1 u2
-
-let can_write (p : perm) : bool = match p with RW | RWX | RWL | RWLX -> true | _ -> false
-let can_read (p : perm) : bool = match p with RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
 
 let get_wtype (w : word) : wtype =
   match w with
@@ -176,10 +189,35 @@ let exec_single (conf : exec_conf) : mchn =
         match instr with
         | Fail -> (Failed, conf)
         | Halt -> (Halted, conf)
-        | Move (r, c) ->
+        | Jalr (r_dst, r_src) when (not (r_dst = mtcc)) && not (r_src = mtcc) -> (
+            match PC @! conf with
+            | Sealable (Cap (_, g, b, e, a)) ->
+                let new_pc = upd_pc_perm (r_src @! conf) in
+                let link_cap = Sealable (Cap (PermSet.singleton E, g, b, e, Z.(a + Z.one))) in
+                (Running, upd_reg PC new_pc (upd_reg r_dst link_cap conf))
+            | _ -> fail_state)
+        | Jmp c when not (c = Register mtcc) -> (
+            match (get_word conf c, PC @! conf) with
+            | I imm, Sealable (Cap (p, g, b, e, a)) ->
+                let new_pc = Sealable (Cap (p, g, b, e, Z.(a + imm))) in
+                (Running, upd_reg PC new_pc conf)
+            | _ -> fail_state)
+        | Jnz (r_src, c) when (not (r_src = mtcc)) && not (c = Register mtcc) -> (
+            match r_src @! conf with
+            | I i when Z.(equal i zero) -> !>conf
+            | _ -> (
+                match (get_word conf c, PC @! conf) with
+                | I imm, Sealable (Cap (p, g, b, e, a)) ->
+                    let new_pc = Sealable (Cap (p, g, b, e, Z.(a + imm))) in
+                    (Running, upd_reg PC new_pc conf)
+                | _, _ -> fail_state))
+        | MoveSR (r, c) when r = mtcc && not (c = Register mtcc) ->
             let w = get_word conf c in
             !>(upd_reg r w conf)
-        | Load (r1, r2) -> (
+        | Move (r, c) when (not (r = mtcc)) && not (c = Register mtcc) ->
+            let w = get_word conf c in
+            !>(upd_reg r w conf)
+        | Load (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable (Cap (p, _, b, e, a)) ->
                 if can_read p then
@@ -188,29 +226,19 @@ let exec_single (conf : exec_conf) : mchn =
                   | _ -> fail_state
                 else fail_state
             | _ -> fail_state)
-        | Store (r, c) -> (
+        | Store (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
             let w = get_word conf c in
             match r @! conf with
             | Sealable (Cap (p, _, b, e, a)) when b <= a && a < e ->
                 if can_write p then
                   match w with
                   (* We consider that a Directed sealing capability is similar to Local *)
-                  | (Sealed (_, sb) | Sealable sb)
-                    when get_locality_sealable sb = Local ->
+                  | (Sealed (_, sb) | Sealable sb) when get_locality_sealable sb = Local ->
                       if is_WLperm p then !>(upd_mem a w conf) else fail_state
                   | _ -> !>(upd_mem a w conf)
                 else fail_state
             | _ -> fail_state)
-        | Jmp r ->
-            let new_pc = upd_pc_perm (r @! conf) in
-            (Running, upd_reg PC new_pc conf)
-        | Jnz (r1, r2) -> (
-            match r2 @! conf with
-            | I i when Z.(equal i zero) -> !>conf
-            | _ ->
-                let new_pc = upd_pc_perm (r1 @! conf) in
-                (Running, upd_reg PC new_pc conf))
-        | Restrict (r, c) -> (
+        | Restrict (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 match get_word conf c with
@@ -222,9 +250,9 @@ let exec_single (conf : exec_conf) : mchn =
                     match decode_p' with
                     | None -> fail_state
                     | Some (p', g') ->
-                      if perm_flowsto p' p && locality_flowsto g' g then
-                        !>(upd_reg r (Sealable (Cap (p', g', b, e, a))) conf)
-                      else fail_state)
+                        if perm_flowsto p' p && locality_flowsto g' g then
+                          !>(upd_reg r (Sealable (Cap (p', g', b, e, a))) conf)
+                        else fail_state)
                 | _ -> fail_state)
             | Sealable (SealRange (sp, g, b, e, a)) -> (
                 match get_word conf c with
@@ -236,25 +264,22 @@ let exec_single (conf : exec_conf) : mchn =
                     match decode_sp' with
                     | None -> fail_state
                     | Some (sp', g') ->
-                      if sealperm_flowsto sp' sp && locality_flowsto g' g then
-                        !>(upd_reg r (Sealable (SealRange (sp', g', b, e, a))) conf)
-                      else fail_state)
+                        if sealperm_flowsto sp' sp && locality_flowsto g' g then
+                          !>(upd_reg r (Sealable (SealRange (sp', g', b, e, a))) conf)
+                        else fail_state)
                 | _ -> fail_state)
             | _ -> fail_state)
-        | SubSeg (r, c1, c2) -> (
+        | SubSeg (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 let w1 = get_word conf c1 in
                 let w2 = get_word conf c2 in
                 match (w1, w2) with
                 | I z1, I z2 ->
-                    if b <= z1 && Z.(~$0 <= z2) && Z.zero <= e && p <> E then
+                    if b <= z1 && Z.(~$0 <= z2) && Z.zero <= e && not (PermSet.mem E p) then
                       let w = Sealable (Cap (p, g, z1, z2, a)) in
                       !>(upd_reg r w conf)
-                      (* Special case: SubSeg (p,g,b,+∞,a) z1 (-1) , ie. the upper-bound is still infinity *)
-                      (* else if b <= z1 && Z.(z2 == ~$(-1)) && Infinite_z.eq Inf e && p <> E then *)
-                      (*   let w = Sealable (Cap (p, g, z1, Inf, a)) in *)
-                      (*   !>(upd_reg r w conf) *)
                     else fail_state
                 | _ -> fail_state)
             | Sealable (SealRange (p, g, b, e, a)) -> (
@@ -268,12 +293,13 @@ let exec_single (conf : exec_conf) : mchn =
                     else fail_state
                 | _ -> fail_state)
             | _ -> fail_state)
-        | Lea (r, c) -> (
+        | Lea (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 let w = get_word conf c in
                 match w with
-                | I z when p <> E -> !>(upd_reg r (Sealable (Cap (p, g, b, e, Z.(a + z)))) conf)
+                | I z when not (PermSet.mem E p) ->
+                    !>(upd_reg r (Sealable (Cap (p, g, b, e, Z.(a + z)))) conf)
                 | _ -> fail_state)
             | Sealable (SealRange (p, g, b, e, a)) -> (
                 let w = get_word conf c in
@@ -281,82 +307,88 @@ let exec_single (conf : exec_conf) : mchn =
                 | I z -> !>(upd_reg r (Sealable (SealRange (p, g, b, e, Z.(a + z)))) conf)
                 | _ -> fail_state)
             | _ -> fail_state)
-        | Add (r, c1, c2) -> (
+        | Add (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 + z2)) conf) | _ -> fail_state)
-        | Sub (r, c1, c2) -> (
+        | Sub (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 - z2)) conf) | _ -> fail_state)
-        | Mul (r, c1, c2) -> (
+        | Mul (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 * z2)) conf) | _ -> fail_state)
-        | Rem (r, c1, c2) -> (
+        | Rem (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when z2 != Z.zero -> !>(upd_reg r (I Z.(z1 mod z2)) conf)
             | _ -> fail_state)
-        | Div (r, c1, c2) -> (
+        | Div (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when z2 != Z.zero -> !>(upd_reg r (I Z.(z1 / z2)) conf)
             | _ -> fail_state)
-        | Lt (r, c1, c2) -> (
+        | Lt (r, c1, c2)
+          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when Z.(lt z1 z2) -> !>(upd_reg r (I Z.one) conf)
             | I _, I _ -> !>(upd_reg r (I Z.zero) conf)
             | _ -> fail_state)
-        | GetL (r1, r2) -> (
+        | GetL (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable sb | Sealed (_, sb) ->
                 let g = get_locality_sealable sb in
                 !>(upd_reg r1 (I (Encode.encode_locality g)) conf)
             | _ -> fail_state)
-        | GetB (r1, r2) -> (
+        | GetB (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, b, _, _)) | Sealable (Cap (_, _, b, _, _)) ->
                 !>(upd_reg r1 (I b) conf)
             | _ -> fail_state)
-        | GetE (r1, r2) -> (
+        | GetE (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
-            | Sealable (Cap (_, _, _, e, _)) ->
-                !>(upd_reg r1 (I e) conf)
+            | Sealable (Cap (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
             | _ -> fail_state)
-        | GetA (r1, r2) -> (
+        | GetA (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, _, a)) | Sealable (Cap (_, _, _, _, a)) ->
                 !>(upd_reg r1 (I a) conf)
             | _ -> fail_state)
-        | GetP (r1, r2) -> (
+        | GetP (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealable (Cap (p, _, _, _, _)) -> !>(upd_reg r1 (I (Encode.encode_perm p)) conf)
             | Sealable (SealRange (p, _, _, _, _)) ->
                 !>(upd_reg r1 (I (Encode.encode_seal_perm p)) conf)
             | _ -> fail_state)
-        | GetOType (r1, r2) -> (
+        | GetOType (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match r2 @! conf with
             | Sealed (o, _) -> !>(upd_reg r1 (I o) conf)
             | _ -> !>(upd_reg r1 (I ~$(-1)) conf))
-        | GetWType (r1, r2) ->
+        | GetWType (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) ->
             let wtype_enc = Encode.encode_wtype (get_wtype (r2 @! conf)) in
             !>(upd_reg r1 (I wtype_enc) conf)
-        | Seal (dst, r1, r2) -> (
+        | Seal (dst, r1, r2) when (not (dst = mtcc)) && (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match (r1 @! conf, r2 @! conf) with
             | Sealable (SealRange ((true, _), _, b, e, a)), Sealable sb when b <= a && a < e ->
                 !>(upd_reg dst (Sealed (a, sb)) conf)
             | _ -> fail_state)
-        | UnSeal (dst, r1, r2) -> (
+        | UnSeal (dst, r1, r2) when (not (dst = mtcc)) && (not (r1 = mtcc)) && not (r2 = mtcc) -> (
             match (r1 @! conf, r2 @! conf) with
             | Sealable (SealRange ((_, true), _, b, e, a)), Sealed (a', sb) ->
                 if b <= a && a < e && a = a' then !>(upd_reg dst (Sealable sb) conf) else fail_state
-            | _ -> fail_state))
+            | _ -> fail_state)
+        | _ -> fail_state)
   else fail_state
 
 let step (m : mchn) : mchn option =

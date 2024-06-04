@@ -12,16 +12,14 @@ let () =
         exit 1
   in
 
-  let stk_addr =
-    Z.( !Parameters.flags.max_addr / ~$2 )
-  in
+  let stk_addr = Z.(!Parameters.flags.max_addr / ~$2) in
 
   (* Parse initial register file *)
   let regfile =
-    let init_regfile = Machine.init_reg_state stk_addr in
+    let init_regfile = Machine.init_reg_state in
     if regfile_name = "" then init_regfile
     else
-      match Program.parse_regfile regfile_name stk_addr with
+      match Program.parse_regfile regfile_name with
       | Ok regs -> (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
       | Error msg ->
           Printf.eprintf "Regfile parse error: %s\n" msg;
@@ -38,5 +36,5 @@ let () =
       let show_stack = false in
       let prog_panel_start = ref Z.zero in
       let stk_panel_start = ref stk_addr in
-      Ui.render_loop ~show_stack:show_stack prog_panel_start stk_panel_start m_init
+      Ui.render_loop ~show_stack prog_panel_start stk_panel_start m_init
   | Cli_parser.Interpreter_mode -> Interpreter_ui.interpreter m_init

@@ -9,13 +9,12 @@ let parse_prog (filename : string) : (Ast.t, string) Result.t =
     close_in input;
     Result.Error "Parsing Failed"
 
-let parse_regfile (filename : string) (stk_addr : Z.t) :
-    (Ast.word Machine.RegMap.t, string) Result.t =
+let parse_regfile (filename : string) : (Ast.word Machine.RegMap.t, string) Result.t =
   let input = open_in filename in
   try
     let filebuf = Lexing.from_channel input in
     let parse_res = Irreg.translate_regfile @@ Parser_regfile.main Lexer_regfile.token filebuf in
-    let parse_regfile = parse_res !Parameters.flags.max_addr stk_addr in
+    let parse_regfile = parse_res (Parameters.get_max_addr ()) in
     close_in input;
     Result.Ok parse_regfile
   with Failure _ ->

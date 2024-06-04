@@ -3,16 +3,17 @@
 exception UnknownLabelException of string
 exception ExprException of string
 
-type regname = PC | Reg of int
+type regname = Ast.regname
 
-let cgp = Reg 0
-let stk = Reg 31
+let cgp = Ast.Reg 5
+let stk = Ast.Reg 30
+let mtcc = Ast.Reg 31
 
 type expr = IntLit of Z.t | Label of string | AddOp of expr * expr | SubOp of expr * expr
-type perm = O | E | RO | RX | RW | RWX | RWL | RWLX
-type locality = Global | Local
-type seal_perm = bool * bool
-type wtype = W_I | W_Cap | W_SealRange | W_Sealed
+type perm = Ast.PermSet.t
+type locality = Ast.locality
+type seal_perm = Ast.seal_perm
+type wtype = Ast.wtype
 
 type const_encoded =
   | ConstExpr of expr
@@ -34,8 +35,10 @@ type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 exception WordException of word
 
 type machine_op =
-  | Jmp of regname
-  | Jnz of regname * regname
+  | Jalr of regname * regname
+  | Jmp of reg_or_const
+  | Jnz of regname * reg_or_const
+  | MoveSR of regname * reg_or_const
   | Move of regname * reg_or_const
   | Load of regname * regname
   | Store of regname * reg_or_const
@@ -82,28 +85,10 @@ let rec eval_expr (envr : env) (e : expr) : Z.t =
   | AddOp (e1, e2) -> Z.(eval_expr envr e1 + eval_expr envr e2)
   | SubOp (e1, e2) -> Z.(eval_expr envr e1 - eval_expr envr e2)
 
-let translate_perm (p : perm) : Ast.perm =
-  match p with
-  | O -> Ast.O
-  | E -> Ast.E
-  | RO -> Ast.RO
-  | RX -> Ast.RX
-  | RW -> Ast.RW
-  | RWX -> Ast.RWX
-  | RWL -> Ast.RWL
-  | RWLX -> Ast.RWLX
-
-let translate_locality (g : locality) : Ast.locality =
-  match g with Local -> Ast.Local | Global -> Ast.Global
-
-let translate_wt (wt : wtype) : Ast.wtype =
-  match wt with
-  | W_I -> Ast.W_I
-  | W_Cap -> Ast.W_Cap
-  | W_SealRange -> Ast.W_SealRange
-  | W_Sealed -> Ast.W_Sealed
-
-let translate_regname (r : regname) : Ast.regname = match r with PC -> Ast.PC | Reg i -> Ast.Reg i
+let translate_perm (p : perm) : Ast.PermSet.t = p
+let translate_locality (g : locality) : Ast.locality = g
+let translate_wt (wt : wtype) : Ast.wtype = wt
+let translate_regname (r : regname) : Ast.regname = r
 
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
@@ -143,8 +128,10 @@ let translate_word (envr : env) (w : word) : Ast.statement =
 
 let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   match instr with
-  | Jmp r -> Ast.Jmp (translate_regname r)
-  | Jnz (r1, r2) -> Ast.Jnz (translate_regname r1, translate_regname r2)
+  | Jalr (r1, r2) -> Ast.Jalr (translate_regname r1, translate_regname r2)
+  | Jmp r -> Ast.Jmp (translate_reg_or_const envr r)
+  | Jnz (r1, r2) -> Ast.Jnz (translate_regname r1, translate_reg_or_const envr r2)
+  | MoveSR (r, c) -> Ast.MoveSR (translate_regname r, translate_reg_or_const envr c)
   | Move (r, c) -> Ast.Move (translate_regname r, translate_reg_or_const envr c)
   | Load (r1, r2) -> Ast.Load (translate_regname r1, translate_regname r2)
   | Store (r, c) -> Ast.Store (translate_regname r, translate_reg_or_const envr c)

@@ -29,11 +29,11 @@ rule token = parse
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
 | ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
+| ['m' 'M'] ['t' 'T'] ['c' 'C'] ['c' 'C'] { MTCC }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n)
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 (* addresses *)
 | "MAX_ADDR" { MAX_ADDR }
-| "STK_ADDR" { STK_ADDR }
 
 (* single-character tokens *)
 | '(' { LPAREN }
@@ -47,6 +47,7 @@ rule token = parse
 | ',' { COMMA }
 | ':' { COLON }
 | ":=" { AFFECT }
+| '_' { UNDERSCORE }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }
@@ -55,12 +56,13 @@ rule token = parse
 (* permissions *)
 | 'O' { O }
 | 'E' { E }
-| "RO" { RO }
-| "RX" { RX }
-| "RW" { RW }
-| "RWX" { RWX }
-| "RWL" { RWL }
-| "RWLX" { RWLX }
+| 'R' { R }
+| 'X' { X }
+| 'W' { W }
+| "WL" { WL }
+| "SR" { SR }
+| "DL" { DL }
+| "DI" { DI }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

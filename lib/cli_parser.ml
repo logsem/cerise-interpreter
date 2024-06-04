@@ -5,9 +5,7 @@ type cli_mode = Interactive_mode | Interpreter_mode
 (** Initialize the Cerise version and returns
     (mode, program_filename, register_filename, size_mem) *)
 let parse_arguments () : cli_mode * string * string =
-  let usage_msg =
-    "interpreter [-I] [--interactive] [--version version] [--mem-size size] <file>"
-  in
+  let usage_msg = "interpreter [-I] [--interactive] [--version version] [--mem-size size] <file>" in
   let interactive_option = ref false in
   let version_option = ref "default" in
   let mem_size_option = ref "" in
@@ -19,9 +17,7 @@ let parse_arguments () : cli_mode * string * string =
     [
       ("--interactive", Arg.Set interactive_option, "Interactive mode of the interpreter");
       ("-I", Arg.Set interactive_option, "Interactive mode of the interpreter");
-      ( "--version",
-        Arg.Set_string version_option,
-        "Version Cerise: default" );
+      ("--version", Arg.Set_string version_option, "Version Cerise: default");
       ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory, integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
     ]
@@ -34,10 +30,7 @@ let parse_arguments () : cli_mode * string * string =
   let _ =
     match !version_option with
     | "default" -> Parameters.flags := Parameters.full_cerise
-    | _ ->
-        raise
-        @@ Arg.Help
-             "The --version option requires one of the following values: default"
+    | _ -> raise @@ Arg.Help "The --version option requires one of the following values: default"
   in
 
   let _ =

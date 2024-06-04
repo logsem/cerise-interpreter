@@ -1,4 +1,4 @@
-	mov r1 pc
-	restrict r1 (RW, GLOBAL)
-	restrict r1 (RWL, GLOBAL)
+	mov r1 cgp
+	restrict r1 ([R W], GLOBAL)
+	restrict r1 ([R W WL], GLOBAL)
 	halt
