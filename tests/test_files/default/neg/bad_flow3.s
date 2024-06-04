@@ -1,2 +1,2 @@
-	restrict r0 (RO, GLOBAL) 				; FAIL: attempt to restrict a SealRange with a Regular permission
+	restrict r0 (R, GLOBAL) 				; FAIL: attempt to restrict a SealRange with a Regular permission
 	halt

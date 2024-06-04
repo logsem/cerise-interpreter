@@ -1,17 +1,18 @@
 %token EOF
-%token PC CGP STK
+%token PC CGP STK MTCC
 %token <int> REG
 %token <int> INT
-%token MAX_ADDR STK_ADDR
+%token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS AFFECT COMMA COLON
-%token O E RO RX RW RWX RWL RWLX
+%token PLUS MINUS AFFECT COMMA COLON UNDERSCORE
+%token O E R X W WL SR DI DL
 %token SO S U SU
 %token LOCAL GLOBAL
 %left PLUS MINUS EXPR
 %left UMINUS
 
 %start <Irreg.t> main
+%{ open! Ast %}
 %{ open! Irreg %}
 
 %%
@@ -24,6 +25,7 @@ reg:
   | PC; { PC }
   | CGP; { CGP }
   | STK; { STK }
+  | MTCC; { MTCC }
   | i = REG; { Reg i }
 
 word:
@@ -52,19 +54,21 @@ seal_perm:
   | SU; { (true, true) }
 
 perm:
-  | O; { O }
-  | E; { E }
-  | RO; { RO }
-  | RX; { RX }
-  | RW; { RW }
-  | RWX; { RWX }
-  | RWL; { RWL }
-  | RWLX; { RWLX }
+  | O; { PermSet.empty }
+  | p = perm_enc; UNDERSCORE ; np = perm ; { PermSet.add p np }
+perm_enc:
+  | E; { E: Perm.t }
+  | R; { R: Perm.t }
+  | X; { X: Perm.t }
+  | W; { W: Perm.t }
+  | WL; { WL: Perm.t }
+  | SR; { SR: Perm.t }
+  | DL; { DL: Perm.t }
+  | DI; { DI: Perm.t }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }
   | MAX_ADDR { MaxAddr }
-  | STK_ADDR { StkAddr }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }

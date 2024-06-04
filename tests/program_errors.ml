@@ -23,7 +23,7 @@ let program source expected_fragments () =
   expect_error expected_fragments (Program.parse_prog_from_string source)
 
 let regfile source expected_fragments () =
-  expect_error expected_fragments (Program.parse_regfile_from_string source Z.zero)
+  expect_error expected_fragments (Program.parse_regfile_from_string source)
 
 let () =
   Alcotest.run "Program errors"

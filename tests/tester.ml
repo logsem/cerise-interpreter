@@ -14,7 +14,8 @@ let state_tst =
     (fun a b -> a = b)
 
 let perm_tst =
-  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_perm) (fun a b -> a = b)
+  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_fperm) (fun a b ->
+      PermSet.equal a b)
 
 (* TODO I should add a try/catch in case of parsing failure *)
 (* TODO also test multiple flags configurations *)
@@ -27,8 +28,7 @@ let run_prog (filename : string) : Machine.t =
 
   let _ = Parameters.flags := Parameters.griotte in
 
-  let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
-  let init_regs = Machine.init_reg_state stk_addr in
+  let init_regs = Machine.init_reg_state in
   let init_mems = Machine.init_mem_state Z.(~$0) parse_res in
   let m = Machine.init init_regs init_mems in
 
@@ -41,7 +41,7 @@ let test_perm expected actual _ = Alcotest.(check perm_tst) "Permission match" e
 let get_reg_int_word (r : Ast.regname) (m : Machine.t) (d : Z.t) =
   match Machine.read_reg r m with I z -> z | _ -> d
 
-let get_reg_cap_perm (r : regname) (m : Machine.t) (d : perm) =
+let get_reg_cap_perm (r : regname) (m : Machine.t) (d : PermSet.t) =
   match Machine.read_reg r m with Sealable (Cap (p, _, _, _, _)) -> p | _ -> d
 
 let test_path s = "../../../tests/test_files/default/" ^ s
@@ -70,8 +70,8 @@ let test_mov_test =
   [
     test_case "mov_test.s should end in halted state" `Quick
       (test_state Halted (Machine.get_exec_state m));
-    test_case "mov_test.s PC should point to address 2" `Quick (fun _ ->
-        check int "Ints match" 2 (Z.to_int pc_a));
+    test_case "mov_test.s PC should point to address 13" `Quick (fun _ ->
+        check int "Ints match" 13 (Z.to_int pc_a));
     test_case "mov_test.s R2 should contain 28" `Quick (test_const_word Z.(~$28) r2_res);
     test_case "mov_test.s R5 should contain -30" `Quick (test_const_word Z.(~$(-30)) r5_res);
   ]
@@ -84,8 +84,18 @@ let test_jmper =
       (test_state Halted (Machine.get_exec_state m));
     test_case "jmper.s should end with r2 containing 12" `Quick
       (test_const_word Z.(~$12) (get_reg_int_word (Ast.Reg 2) m Z.zero));
-    test_case "jmper.s should contain E permission in r1" `Quick
-      (test_perm E (get_reg_cap_perm (Reg 1) m O));
+  ]
+
+let test_jmper_jalr =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/jmper_jalr.s") in
+  [
+    test_case "jmper_jalr.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
+    test_case "jmper_jalr.s should end with r2 containing 12" `Quick
+      (test_const_word Z.(~$12) (get_reg_int_word (Ast.Reg 2) m Z.zero));
+    test_case "jmper_jalr.s should contain E permission in r1" `Quick
+      (test_perm (PermSet.singleton E) (get_reg_cap_perm (Reg 1) m PermSet.empty));
   ]
 
 let test_locality_flow =
@@ -151,9 +161,7 @@ let () =
   run "Run"
     [
       ( "Pos",
-        test_mov_test
-        @ test_jmper @ test_locality_flow
-        @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
-      );
+        test_mov_test @ test_jmper @ test_jmper_jalr @ test_locality_flow @ test_getotype
+        @ test_getwtype @ test_sealing @ test_sealing_counter );
       ("Neg", test_negatives);
     ]

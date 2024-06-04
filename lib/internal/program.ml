@@ -43,13 +43,13 @@ let parse_prog_from_string (source : string) : (Ast.t, string) Result.t =
   let filebuf = Lexing.from_string source in
   parse_prog_from_lexbuf filebuf
 
-let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) (stk_addr : Z.t) :
+let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) :
     (Ast.word Machine.RegMap.t, string) Result.t =
   try
     match Parser_driver.parse_regfile filebuf with
     | Error _ as error -> error
     | Ok parsed ->
-        let regfile = Irreg.translate_regfile parsed !Parameters.flags.max_addr stk_addr in
+        let regfile = Irreg.translate_regfile parsed !Parameters.flags.max_addr in
         Result.Ok regfile
   with
   | Irreg.ExprException message ->
@@ -58,19 +58,19 @@ let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) (stk_addr : Z.t) :
       Result.Error (message ^ ". Choose a compatible architecture or remove the unsupported value.")
   | Failure message -> Result.Error (failure_message message)
 
-let parse_regfile_from_file (filename : string) (stk_addr : Z.t) :
+let parse_regfile_from_file (filename : string) :
     (Ast.word Machine.RegMap.t, string) Result.t =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
   Lexing.set_filename filebuf filename;
-  let res = parse_regfile_from_lexbuf filebuf stk_addr in
+  let res = parse_regfile_from_lexbuf filebuf in
   close_in input;
   res
 
-let parse_regfile_from_string (source : string) (stk_addr : Z.t) :
+let parse_regfile_from_string (source : string) :
     (Ast.word Machine.RegMap.t, string) Result.t =
   let filebuf = Lexing.from_string source in
-  parse_regfile_from_lexbuf filebuf stk_addr
+  parse_regfile_from_lexbuf filebuf
 
 let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machine.t =
   let addr_start = Z.(~$0) in
