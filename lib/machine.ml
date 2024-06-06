@@ -235,6 +235,11 @@ let load_deep_immutable (w : word) : word =
   | Sealed (ot, s) -> Sealed (ot, load_deep_immutable_sealable s)
   | _ -> w
 
+let authorised_access_system_register (conf : exec_conf) : bool =
+  match PC @! conf with
+  | Sealable (Cap (p, _, _, _, _)) -> PermSet.mem SR p
+  | _ -> false
+
 (* NOTE Although we've already check that not supported instructions / capabilities *)
 (*  are not in the initial machine, we still need to make sure that *)
 (*  the user does not encode not supported instructions *)
@@ -269,10 +274,11 @@ let exec_single (conf : exec_conf) : mchn =
                     let new_pc = Sealable (Cap (p, g, b, e, Z.(a + imm))) in
                     (Running, upd_reg PC new_pc conf)
                 | _, _ -> fail_state))
-            let w = get_word conf c in
-            !>(upd_reg r w conf)
-        | Move (r, c) when (not (r = mtcc)) && not (c = Register mtcc) ->
         | MoveSR (r, c) ->
+            if authorised_access_system_register conf
+            then let w = get_word conf c in !>(upd_reg r w conf)
+            else fail_state
+        | Move (r, c) when (not (r = mtdc)) && not (c = Register mtdc) ->
             let w = get_word conf c in
             !>(upd_reg r w conf)
         | Load (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
