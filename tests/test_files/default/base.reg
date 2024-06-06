@@ -1,4 +1,3 @@
-PC := (RWX, Global, 0, MAX_ADDR, 0)
+PC := ([R X SR], Global, 0, MAX_ADDR, 0)
+CGP := ([R W WL], Global, 0, MAX_ADDR, 0)
 R0 := [SU, Global, 0, MAX_ADDR, 0]
-R1 := {0: (RO, Global, 0, 1, 0)}
-R2 := {0: [SU, Global, 0, 1, 0]}
