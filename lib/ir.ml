@@ -5,9 +5,9 @@ exception ExprException of string
 
 type regname = Ast.regname
 
-let cgp = Ast.Reg 5
-let stk = Ast.Reg 30
-let mtcc = Ast.Reg 31
+let cgp = Ast.cgp
+let stk = Ast.stk
+let mtdc = Ast.mtdc
 
 type expr = IntLit of Z.t | Label of string | AddOp of expr * expr | SubOp of expr * expr
 type perm = Ast.PermSet.t

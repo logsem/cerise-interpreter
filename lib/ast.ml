@@ -3,7 +3,7 @@ type regname = PC | Reg of int
 
 let cgp = Reg 5
 let stk = Reg 30
-let mtcc = Reg 31
+let mtdc = Reg 31
 
 module Perm = struct
   type t =

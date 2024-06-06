@@ -6,7 +6,11 @@ let ( ^- ) s1 s2 = s1 ^ " " ^ s2
 let string_of_regname (r : regname) : string =
   match r with
   | PC -> "pc"
-  | Reg i -> if r = stk then "stk" else if r = cgp then "cgp" else "r" ^ string_of_int i
+  | Reg i ->
+    if r = stk then "stk"
+    else if r = cgp then "cgp"
+    else if r = mtdc then "mtdc"
+    else "r" ^ string_of_int i
 
 let string_of_seal_perm (p : seal_perm) : string =
   match p with false, false -> "SO" | true, false -> "S" | false, true -> "U" | true, true -> "SU"
@@ -72,7 +76,7 @@ let string_of_machine_op (s : machine_op) : string =
   | Jalr (r1, r2) -> "jalr" ^- string_of_rr r1 r2
   | Jmp c -> "jmp" ^- string_of_reg_or_const c
   | Jnz (r, c) -> "jnz" ^- string_of_rc r c
-  | MoveSR (r, c) -> "movSR" ^- string_of_rc r c
+  | MoveSR (r, c) -> "movsr" ^- string_of_rc r c
   | Move (r, c) -> "mov" ^- string_of_rc r c
   | Load (r1, r2) -> "load" ^- string_of_rr r1 r2
   | Store (r, c) -> "store" ^- string_of_rc r c

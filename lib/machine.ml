@@ -247,20 +247,20 @@ let exec_single (conf : exec_conf) : mchn =
         match instr with
         | Fail -> (Failed, conf)
         | Halt -> (Halted, conf)
-        | Jalr (r_dst, r_src) when (not (r_dst = mtcc)) && not (r_src = mtcc) -> (
+        | Jalr (r_dst, r_src) when (not (r_dst = mtdc)) && not (r_src = mtdc) -> (
             match PC @! conf with
             | Sealable (Cap (_, g, b, e, a)) ->
                 let new_pc = upd_pc_perm (r_src @! conf) in
                 let link_cap = Sealable (Cap (PermSet.singleton E, g, b, e, Z.(a + Z.one))) in
                 (Running, upd_reg PC new_pc (upd_reg r_dst link_cap conf))
             | _ -> fail_state)
-        | Jmp c when not (c = Register mtcc) -> (
+        | Jmp c when not (c = Register mtdc) -> (
             match (get_word conf c, PC @! conf) with
             | I imm, Sealable (Cap (p, g, b, e, a)) ->
                 let new_pc = Sealable (Cap (p, g, b, e, Z.(a + imm))) in
                 (Running, upd_reg PC new_pc conf)
             | _ -> fail_state)
-        | Jnz (r_src, c) when (not (r_src = mtcc)) && not (c = Register mtcc) -> (
+        | Jnz (r_src, c) when (not (r_src = mtdc)) && not (c = Register mtdc) -> (
             match r_src @! conf with
             | I i when Z.(equal i zero) -> !>conf
             | _ -> (
@@ -269,13 +269,13 @@ let exec_single (conf : exec_conf) : mchn =
                     let new_pc = Sealable (Cap (p, g, b, e, Z.(a + imm))) in
                     (Running, upd_reg PC new_pc conf)
                 | _, _ -> fail_state))
-        | MoveSR (r, c) when r = mtcc && not (c = Register mtcc) ->
             let w = get_word conf c in
             !>(upd_reg r w conf)
         | Move (r, c) when (not (r = mtcc)) && not (c = Register mtcc) ->
+        | MoveSR (r, c) ->
             let w = get_word conf c in
             !>(upd_reg r w conf)
-        | Load (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | Load (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable (Cap (p, _, b, e, a)) ->
                 if can_read p then
@@ -287,7 +287,7 @@ let exec_single (conf : exec_conf) : mchn =
                   | _ -> fail_state
                 else fail_state
             | _ -> fail_state)
-        | Store (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
+        | Store (r, c) when (not (r = mtdc)) && not (c = Register mtdc) -> (
             let w = get_word conf c in
             match r @! conf with
             | Sealable (Cap (p, _, b, e, a)) when b <= a && a < e ->
@@ -299,7 +299,7 @@ let exec_single (conf : exec_conf) : mchn =
                   | _ -> !>(upd_mem a w conf)
                 else fail_state
             | _ -> fail_state)
-        | Restrict (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
+        | Restrict (r, c) when (not (r = mtdc)) && not (c = Register mtdc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 match get_word conf c with
@@ -331,7 +331,7 @@ let exec_single (conf : exec_conf) : mchn =
                 | _ -> fail_state)
             | _ -> fail_state)
         | SubSeg (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 let w1 = get_word conf c1 in
@@ -354,7 +354,7 @@ let exec_single (conf : exec_conf) : mchn =
                     else fail_state
                 | _ -> fail_state)
             | _ -> fail_state)
-        | Lea (r, c) when (not (r = mtcc)) && not (c = Register mtcc) -> (
+        | Lea (r, c) when (not (r = mtdc)) && not (c = Register mtdc) -> (
             match r @! conf with
             | Sealable (Cap (p, g, b, e, a)) -> (
                 let w = get_word conf c in
@@ -369,82 +369,82 @@ let exec_single (conf : exec_conf) : mchn =
                 | _ -> fail_state)
             | _ -> fail_state)
         | Add (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 + z2)) conf) | _ -> fail_state)
         | Sub (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 - z2)) conf) | _ -> fail_state)
         | Mul (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 * z2)) conf) | _ -> fail_state)
         | Rem (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when z2 != Z.zero -> !>(upd_reg r (I Z.(z1 mod z2)) conf)
             | _ -> fail_state)
         | Div (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when z2 != Z.zero -> !>(upd_reg r (I Z.(z1 / z2)) conf)
             | _ -> fail_state)
         | Lt (r, c1, c2)
-          when (not (r = mtcc)) && (not (c1 = Register mtcc)) && not (c2 = Register mtcc) -> (
+          when (not (r = mtdc)) && (not (c1 = Register mtdc)) && not (c2 = Register mtdc) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
             match (w1, w2) with
             | I z1, I z2 when Z.(lt z1 z2) -> !>(upd_reg r (I Z.one) conf)
             | I _, I _ -> !>(upd_reg r (I Z.zero) conf)
             | _ -> fail_state)
-        | GetL (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetL (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable sb | Sealed (_, sb) ->
                 let g = get_locality_sealable sb in
                 !>(upd_reg r1 (I (Encode.encode_locality g)) conf)
             | _ -> fail_state)
-        | GetB (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetB (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, b, _, _)) | Sealable (Cap (_, _, b, _, _)) ->
                 !>(upd_reg r1 (I b) conf)
             | _ -> fail_state)
-        | GetE (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetE (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
             | Sealable (Cap (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
             | _ -> fail_state)
-        | GetA (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetA (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, _, a)) | Sealable (Cap (_, _, _, _, a)) ->
                 !>(upd_reg r1 (I a) conf)
             | _ -> fail_state)
-        | GetP (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetP (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealable (Cap (p, _, _, _, _)) -> !>(upd_reg r1 (I (Encode.encode_perm p)) conf)
             | Sealable (SealRange (p, _, _, _, _)) ->
                 !>(upd_reg r1 (I (Encode.encode_seal_perm p)) conf)
             | _ -> fail_state)
-        | GetOType (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | GetOType (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match r2 @! conf with
             | Sealed (o, _) -> !>(upd_reg r1 (I o) conf)
             | _ -> !>(upd_reg r1 (I ~$(-1)) conf))
-        | GetWType (r1, r2) when (not (r1 = mtcc)) && not (r2 = mtcc) ->
+        | GetWType (r1, r2) when (not (r1 = mtdc)) && not (r2 = mtdc) ->
             let wtype_enc = Encode.encode_wtype (get_wtype (r2 @! conf)) in
             !>(upd_reg r1 (I wtype_enc) conf)
-        | Seal (dst, r1, r2) when (not (dst = mtcc)) && (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | Seal (dst, r1, r2) when (not (dst = mtdc)) && (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match (r1 @! conf, r2 @! conf) with
             | Sealable (SealRange ((true, _), _, b, e, a)), Sealable sb when b <= a && a < e ->
                 !>(upd_reg dst (Sealed (a, sb)) conf)
             | _ -> fail_state)
-        | UnSeal (dst, r1, r2) when (not (dst = mtcc)) && (not (r1 = mtcc)) && not (r2 = mtcc) -> (
+        | UnSeal (dst, r1, r2) when (not (dst = mtdc)) && (not (r1 = mtdc)) && not (r2 = mtdc) -> (
             match (r1 @! conf, r2 @! conf) with
             | Sealable (SealRange ((_, true), _, b, e, a)), Sealed (a', sb) ->
                 if b <= a && a < e && a = a' then !>(upd_reg dst (Sealable sb) conf) else fail_state

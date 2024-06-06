@@ -48,8 +48,8 @@ let instr_tests =
     ("mov r13 SealRange", Op (Move (Reg 13, encode_wtype W_SealRange)));
     ("mov r23 Cap", Op (Move (Reg 23, encode_wtype W_Cap)));
     ("mov r30 Int", Op (Move (Reg 30, encode_wtype W_I)));
-    ("movSR r31 0", Op (MoveSR (Reg 31, Const Z.zero)));
-    ("movSR r31 r24", Op (MoveSR (Reg 31, Register (Reg 24))));
+    ("movsr r31 0", Op (MoveSR (Reg 31, Const Z.zero)));
+    ("movsr r31 r24", Op (MoveSR (Reg 31, Register (Reg 24))));
     ("load r4 r5", Op (Load (Reg 4, Reg 5)));
     ("store r6 r7", Op (Store (Reg 6, Register (Reg 7))));
     ("add r8 (10-15) (-37)", Op (Add (Reg 8, const (-5), const (-37))));
@@ -140,8 +140,8 @@ let test_enc_dec_stm_list =
     (Jnz (Reg 6, Register (Reg 28)), "encode-decode Jnz R6 R28");
     (Jnz (Reg 6, Const Z.one), "encode-decode Jnz R6 1");
     (Jalr (Reg 6, Reg 22), "encode-decode Jalr R6 R22");
-    (MoveSR (mtcc, Const (Z.of_int 42)), "encode-decode MoveSR mtcc 42");
-    (MoveSR (Reg 7, Register mtcc), "encode-decode MoveSR R7 mtcc");
+    (MoveSR (mtdc, Const (Z.of_int 42)), "encode-decode MoveSR mtdc 42");
+    (MoveSR (Reg 7, Register mtdc), "encode-decode MoveSR R7 mtdc");
     (Move (PC, Register (Reg 7)), "encode-decode Move PC R7");
     (Move (PC, const (-35)), "encode-decode Move PC (-35)");
     (Move (PC, encode_perm_loc (PermSet.singleton E) Global), "encode-decode Move PC (E, Global)");

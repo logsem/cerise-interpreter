@@ -28,7 +28,7 @@ rule token = parse
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
 | ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
-| ['m' 'M'] ['t' 'T'] ['c' 'C'] ['c' 'C'] { MTCC }
+| ['m' 'M'] ['t' 'T'] ['d' 'D'] ['c' 'C'] { MTDC }
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n) 
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
@@ -36,7 +36,7 @@ rule token = parse
 | "jalr" { JALR }
 | "jmp" { JMP }
 | "jnz" { JNZ }
-| "movSR" { MOVESR }
+| "movsr" { MOVESR }
 | "mov" { MOVE }
 | "load" { LOAD }
 | "store" { STORE }

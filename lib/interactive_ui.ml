@@ -153,8 +153,8 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
   end
 
   module Regname = struct
-    (* pc or rNN *)
-    let width = 3
+    (* pc or rNN or mtdc *)
+    let width = 4
 
     let ui (r : Ast.regname) =
       I.hsnap ~align:`Right width (I.string A.empty (Pretty_printer.string_of_regname r))

@@ -1,5 +1,5 @@
 %token EOF
-%token PC STK CGP MTCC
+%token PC STK CGP MTDC
 %token <int> REG
 %token <int> INT
 %token <string> LABELDEF
@@ -80,7 +80,7 @@ reg:
   | PC; { PC }
   | STK; { stk }
   | CGP; { cgp }
-  | MTCC; { mtcc }
+  | MTDC; { mtdc }
   | i = REG; { Reg i }
 
 reg_const:
