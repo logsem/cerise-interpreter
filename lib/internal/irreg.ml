@@ -2,7 +2,7 @@
 
 exception ExprException of string
 
-type regname = PC | STK | CGP | MTCC | Reg of int
+type regname = PC | STK | CGP | MTDC | Reg of int
 type expr = IntLit of Z.t | AddOp of expr * expr | SubOp of expr * expr | MaxAddr
 type perm = Ast.PermSet.t
 type locality = Ast.locality
@@ -30,7 +30,7 @@ let translate_regname (r : regname) : Ast.regname =
   | PC -> Ast.PC
   | CGP -> Ast.cgp
   | STK -> Ast.stk
-  | MTCC -> Ast.mtcc
+  | MTDC -> Ast.mtdc
   | Reg i -> Ast.Reg i
 
 let translate_sealable (sb : sealable) (max_addr : Z.t) : Ast.sealable =

@@ -1,5 +1,5 @@
 %token EOF
-%token PC CGP STK MTCC
+%token PC CGP STK MTDC
 %token <int> REG
 %token <int> INT
 %token MAX_ADDR
@@ -25,7 +25,7 @@ reg:
   | PC; { PC }
   | CGP; { CGP }
   | STK; { STK }
-  | MTCC; { MTCC }
+  | MTDC; { MTDC }
   | i = REG; { Reg i }
 
 word:
