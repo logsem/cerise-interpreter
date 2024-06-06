@@ -76,4 +76,6 @@ let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machin
   let addr_start = Z.(~$0) in
   (* TODO lookup the PC *)
   let init_mems = Machine.init_mem_state addr_start prog in
-  Machine.init init_regs init_mems
+  let init_config = Machine.init init_regs init_mems in
+  Machine.check_init_config init_config;
+  init_config
