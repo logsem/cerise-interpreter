@@ -4,7 +4,7 @@
 %token <int> INT
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS AFFECT COMMA COLON UNDERSCORE
+%token PLUS MINUS AFFECT COMMA COLON
 %token O E R X W WL SR DI DL
 %token SO S U SU
 %token LOCAL GLOBAL
@@ -53,9 +53,6 @@ seal_perm:
   | U; { (false, true) }
   | SU; { (true, true) }
 
-perm:
-  | O; { PermSet.empty }
-  | p = perm_enc; UNDERSCORE ; np = perm ; { PermSet.add p np }
 perm_enc:
   | E; { E: Perm.t }
   | R; { R: Perm.t }
@@ -65,6 +62,14 @@ perm_enc:
   | SR; { SR: Perm.t }
   | DL; { DL: Perm.t }
   | DI; { DI: Perm.t }
+
+perm:
+  | O; { PermSet.empty }
+  | p = perm_enc; { PermSet.singleton p }
+  | LSBRK; p = perm_list ; RSBRK ; { p }
+perm_list:
+  | p = perm_enc; { PermSet.singleton p }
+  | p = perm_enc ; tl = perm_list { PermSet.add p tl }
 
 expr:
   | LPAREN; e = expr; RPAREN { e }

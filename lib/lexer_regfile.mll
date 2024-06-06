@@ -47,7 +47,6 @@ rule token = parse
 | ',' { COMMA }
 | ':' { COLON }
 | ":=" { AFFECT }
-| '_' { UNDERSCORE }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }
