@@ -180,25 +180,23 @@ let is_cap (sb : sealable) = match sb with Cap _ -> true | _ -> false
 let load_deep_local_sealable (w : sealable) : sealable =
   let deep_local_perm p = PermSet.add DL p in
   match w with
-  | Cap (p,_,b,e,a) -> Cap (deep_local_perm p,Local,b,e,a)
-  | SealRange (p,_,b,e,a) -> SealRange (p,Local,b,e,a)
+  | Cap (p, _, b, e, a) -> Cap (deep_local_perm p, Local, b, e, a)
+  | SealRange (p, _, b, e, a) -> SealRange (p, Local, b, e, a)
 
 let load_deep_local (w : word) : word =
   match w with
   | Sealable s -> Sealable (load_deep_local_sealable s)
-  | Sealed (ot, s) -> Sealed (ot, (load_deep_local_sealable s))
+  | Sealed (ot, s) -> Sealed (ot, load_deep_local_sealable s)
   | _ -> w
 
 let load_deep_immutable_sealable (w : sealable) : sealable =
   let deep_immutable_perm p = PermSet.add DI (PermSet.remove WL (PermSet.remove W p)) in
-  match w with
-  | Cap (p,g,b,e,a) -> Cap (deep_immutable_perm p,g,b,e,a)
-  | _ -> w
+  match w with Cap (p, g, b, e, a) -> Cap (deep_immutable_perm p, g, b, e, a) | _ -> w
 
 let load_deep_immutable (w : word) : word =
   match w with
   | Sealable s -> Sealable (load_deep_immutable_sealable s)
-  | Sealed (ot, s) -> Sealed (ot, (load_deep_immutable_sealable s))
+  | Sealed (ot, s) -> Sealed (ot, load_deep_immutable_sealable s)
   | _ -> w
 
 (* NOTE Although we've already check that not supported instructions / capabilities *)

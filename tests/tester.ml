@@ -14,8 +14,9 @@ let state_tst =
     (fun a b -> a = b)
 
 let perm_tst =
-  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_fperm)
-    (fun a b -> PermSet.equal a b)
+  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_fperm) (fun a b ->
+      PermSet.equal a b)
+
 let locality_tst =
   Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_locality) (fun a b -> a = b)
 
@@ -45,6 +46,7 @@ let get_reg_int_word (r : Ast.regname) (m : mchn) (d : Z.t) =
 
 let get_reg_cap_perm (r : regname) (m : mchn) (d : PermSet.t) =
   match r @! snd m with Sealable (Cap (p, _, _, _, _)) -> p | _ -> d
+
 let get_reg_cap_locality (r : regname) (m : mchn) (l : locality) =
   match r @! snd m with Sealable (Cap (_, g, _, _, _)) -> g | _ -> l
 
@@ -122,29 +124,28 @@ let test_getotype =
 let test_deep_local =
   let open Alcotest in
   let m = run_prog (test_path "pos/deep_local.s") in
- [
+  [
     test_case "deep_local.s should end in halted state" `Quick (test_state Halted (fst m));
     test_case "deep_local.s should contain Local locality in r1" `Quick
       (test_locality Local (get_reg_cap_locality (Reg 1) m Global));
     test_case "deep_local.s should contain (RW-DL) permission in r1" `Quick
-      (test_perm (PermSet.of_list [R;W;DL]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
+      (test_perm (PermSet.of_list [ R; W; DL ]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
     test_case "deep_local.s should contain Local locality in r2" `Quick
       (test_locality Local (get_reg_cap_locality (Reg 2) m Global));
     test_case "deep_local.s should contain (RW-DL) permission in r2" `Quick
-      (test_perm (PermSet.of_list [R;W;DL]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
+      (test_perm (PermSet.of_list [ R; W; DL ]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
   ]
 
 let test_deep_ro =
   let open Alcotest in
   let m = run_prog (test_path "pos/deep_ro.s") in
- [
+  [
     test_case "deep_ro.s should end in halted state" `Quick (test_state Halted (fst m));
     test_case "deep_ro.s should contain (R-DI) permission in r1" `Quick
-      (test_perm (PermSet.of_list [R;DI]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
+      (test_perm (PermSet.of_list [ R; DI ]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
     test_case "deep_ro.s should contain (R-DI) permission in r2" `Quick
-      (test_perm (PermSet.of_list [R;DI]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
+      (test_perm (PermSet.of_list [ R; DI ]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
   ]
-
 
 let test_getwtype =
   let open Alcotest in
@@ -181,7 +182,6 @@ let () =
     [
       ( "Pos",
         test_mov_test @ test_jmper @ test_jmper_jalr @ test_locality_flow @ test_getotype
-        @ test_getwtype @ test_deep_local @ test_deep_ro @ test_sealing
-        @ test_sealing_counter );
+        @ test_getwtype @ test_deep_local @ test_deep_ro @ test_sealing @ test_sealing_counter );
       ("Neg", test_negatives);
     ]
