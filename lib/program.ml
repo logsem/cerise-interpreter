@@ -1,3 +1,5 @@
+open Machine
+
 let parse_prog (filename : string) : (Ast.t, string) Result.t =
   let input = open_in filename in
   try
@@ -9,7 +11,7 @@ let parse_prog (filename : string) : (Ast.t, string) Result.t =
     close_in input;
     Result.Error "Parsing Failed"
 
-let parse_regfile (filename : string) : (Ast.word Machine.RegMap.t, string) Result.t =
+let parse_regfile (filename : string) : (Ast.word RegMap.t, string) Result.t =
   let input = open_in filename in
   try
     let filebuf = Lexing.from_channel input in
@@ -21,8 +23,10 @@ let parse_regfile (filename : string) : (Ast.word Machine.RegMap.t, string) Resu
     close_in input;
     Result.Error "Parsing Failed"
 
-let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machine.mchn =
+let init_machine (prog : Ast.t) (init_regs : Ast.word RegMap.t) : mchn =
   let addr_start = Z.(~$0) in
   (* TODO lookup the PC *)
-  let init_mems = Machine.init_mem_state addr_start prog in
-  Machine.init init_regs init_mems
+  let init_mems = init_mem_state addr_start prog in
+  let init_config = init init_regs init_mems in
+  check_init_config init_config;
+  init_config

@@ -4,6 +4,7 @@ open Ast
 let ( ~$ ) = Z.( ~$ )
 
 exception NotYetImplemented
+exception CheckInitFailed of Ast.word
 
 module MemMap = Map.Make (Z)
 
@@ -25,6 +26,12 @@ let arch_root_memory_perm = PermSet.of_list [ R; W; WL ]
 (* - executable root, EX_LD_LG_LM_MC_SR --> R_X_SR *)
 let arch_root_executable_perm = PermSet.of_list [ R; X; SR ]
 
+let get_perm (w : Ast.word) : Ast.PermSet.t =
+  match w with
+  | I _ -> Ast.PermSet.empty
+  | Sealable (Cap (p, _, _, _, _)) | Sealed (_, Cap (p, _, _, _, _)) -> p
+  | _ -> Ast.PermSet.empty
+
 let is_derived_from (p_dst : PermSet.t) (p_src : PermSet.t) =
   if PermSet.equal p_dst p_src (* p <= p *) then true
   else if PermSet.mem E p_dst (* E <= RX *) then
@@ -36,8 +43,37 @@ let is_derived_from (p_dst : PermSet.t) (p_src : PermSet.t) =
     (* p_dst ⊆ p_src, except that we can add DI or DL *)
     PermSet.subset (PermSet.remove DL (PermSet.remove DI p_dst)) p_src
 
+let check_word_derived (w : Ast.word) : unit =
+  if is_derived_from (get_perm w) arch_root_executable_perm then ()
+  else if is_derived_from (get_perm w) arch_root_memory_perm then ()
+  else raise (CheckInitFailed w)
+
+let check_init_regfile (reg : Ast.word RegMap.t) : unit =
+  RegMap.iter (fun _ w -> check_word_derived w) reg
+
+let check_init_memory (mem : Ast.word MemMap.t) : unit =
+  MemMap.iter (fun _ w -> check_word_derived w) mem
+
 (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
+
+let check_init_config (m : mchn) : unit =
+  check_init_regfile (snd m).reg;
+  check_init_memory (snd m).mem
+
+let init_reg_state_zeros : reg_state =
+  let l =
+    let n = 30 in
+    List.init n (fun i -> (Reg (i + 1), I Z.zero))
+  in
+  let pc_init = [ (PC, I Z.zero) ] in
+  let cgp_init = [ (cgp, I Z.zero) ] in
+  let sealing_init =
+    let sealing_reg = Reg 0 in
+    [ (sealing_reg, I Z.zero) ]
+  in
+  let seq = List.to_seq (pc_init @ l @ sealing_init @ cgp_init) in
+  RegMap.of_seq seq
 
 let init_reg_state : reg_state =
   let start_heap_addr = ~$0 in

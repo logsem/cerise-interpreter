@@ -20,12 +20,21 @@ let () =
     if regfile_name = "" then init_regfile
     else
       match Program.parse_regfile regfile_name with
-      | Ok regs -> (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
+      | Ok regs ->
+          (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs)
+            Machine.init_reg_state_zeros
       | Error msg ->
           Printf.eprintf "Regfile parse error: %s\n" msg;
           exit 1
   in
-  let m_init = Program.init_machine prog regfile in
+  let m_init =
+    try Program.init_machine prog regfile
+    with Machine.CheckInitFailed w ->
+      failwith
+        ("The word "
+        ^ Pretty_printer.string_of_ast_word w
+        ^ " is not derived from an architectural root.")
+  in
 
   match mode with
   | Cli_parser.Interactive_mode ->
