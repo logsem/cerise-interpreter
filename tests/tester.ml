@@ -14,8 +14,10 @@ let state_tst =
     (fun a b -> a = b)
 
 let perm_tst =
-  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_fperm) (fun a b ->
-      PermSet.equal a b)
+  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_fperm)
+    (fun a b -> PermSet.equal a b)
+let locality_tst =
+  Alcotest.testable (Fmt.of_to_string @@ Pretty_printer.string_of_locality) (fun a b -> a = b)
 
 (* TODO I should add a try/catch in case of parsing failure *)
 (* TODO also test multiple flags configurations *)
@@ -36,12 +38,15 @@ let run_prog (filename : string) : mchn =
 let test_const_word expected actual _ = Alcotest.(check z_tst) "Integers match" expected actual
 let test_state expected actual _ = Alcotest.(check state_tst) "States match" expected actual
 let test_perm expected actual _ = Alcotest.(check perm_tst) "Permission match" expected actual
+let test_locality expected actual _ = Alcotest.(check locality_tst) "Locality match" expected actual
 
 let get_reg_int_word (r : Ast.regname) (m : mchn) (d : Z.t) =
   match r @! snd m with I z -> z | _ -> d
 
 let get_reg_cap_perm (r : regname) (m : mchn) (d : PermSet.t) =
   match r @! snd m with Sealable (Cap (p, _, _, _, _)) -> p | _ -> d
+let get_reg_cap_locality (r : regname) (m : mchn) (l : locality) =
+  match r @! snd m with Sealable (Cap (_, g, _, _, _)) -> g | _ -> l
 
 let test_path s = "../../../tests/test_files/default/" ^ s
 
@@ -114,6 +119,33 @@ let test_getotype =
       (test_const_word Z.(~$10) (get_reg_int_word (Ast.Reg 3) m Z.zero));
   ]
 
+let test_deep_local =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/deep_local.s") in
+ [
+    test_case "deep_local.s should end in halted state" `Quick (test_state Halted (fst m));
+    test_case "deep_local.s should contain Local locality in r1" `Quick
+      (test_locality Local (get_reg_cap_locality (Reg 1) m Global));
+    test_case "deep_local.s should contain (RW-DL) permission in r1" `Quick
+      (test_perm (PermSet.of_list [R;W;DL]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
+    test_case "deep_local.s should contain Local locality in r2" `Quick
+      (test_locality Local (get_reg_cap_locality (Reg 2) m Global));
+    test_case "deep_local.s should contain (RW-DL) permission in r2" `Quick
+      (test_perm (PermSet.of_list [R;W;DL]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
+  ]
+
+let test_deep_ro =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/deep_ro.s") in
+ [
+    test_case "deep_ro.s should end in halted state" `Quick (test_state Halted (fst m));
+    test_case "deep_ro.s should contain (R-DI) permission in r1" `Quick
+      (test_perm (PermSet.of_list [R;DI]) (get_reg_cap_perm (Reg 1) m PermSet.empty));
+    test_case "deep_ro.s should contain (R-DI) permission in r2" `Quick
+      (test_perm (PermSet.of_list [R;DI]) (get_reg_cap_perm (Reg 2) m PermSet.empty));
+  ]
+
+
 let test_getwtype =
   let open Alcotest in
   let m = run_prog (test_path "pos/get_wtype.s") in
@@ -149,6 +181,7 @@ let () =
     [
       ( "Pos",
         test_mov_test @ test_jmper @ test_jmper_jalr @ test_locality_flow @ test_getotype
-        @ test_getwtype @ test_sealing @ test_sealing_counter );
+        @ test_getwtype @ test_deep_local @ test_deep_ro @ test_sealing
+        @ test_sealing_counter );
       ("Neg", test_negatives);
     ]

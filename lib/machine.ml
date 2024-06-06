@@ -177,6 +177,30 @@ let get_locality_sealable (s : sealable) =
 let is_sealrange (sb : sealable) = match sb with SealRange _ -> true | _ -> false
 let is_cap (sb : sealable) = match sb with Cap _ -> true | _ -> false
 
+let load_deep_local_sealable (w : sealable) : sealable =
+  let deep_local_perm p = PermSet.add DL p in
+  match w with
+  | Cap (p,_,b,e,a) -> Cap (deep_local_perm p,Local,b,e,a)
+  | SealRange (p,_,b,e,a) -> SealRange (p,Local,b,e,a)
+
+let load_deep_local (w : word) : word =
+  match w with
+  | Sealable s -> Sealable (load_deep_local_sealable s)
+  | Sealed (ot, s) -> Sealed (ot, (load_deep_local_sealable s))
+  | _ -> w
+
+let load_deep_immutable_sealable (w : sealable) : sealable =
+  let deep_immutable_perm p = PermSet.add DI (PermSet.remove WL (PermSet.remove W p)) in
+  match w with
+  | Cap (p,g,b,e,a) -> Cap (deep_immutable_perm p,g,b,e,a)
+  | _ -> w
+
+let load_deep_immutable (w : word) : word =
+  match w with
+  | Sealable s -> Sealable (load_deep_immutable_sealable s)
+  | Sealed (ot, s) -> Sealed (ot, (load_deep_immutable_sealable s))
+  | _ -> w
+
 (* NOTE Although we've already check that not supported instructions / capabilities *)
 (*  are not in the initial machine, we still need to make sure that *)
 (*  the user does not encode not supported instructions *)
@@ -222,7 +246,10 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, _, b, e, a)) ->
                 if can_read p then
                   match a @? conf with
-                  | Some w when b <= a && a < e -> !>(upd_reg r1 w conf)
+                  | Some w when b <= a && a < e ->
+                      let w = if PermSet.mem DL p then load_deep_local w else w in
+                      let w = if PermSet.mem DI p then load_deep_immutable w else w in
+                      !>(upd_reg r1 w conf)
                   | _ -> fail_state
                 else fail_state
             | _ -> fail_state)
