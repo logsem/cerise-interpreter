@@ -236,9 +236,7 @@ let load_deep_immutable (w : word) : word =
   | _ -> w
 
 let authorised_access_system_register (conf : exec_conf) : bool =
-  match PC @! conf with
-  | Sealable (Cap (p, _, _, _, _)) -> PermSet.mem SR p
-  | _ -> false
+  match PC @! conf with Sealable (Cap (p, _, _, _, _)) -> PermSet.mem SR p | _ -> false
 
 (* NOTE Although we've already check that not supported instructions / capabilities *)
 (*  are not in the initial machine, we still need to make sure that *)
@@ -275,8 +273,9 @@ let exec_single (conf : exec_conf) : mchn =
                     (Running, upd_reg PC new_pc conf)
                 | _, _ -> fail_state))
         | MoveSR (r, c) ->
-            if authorised_access_system_register conf
-            then let w = get_word conf c in !>(upd_reg r w conf)
+            if authorised_access_system_register conf then
+              let w = get_word conf c in
+              !>(upd_reg r w conf)
             else fail_state
         | Move (r, c) when (not (r = mtdc)) && not (c = Register mtdc) ->
             let w = get_word conf c in

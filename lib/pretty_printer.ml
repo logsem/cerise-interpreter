@@ -7,10 +7,10 @@ let string_of_regname (r : regname) : string =
   match r with
   | PC -> "pc"
   | Reg i ->
-    if r = stk then "stk"
-    else if r = cgp then "cgp"
-    else if r = mtdc then "mtdc"
-    else "r" ^ string_of_int i
+      if r = stk then "stk"
+      else if r = cgp then "cgp"
+      else if r = mtdc then "mtdc"
+      else "r" ^ string_of_int i
 
 let string_of_seal_perm (p : seal_perm) : string =
   match p with false, false -> "SO" | true, false -> "S" | false, true -> "U" | true, true -> "SU"
