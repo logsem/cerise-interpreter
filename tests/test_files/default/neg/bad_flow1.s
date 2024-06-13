@@ -1,4 +1,4 @@
 	mov r1 pc
-	restrict r1 (E, GLOBAL)
-	restrict r1 ([R W X], GLOBAL)			; FAIL: attempt to flow from E to RWX
+    seal r1 r0 r1
+	unseal r1 r0 r1             ; FAIL: attempt to unseal a sentry
 	halt

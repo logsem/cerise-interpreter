@@ -7,7 +7,6 @@ let mtdc = Reg 31
 
 module Perm = struct
   type t =
-    | E (* sentry                  ---  sealed value with otype 1, 2 or 3 *)
     | R (* read                    ---  LG, MC and LD *)
     | X (* execute                 ---  EX *)
     | W (* write                   ---  LM, MC and SD *)
@@ -21,7 +20,7 @@ module Perm = struct
     else
       (* Just an order for pretty printing *)
       let weight p =
-        match p with E -> 0 | R -> 1 | X -> 2 | W -> 3 | WL -> 4 | SR -> 5 | DL -> 6 | DI -> 7
+        match p with R -> 0 | X -> 1 | W -> 2 | WL -> 3 | SR -> 4 | DL -> 5 | DI -> 6
       in
       weight p2 - weight p1
 end

@@ -8,7 +8,8 @@ init:
 	store r1 r2           		; mem[data] <- (RWL, init, end, data+1) 6
 	lea r3 (code-init)			; r3 = (RX, init, end, code) 			7
 	subseg r3 code end 			; r3 = (RX, code, end, code) 			8
-	restrict r3 (E, GLOBAL)  	; r3 = (E, code, end, code) 			9
+	seal r3 r0 r3  	            ; r3 = {0: (RX, code, end, code)}		9
+	;; restrict r3 (E, GLOBAL)  	; r3 = (E, code, end, code) 			9
 	mov r2 0 					; r2 = 0 								10
 	mov r1 0 					; r1 = 0 								11
 	jalr r2 r3   				; jump to unknown code:

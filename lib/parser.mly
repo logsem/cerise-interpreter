@@ -10,7 +10,7 @@
 %token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
 %token FAIL HALT
 %token LOCAL GLOBAL
-%token O E R X W WL SR DI DL
+%token O R X W WL SR DI DL
 %token SO S U SU
 %token Int Cap SealRange Sealed
 %left PLUS MINUS EXPR
@@ -110,7 +110,6 @@ locality:
   | GLOBAL; { Global }
 
 perm_enc:
-  | E; { E: Perm.t }
   | R; { R: Perm.t }
   | X; { X: Perm.t }
   | W; { W: Perm.t }

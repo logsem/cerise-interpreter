@@ -15,12 +15,11 @@ init:
 	mov r0 pc             	; r0 = (RWX, init, end, init)
 	mov r1 r0             	; r1 = (RWX, init, end, init)
 	lea r1 (data-init)		; r1 = (RWX, init, end, data)
-	load r1 r1				; r1 = {0: (RO, counter, counter+1, counter)}
+	load r1 r1				; r1 = {1: (RO, counter, counter+1, counter)}
 
 	;; prepare the main capability in r0
 	lea r0 (main+1-init)   	; r0 = (RWX, init, end, main+1)
 	subseg r0 main data		; r0 = (RWX, main, data, main+1)
-	restrict r0 (E, Global)	; r0 = (E, main, data, main+1)
 	jalr r0 r0   			; jump to main main
 
 main:
@@ -48,20 +47,23 @@ main:
 
 	halt
 data:
-	#{0: ([R W], Global, counter, counter+1, counter)}
+	#{1: ([R W], Global, counter, counter+1, counter)}
 linking_table:
-	#(E, Global, get, incr, get+1) 		; get
-	#(E, Global, incr, end, incr+2)		; incr
+	;; #(E, Global, get, incr, get+1) 		; get
+	;; #(E, Global, incr, end, incr+2)		; incr
+	#{0: ([R X], Global, get, incr, get+1)}		; get
+	#{0: ([R X], Global, incr, end, incr+2)}	; incr
 counter:
-	#0
+	#1
 get: 							; check whether the otype matches with the actual value
-	#[SU, Global, 0, 10, 0]
+	#[SU, Global, 1, 10, 1]
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, get, incr, get+1)
 	lea r2 (-1)					; r2 = (RX, get, incr, get)
-	load r2 r2					; r2 = #[SU, 0, 10, 0]
+	load r2 r2					; r2 = #[SU, 1, 10, 1]
 	getotype r3 r1				; r3 = ot
-	lea r2 r3					; r2 = #[SU, 0, 10, ot]
+	lea r2 r3					; r2 = #[SU, 1, 10, ot+1]
+	lea r2 -1					; r2 = #[SU, 1, 10, ot]
 	unseal r2 r2 r1				; r2 = (RO, counter, counter+1, counter)
 	load r2 r2					; r2 = val_counter
 	sub r3 r2 r3				; r3 = val_counter - ot
@@ -72,17 +74,17 @@ get: 							; check whether the otype matches with the actual value
 	jalr r0 r0					; r2 contains the return value
 	fail 						; Case r3 != 0, then fail
 incr:
-	#[SU, Global, 0, 10, 0]
+	#[SU, Global, 1, 10, 1]
 	#([R W], Global, incr, incr+1, incr)
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, incr, end, incr+2)
 	lea r2 (-2)					; r2 = (RX, incr, end, incr)
-	load r3 r2					; r3 = #[SU, 0, 10, ot]
+	load r3 r2					; r3 = #[SU, 1, 10, ot]
 	unseal r1 r3 r1				; r1 = (RO, counter, counter+1, counter)
 	load r4 r1					; r4 = val_counter
 	add r4 r4 1					; r4 = val_counter + 1
 	store r1 r4					; stores new counter value
-	lea r3 1					; r3 = #[SU, 0, 10, ot+1]
+	lea r3 1					; r3 = #[SU, 1, 10, ot+1]
 	lea r2 1					; r2 = (RX, incr, end, incr+1)
 	load r2 r2					; r2 = (RW, incr, incr+1, incr)
 	store r2 r3					; stores new sealrange

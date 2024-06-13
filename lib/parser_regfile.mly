@@ -5,7 +5,7 @@
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS AFFECT COMMA COLON
-%token O E R X W WL SR DI DL
+%token O R X W WL SR DI DL
 %token SO S U SU
 %token LOCAL GLOBAL
 %left PLUS MINUS EXPR
@@ -54,7 +54,6 @@ seal_perm:
   | SU; { (true, true) }
 
 perm_enc:
-  | E; { E: Perm.t }
   | R; { R: Perm.t }
   | X; { X: Perm.t }
   | W; { W: Perm.t }

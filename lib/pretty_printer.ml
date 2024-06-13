@@ -16,15 +16,7 @@ let string_of_seal_perm (p : seal_perm) : string =
   match p with false, false -> "SO" | true, false -> "S" | false, true -> "U" | true, true -> "SU"
 
 let string_of_perm (p : Perm.t) : string =
-  match p with
-  | E -> "E"
-  | R -> "R"
-  | X -> "X"
-  | W -> "W"
-  | WL -> "WL"
-  | SR -> "SR"
-  | DL -> "DL"
-  | DI -> "DI"
+  match p with R -> "R" | X -> "X" | W -> "W" | WL -> "WL" | SR -> "SR" | DL -> "DL" | DI -> "DI"
 
 let string_of_fperm (fp : PermSet.t) : string =
   if fp = PermSet.empty then "O"

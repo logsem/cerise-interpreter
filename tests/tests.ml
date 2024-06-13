@@ -144,7 +144,6 @@ let test_enc_dec_stm_list =
     (MoveSR (Reg 7, Register mtdc), "encode-decode MoveSR R7 mtdc");
     (Move (PC, Register (Reg 7)), "encode-decode Move PC R7");
     (Move (PC, const (-35)), "encode-decode Move PC (-35)");
-    (Move (PC, encode_perm_loc (PermSet.singleton E) Global), "encode-decode Move PC (E, Global)");
     ( Move (Reg 30, encode_perm_loc (PermSet.of_list [ R; X ]) Global),
       "encode-decode Move R30 (RX, Global)" );
     (Move (PC, encode_seal_loc (false, true) Local), "encode-decode Move PC (U,Local)");
@@ -155,7 +154,6 @@ let test_enc_dec_stm_list =
     (Load (Reg 9, PC), "encode-decode Load R9 PC");
     (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
     (Store (PC, const (-35)), "encode-decode Store PC (-35)");
-    (Store (PC, encode_perm_loc (PermSet.singleton E) Global), "encode-decode Store PC (E, Global)");
     (Add (Reg 5, Register (Reg 6), Register PC), "encode-decode Add R5 R6 PC");
     (Add (Reg 5, Register (Reg 6), const 8128), "encode-decode Add R5 R6 8128");
     ( Add (Reg 5, Register (Reg 6), encode_perm_loc (PermSet.singleton R) Global),
@@ -164,8 +162,6 @@ let test_enc_dec_stm_list =
     (Add (Reg 5, const 102, const 8128), "encode-decode Add R5 102 8128");
     ( Add (Reg 5, const 83, encode_perm_loc (PermSet.singleton R) Global),
       "encode-decode Add R5 83 (RO, Global)" );
-    ( Add (Reg 5, encode_perm_loc (PermSet.singleton E) Global, Register PC),
-      "encode-decode Add R5 E PC" );
     (Add (Reg 5, encode_perm_loc PermSet.empty Global, const 8128), "encode-decode Add R5 O 8128");
     ( Add
         ( Reg 5,
@@ -180,8 +176,6 @@ let test_enc_dec_stm_list =
     (Sub (Reg 5, const 102, const 8128), "encode-decode Sub R5 102 8128");
     ( Sub (Reg 5, const 83, encode_perm_loc (PermSet.singleton R) Global),
       "encode-decode Sub R5 83 RO" );
-    ( Sub (Reg 5, encode_perm_loc (PermSet.singleton E) Global, Register PC),
-      "encode-decode Sub R5 E PC" );
     (Sub (Reg 5, encode_perm_loc PermSet.empty Global, const 8128), "encode-decode Sub R5 O 8128");
     ( Sub
         ( Reg 5,
@@ -195,8 +189,6 @@ let test_enc_dec_stm_list =
     (Lt (Reg 5, const (-549), Register PC), "encode-decode Lt R5 (-549) PC");
     (Lt (Reg 5, const 102, const 8128), "encode-decode Lt R5 102 8128");
     (Lt (Reg 5, const 83, encode_perm_loc (PermSet.singleton R) Global), "encode-decode Lt R5 83 RO");
-    ( Lt (Reg 5, encode_perm_loc (PermSet.singleton E) Global, Register PC),
-      "encode-decode Lt R5 E PC" );
     (Lt (Reg 5, encode_perm_loc PermSet.empty Global, const 8128), "encode-decode Lt R5 O 8128");
     ( Lt
         ( Reg 5,
@@ -205,10 +197,8 @@ let test_enc_dec_stm_list =
       "encode-decode Lt R5 RW RO" );
     (Lea (PC, Register (Reg 7)), "encode-decode Lea PC R7");
     (Lea (PC, const (-35)), "encode-decode Lea PC (-35)");
-    (Lea (PC, encode_perm_loc (PermSet.singleton E) Global), "encode-decode Lea PC E");
     (Restrict (PC, Register (Reg 7)), "encode-decode Restrict PC R7");
     (Restrict (PC, const (-35)), "encode-decode Restrict PC (-35)");
-    (Restrict (PC, encode_perm_loc (PermSet.singleton E) Global), "encode-decode Restrict PC E");
     ( Restrict (Reg 30, encode_perm_loc (PermSet.of_list [ R; W; WL ]) Global),
       "encode-decode Restrict R30 RWL Global" );
     ( Restrict (Reg 30, encode_perm_loc (PermSet.of_list [ X; R ]) Local),
@@ -223,8 +213,6 @@ let test_enc_dec_stm_list =
     (SubSeg (Reg 5, const 102, const 8128), "encode-decode SubSeg R5 102 8128");
     ( SubSeg (Reg 5, const 83, encode_perm_loc (PermSet.singleton R) Global),
       "encode-decode SubSeg R5 83 RO" );
-    ( SubSeg (Reg 5, encode_perm_loc (PermSet.singleton E) Global, Register PC),
-      "encode-decode SubSeg R5 E PC" );
     ( SubSeg (Reg 5, encode_perm_loc PermSet.empty Global, const 8128),
       "encode-decode SubSeg R5 O 8128" );
     ( SubSeg
