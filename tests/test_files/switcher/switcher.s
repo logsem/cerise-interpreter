@@ -1,19 +1,35 @@
-main_data:
-    #([R X SR], Global, b_switcher, e_switcher, b_entry_switcher) ; note: should be E
-    #{9: (R, Global, b_ext, e_ext, b_ext+2)}                      ; import ext
-
 main:
+    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{9: (R, Global, ext_adv, ext_adv_end, ext_adv+2)}                 ; import ext
+
+main_f:
     mov r0 PC
     lea r0 -1
     load r1 r0                  ; r1 := entry point
     lea r0 -1
     load r0 r0                  ; r0 := switcher
-    store stk r21
+    store stk r22
     lea stk -1
     jalr r0 r0
-    halt
 
-b_switcher:
+    mov r0 PC
+    lea r0 -9
+    load r1 r0                  ; r1 := entry point
+    lea r0 -1
+    load r0 r0                  ; r0 := switcher
+    jalr r0 r0
+
+    halt
+main_end:
+
+adv:
+    mov r21 1
+    mov r22 42
+    mov r23 43
+    jalr r0 r0
+adv_end:
+
+switcher:
     #[SU, Global, 9, 10, 9]
 
     ;; cs0 := r20
@@ -21,17 +37,15 @@ b_switcher:
     ;; ct1 / rentry := r1
     ;; cra / rlink := r0
     ;; csp / rstk  := stk
-b_entry_switcher:
+switcher_cc:
     ;; STEP 1: store content in compartment's stack
-    lea stk -4
     store stk r20
-    lea stk 1
+    lea stk -1
     store stk r21
-    lea stk 1
-    store stk cgp
-    lea stk 1
+    lea stk -1
     store stk r0
-    lea stk 1
+    lea stk -1
+    store stk cgp
 
     ;; STEP 2: verify stk contains a valid stack pointer
     ;; verify permissions
@@ -57,6 +71,7 @@ b_entry_switcher:
     movsr r21 mtdc
     lea r21 -1
     store r21 stk
+    movsr mtdc r21
 
     ;; STEP 5: restrict bounds of the stack
     geta r20 stk                ; r20 := a
@@ -79,6 +94,7 @@ zero_stk_loop:
 zero_stk_loopp:
     jmp (zero_stk_loop - zero_stk_loopp)
 zero_stk_end:
+    lea stk -1
 
     ;; STEP 7: unseal the callee's entry point
     ; LoadCapPCC ......
@@ -138,26 +154,90 @@ zero_stk_end:
     ;; STEP 9: jump to the callee's compartment
     jalr r0 r0
     ;; STEP 10: pop topmost trusted stack frame
-    ;; TODO
+    movsr r21 mtdc
+    ;; TODO make sure that there is a frame left in the trusted stack
+    ;; restore stack pointer and update trusted stack
+    load stk r21
+    lea r21 1
+    movsr mtdc r21
+    ;; spill the saved registers out
+    load cgp stk
+    lea stk 1
+    load r24 stk
+    lea stk 1
+    load r21 stk
+    lea stk 1
+    load r20 stk
+    lea stk 1
+
+    ;; TODO zero the stack frame
+zero_stk_init2:
+    geta r25 stk                ; r20 := a
+    getb r26 stk                ; r21 := b
+    sub r25 r26 r25             ; r25 := b-a
+    mov r26 stk                 ; r26 := (p,g,b,a,a)
+    lea r26 r25                 ; r26 := (p,g,b,a,b)
+    ;; r25: i := -(b-a)
+zero_stk_loop2:
+    jnz r25 2                   ; if (i = 0) then (end of loop), otherwise continue
+    jmp (zero_stk_end2 - zero_stk_loop2 - 1)  ;
+
+    store r26 0                 ; mem[b+i] := 0
+    lea r26 1                   ; r26 := (p,g,b,a,b+i)
+    add r25 r25 1               ; i := i + 1
+zero_stk_loopp2:
+    jmp (zero_stk_loop2 - zero_stk_loopp2)
+zero_stk_end2:
+
+    mov r0 r24                  ; mov cra, ca2
 
     ;; STEP 11: zero unused registers
-    ;; TODO
+    ;; r0  / cra ---> saved and restored on trusted stack
+    mov r1 0
+    mov r2 0
+    mov r3 0
+    mov r4 0
+    ;; r5  / cgp ---> saved and restored on trusted stack
+    mov r6 0
+    mov r7 0
+    mov r8 0
+    mov r9 0
+    mov r10 0
+    mov r11 0
+    mov r12 0
+    mov r13 0
+    mov r14 0
+    mov r15 0
+    mov r16 0
+    mov r17 0
+    mov r18 0
+    mov r19 0
+    ;; r20 / cs0 ---> saved and restored on trusted stack
+    ;; r21 / cs1 ---> saved and restored on trusted stack
+    ;; r22 / ca1 ---> first return value
+    ;; r23 / ca2 ---> second return value
+    mov r24 0
+    mov r25 0
+    mov r26 0
+    mov r27 0
+    mov r28 0
+    mov r29 0
+    ;; r30 / stk ---> contains compartment's stack
+    ;; r31 / tsk ---> contains trusted stack
+    jalr r0 r0
+switcher_end:
 
-    halt
-e_switcher:
+data_main:
+    #0xFFFF
+data_main_end:
+
+data_adv:
+    #0x0
+data_adv_end:
 
 ;; export table compartment c
-b_ext:
-    #([R X], Global, bc, ec, bc)                ; PCC
-    #([R W], Global, bc_data, ec_data, bc_data) ; CGP
-    #0                                          ; offset
-e_ext:
-bc:
-    mov r1 42
-    mov r2 43
-    mov r3 44
-    jalr r0 r0
-ec:
-bc_data:
-    #0
-ec_data:
+ext_adv:
+    #([R X], Global, adv, adv_end, adv)                 ; PCC
+    #([R W], Global, data_adv, data_adv_end, data_adv)  ; CGP
+    #0                                                  ; offset
+ext_adv_end:
