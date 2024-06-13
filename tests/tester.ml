@@ -101,8 +101,6 @@ let test_jmper_jalr =
       (test_state Halted (Machine.get_exec_state m));
     test_case "jmper_jalr.s should end with r2 containing 12" `Quick
       (test_const_word Z.(~$12) (get_reg_int_word (Ast.Reg 2) m Z.zero));
-    test_case "jmper_jalr.s should contain E permission in r1" `Quick
-      (test_perm (PermSet.singleton E) (get_reg_cap_perm (Reg 1) m PermSet.empty));
   ]
 
 let test_locality_flow =
@@ -159,15 +157,15 @@ let test_getwtype =
   let open Alcotest in
   let m = run_prog (test_path "pos/get_wtype.s") in
   [
-    test_case "get_otype.s should end in halted state" `Quick
+    test_case "get_wtype.s should end in halted state" `Quick
       (test_state Halted (Machine.get_exec_state m));
-    test_case "get_otype.s should end with r0 containing 0" `Quick
+    test_case "get_wtype.s should end with r0 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 0) m Z.zero));
-    test_case "get_otype.s should end with r1 containing 0" `Quick
+    test_case "get_wtype.s should end with r1 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 1) m Z.zero));
-    test_case "get_otype.s should end with r2 containing 0" `Quick
+    test_case "get_wtype.s should end with r2 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 2) m Z.zero));
-    test_case "get_otype.s should end with r3 containing 0" `Quick
+    test_case "get_wtype.s should end with r3 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 3) m Z.zero));
   ]
 
@@ -175,7 +173,7 @@ let test_sealing =
   let open Alcotest in
   let m = run_prog (test_path "pos/seal_unseal.s") in
   [
-    test_case "get_otype.s should end in halted state" `Quick
+    test_case "seal_unseal.s should end in halted state" `Quick
       (test_state Halted (Machine.get_exec_state m));
   ]
 
@@ -185,8 +183,8 @@ let test_sealing_counter =
   [
     test_case "sealing_counter.s should end in halted state" `Quick
       (test_state Halted (Machine.get_exec_state m));
-    test_case "sealing_counter.s should end with r2 containing 3" `Quick
-      (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m Z.zero));
+    test_case "sealing_counter.s should end with r2 containing 4" `Quick
+      (test_const_word Z.(~$4) (get_reg_int_word (Ast.Reg 2) m Z.zero));
   ]
 
 let () =

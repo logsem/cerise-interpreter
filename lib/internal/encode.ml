@@ -87,14 +87,13 @@ let perm_encoding (p : Perm.t) : Z.t =
   Z.of_int
   @@
   match p with
-  | E -> 0b10000000
-  | R -> 0b01000000
-  | X -> 0b00100000
-  | W -> 0b00010000
-  | WL -> 0b00001000
-  | SR -> 0b00000100
-  | DL -> 0b00000010
-  | DI -> 0b00000001
+  | R -> 0b1000000
+  | X -> 0b0100000
+  | W -> 0b0010000
+  | WL -> 0b0001000
+  | SR -> 0b0000100
+  | DL -> 0b0000010
+  | DI -> 0b0000001
 
 let fperm_encoding (fp : PermSet.t) : Z.t =
   PermSet.fold (fun p res -> Z.logor (perm_encoding p) res) fp (Z.of_int 0b0)
@@ -103,18 +102,17 @@ let perm_decoding (i : Z.t) : Perm.t =
   let dec_perm_exception _ =
     raise @@ DecodeException "Error decoding permission: unexpected encoding"
   in
-  if Z.(i > of_int 0b11111111) then dec_perm_exception ()
+  if Z.(i > of_int 0b1111111) then dec_perm_exception ()
   else
     let b k = Z.testbit i k in
-    match (b 7, b 6, b 5, b 4, b 3, b 2, b 1, b 0) with
-    | true, false, false, false, false, false, false, false -> E
-    | false, true, false, false, false, false, false, false -> R
-    | false, false, true, false, false, false, false, false -> X
-    | false, false, false, true, false, false, false, false -> W
-    | false, false, false, false, true, false, false, false -> WL
-    | false, false, false, false, false, true, false, false -> SR
-    | false, false, false, false, false, false, true, false -> DL
-    | false, false, false, false, false, false, false, true -> DI
+    match (b 6, b 5, b 4, b 3, b 2, b 1, b 0) with
+    | true, false, false, false, false, false, false -> R
+    | false, true, false, false, false, false, false -> X
+    | false, false, true, false, false, false, false -> W
+    | false, false, false, true, false, false, false -> WL
+    | false, false, false, false, true, false, false -> SR
+    | false, false, false, false, false, true, false -> DL
+    | false, false, false, false, false, false, true -> DI
     | _ -> dec_perm_exception ()
 
 let fperm_decoding (i : Z.t) : PermSet.t =

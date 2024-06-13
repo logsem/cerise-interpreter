@@ -1,4 +1,5 @@
     subseg r0 0 2
+    lea r0 1
     mov r1 r0
     restrict r0 (S, Global)
     restrict r1 (U, Global)

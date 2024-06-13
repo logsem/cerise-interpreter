@@ -60,7 +60,6 @@ rule token = parse
 
 (* permissions *)
 | 'O' { O }
-| 'E' { E }
 | 'R' { R }
 | 'X' { X }
 | 'W' { W }
