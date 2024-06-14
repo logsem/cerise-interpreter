@@ -7,7 +7,7 @@ let string_of_regname (r : regname) : string =
   match r with
   | PC -> "pc"
   | Reg i ->
-      if r = stk then "stk"
+      if r = csp then "csp"
       else if r = cgp then "cgp"
       else if r = mtdc then "mtdc"
       else "r" ^ string_of_int i
