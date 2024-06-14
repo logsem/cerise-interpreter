@@ -26,10 +26,42 @@ rule token = parse
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
-| ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }
-| ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
 | ['m' 'M'] ['t' 'T'] ['d' 'D'] ['c' 'C'] { MTDC }
-| ['r' 'R'] (reg_num as n) { try REG (int_of_string n) 
+| ['c' 'C'] ['r' 'R'] ['a' 'A'] { CRA }
+| ['c' 'C'] ['s' 'S'] ['p' 'P'] { CSP }
+| ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
+
+| ['c' 'C'] ['t' 'T'] ['p' 'P'] { CTP }
+| ['c' 'C'] ['t' 'T'] '0' { CT0 }
+| ['c' 'C'] ['t' 'T'] '1' { CT1 }
+| ['c' 'C'] ['t' 'T'] '2' { CT2 }
+| ['c' 'C'] ['t' 'T'] '3' { CT3 }
+| ['c' 'C'] ['t' 'T'] '4' { CT4 }
+| ['c' 'C'] ['t' 'T'] '5' { CT5 }
+| ['c' 'C'] ['t' 'T'] '6' { CT6 }
+
+| ['c' 'C'] ['s' 'S'] '0' { CS0 }
+| ['c' 'C'] ['s' 'S'] '1' { CS1 }
+| ['c' 'C'] ['s' 'S'] '2' { CS2 }
+| ['c' 'C'] ['s' 'S'] '3' { CS3 }
+| ['c' 'C'] ['s' 'S'] '4' { CS4 }
+| ['c' 'C'] ['s' 'S'] '5' { CS5 }
+| ['c' 'C'] ['s' 'S'] '6' { CS6 }
+| ['c' 'C'] ['s' 'S'] '7' { CS7 }
+| ['c' 'C'] ['s' 'S'] '8' { CS8 }
+| ['c' 'C'] ['s' 'S'] '9' { CS9 }
+| ['c' 'C'] ['s' 'S'] "10" { CS10 }
+| ['c' 'C'] ['s' 'S'] "11" { CS11 }
+
+| ['c' 'C'] ['a' 'A'] '0' { CA0 }
+| ['c' 'C'] ['a' 'A'] '1' { CA1 }
+| ['c' 'C'] ['a' 'A'] '2' { CA2 }
+| ['c' 'C'] ['a' 'A'] '3' { CA3 }
+| ['c' 'C'] ['a' 'A'] '4' { CA4 }
+| ['c' 'C'] ['a' 'A'] '5' { CA5 }
+| ['c' 'C'] ['a' 'A'] '6' { CA6 }
+| ['c' 'C'] ['a' 'A'] '7' { CA7 }
+| ['r' 'R'] (reg_num as n) { try REG (int_of_string n)
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
 (* machine_op *)

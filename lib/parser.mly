@@ -1,5 +1,8 @@
 %token EOF
-%token PC STK CGP MTDC
+%token PC MTDC CRA CSP CGP
+%token CTP CT0 CT1 CT2 CT3 CT4 CT5 CT6
+%token CS0 CS1 CS2 CS3 CS4 CS5 CS6 CS7 CS8 CS9 CS10 CS11
+%token CA0 CA1 CA2 CA3 CA4 CA5 CA6 CA7
 %token <int> REG
 %token <int> INT
 %token <string> LABELDEF
@@ -78,9 +81,42 @@ sealed_def:
 
 reg:
   | PC; { PC }
-  | STK; { stk }
-  | CGP; { cgp }
-  | MTDC; { mtdc }
+  | MTDC; { Ast.mtdc }
+  | CRA; { Ast.cra }
+  | CSP; { Ast.csp }
+  | CGP; { Ast.cgp }
+
+  | CTP; { Ast.ctp }
+  | CT0; { Ast.ct0 }
+  | CT1; { Ast.ct1 }
+  | CT2; { Ast.ct2 }
+  | CT3; { Ast.ct3 }
+  | CT4; { Ast.ct4 }
+  | CT5; { Ast.ct5 }
+  | CT6; { Ast.ct6 }
+
+  | CS0; { Ast.cs0 }
+  | CS1; { Ast.cs1 }
+  | CS2; { Ast.cs2 }
+  | CS3; { Ast.cs3 }
+  | CS4; { Ast.cs4 }
+  | CS5; { Ast.cs5 }
+  | CS6; { Ast.cs6 }
+  | CS7; { Ast.cs7 }
+  | CS8; { Ast.cs8 }
+  | CS9; { Ast.cs9 }
+  | CS10; { Ast.cs10 }
+  | CS11; { Ast.cs11 }
+
+  | CA0; { Ast.ca0 }
+  | CA1; { Ast.ca1 }
+  | CA2; { Ast.ca2 }
+  | CA3; { Ast.ca3 }
+  | CA4; { Ast.ca4 }
+  | CA5; { Ast.ca5 }
+  | CA6; { Ast.ca6 }
+  | CA7; { Ast.ca7 }
+
   | i = REG; { Reg i }
 
 reg_const:

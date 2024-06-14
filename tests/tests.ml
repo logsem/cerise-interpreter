@@ -41,7 +41,7 @@ let instr_tests =
     ("jalr r13 r2", Op (Jalr (Reg 13, Reg 2)));
     ("mov pc 25", Op (Move (PC, const 25)));
     ("mov r3 -25", Op (Move (Reg 3, const (-25))));
-    ("mov r30 stk", Op (Move (Reg 30, Register stk)));
+    ("mov r30 csp", Op (Move (Reg 30, Register csp)));
     ("mov r30 [R W]", Op (Move (Reg 30, encode_perm (PermSet.of_list [ R; W ]))));
     ("mov r30 U", Op (Move (Reg 30, encode_seal_perm (false, true))));
     ("mov r3 Sealed", Op (Move (Reg 3, encode_wtype W_Sealed)));
@@ -75,6 +75,21 @@ let instr_tests =
     ("unseal r31 r26 r27", Op (UnSeal (Reg 31, Reg 26, Reg 27)));
     ("fail", Op Fail);
     ("halt", Op Halt);
+    ("mov cra csp", Op (Move (cra, Register csp)));
+    ("mov cgp ctp", Op (Move (cgp, Register ctp)));
+    ("mov ct0 ct1", Op (Move (ct0, Register ct1)));
+    ("mov ct2 ct3", Op (Move (ct2, Register ct3)));
+    ("mov ct4 ct5", Op (Move (ct4, Register ct5)));
+    ("mov cs0 cs1", Op (Move (cs0, Register cs1)));
+    ("mov cs2 cs3", Op (Move (cs2, Register cs3)));
+    ("mov cs4 cs5", Op (Move (cs4, Register cs5)));
+    ("mov cs6 cs7", Op (Move (cs6, Register cs7)));
+    ("mov cs8 cs9", Op (Move (cs8, Register cs9)));
+    ("mov cs10 cs11", Op (Move (cs10, Register cs11)));
+    ("mov ca0 ca1", Op (Move (ca0, Register ca1)));
+    ("mov ca2 ca3", Op (Move (ca2, Register ca3)));
+    ("mov ca4 ca5", Op (Move (ca4, Register ca5)));
+    ("mov ca6 ca7", Op (Move (ca6, Register ca7)));
   ]
 
 let z_tst =
@@ -150,7 +165,7 @@ let test_enc_dec_stm_list =
     (Move (PC, encode_wtype W_Cap), "encode-decode Move PC Cap");
     (Move (PC, encode_perm (PermSet.of_list [ R; W; DI ])), "encode-decode Move PC R_W_DI");
     (Move (PC, encode_seal_perm (true, false)), "encode-decode Move PC U");
-    (Move (Reg 0, Register stk), "encode-decode Move R0 stk");
+    (Move (Reg 0, Register csp), "encode-decode Move R0 csp");
     (Load (Reg 9, PC), "encode-decode Load R9 PC");
     (Store (PC, Register (Reg 7)), "encode-decode Store PC R7");
     (Store (PC, const (-35)), "encode-decode Store PC (-35)");

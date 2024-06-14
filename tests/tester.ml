@@ -102,7 +102,7 @@ let test_jmper_jalr =
 let test_locality_flow =
   let open Alcotest in
   let m = run_prog (test_path "pos/test_locality_flow.s") in
-  [ test_case "test_locality.s should end in halted state" `Quick (test_state Halted (fst m)) ]
+  [ test_case "test_locality_flow.s should end in halted state" `Quick (test_state Halted (fst m)) ]
 
 let test_getotype =
   let open Alcotest in

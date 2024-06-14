@@ -335,7 +335,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         let mem_img, panel_start, panel_stk =
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
             (term_height - 1 - I.height regs_img)
-            term_width mem (Machine.RegMap.find Ast.PC reg) (Machine.RegMap.find Ast.stk reg)
+            term_width mem (Machine.RegMap.find Ast.PC reg) (Machine.RegMap.find Ast.csp reg)
             !prog_panel_start !stk_panel_start
         in
         prog_panel_start := panel_start;
