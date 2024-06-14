@@ -1,7 +1,7 @@
 PC := ([R X], Global, 0, 17, 2)
+CSP := ([R W WL], Local, 0x100, 0x120, 0x11f)
 CGP := (O, Global, 0x0, 0x0, 0x0)
 
-STK := ([R W WL], Local, 0x100, 0x120, 0x11f)
 MTDC := ([R W WL], Local, 0x1000, 0x10000, 0xffff)
 
 R20 := 13
