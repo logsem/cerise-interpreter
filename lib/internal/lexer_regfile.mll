@@ -50,6 +50,7 @@ rule token = parse
 | ']' { RSBRK }
 | '+' { PLUS }
 | '-' { MINUS }
+| '*' { MULT }
 | ',' { COMMA }
 | ':' { COLON }
 | ":=" { AFFECT }
