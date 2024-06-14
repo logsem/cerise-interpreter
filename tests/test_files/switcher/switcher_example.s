@@ -1,4 +1,49 @@
-;; This file is the non commented version of switcher_commented.s
+main:
+    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{9: (R, Global, ext_adv, ext_adv_end, ext_adv+2)}            ; import ext
+
+main_f:
+    mov cra PC
+    lea cra -1
+    load ct1 cra                  ; ct1 := entry point
+    lea cra -1
+    load cra cra                  ; cra := switcher
+    store csp r22
+    lea csp -1
+    jalr cra cra
+
+    mov cra PC
+    lea cra -9
+    load ct1 cra                  ; ct1 := entry point
+    lea cra -1
+    load cra cra                  ; cra := switcher
+    jalr cra cra
+
+    halt
+main_end:
+
+adv:
+    mov ca0 1
+    mov ca1 42
+    mov ca2 43
+    jalr cra cra
+adv_end:
+
+data_main:
+    #0xFFFF
+data_main_end:
+
+data_adv:
+    #0x0
+data_adv_end:
+
+;; export table compartment c
+ext_adv:
+    #([R X], Global, adv, adv_end, adv)                 ; PCC
+    #([R W], Global, data_adv, data_adv_end, data_adv)  ; CGP
+    #00                                                 ; offset + args
+ext_adv_end:
+
 ;; Concatenate this file at the end of any example that require the switcher
 switcher:
     #[SU, Global, 9, 10, 9]
