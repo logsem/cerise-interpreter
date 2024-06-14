@@ -5,11 +5,13 @@ exception ExprException of string
 
 type regname = Ast.regname
 
-let cgp = Ast.cgp
-let stk = Ast.stk
-let mtdc = Ast.mtdc
+type expr =
+  | IntLit of Z.t
+  | Label of string
+  | AddOp of expr * expr
+  | SubOp of expr * expr
+  | MultOp of expr * expr
 
-type expr = IntLit of Z.t | Label of string | AddOp of expr * expr | SubOp of expr * expr
 type perm = Ast.PermSet.t
 type locality = Ast.locality
 type seal_perm = Ast.seal_perm
@@ -84,6 +86,7 @@ let rec eval_expr (envr : env) (e : expr) : Z.t =
       | None -> raise (UnknownLabelException s))
   | AddOp (e1, e2) -> Z.(eval_expr envr e1 + eval_expr envr e2)
   | SubOp (e1, e2) -> Z.(eval_expr envr e1 - eval_expr envr e2)
+  | MultOp (e1, e2) -> Z.(eval_expr envr e1 * eval_expr envr e2)
 
 let translate_perm (p : perm) : Ast.PermSet.t = p
 let translate_locality (g : locality) : Ast.locality = g

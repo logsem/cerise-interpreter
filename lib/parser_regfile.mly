@@ -4,11 +4,11 @@
 %token <int> INT
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS AFFECT COMMA COLON
+%token PLUS MINUS MULT AFFECT COMMA COLON
 %token O R X W WL SR DI DL
 %token SO S U SU
 %token LOCAL GLOBAL
-%left PLUS MINUS EXPR
+%left PLUS MINUS MULT EXPR
 %left UMINUS
 
 %start <Irreg.t> main
@@ -75,6 +75,7 @@ expr:
   | MAX_ADDR { MaxAddr }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
+  | e1 = expr; MULT; e2 = expr { MultOp (e1,e2) }
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
   | i = INT { IntLit (Z.of_int i) }
 

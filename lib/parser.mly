@@ -5,7 +5,7 @@
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS COMMA SHARP COLON
+%token PLUS MINUS MULT COMMA SHARP COLON
 %token JALR JMP JNZ MOVESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
 %token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
 %token FAIL HALT
@@ -13,7 +13,7 @@
 %token O R X W WL SR DI DL
 %token SO S U SU
 %token Int Cap SealRange Sealed
-%left PLUS MINUS EXPR
+%left PLUS MINUS MULT EXPR
 %left UMINUS
 
 %start <Ir.t> main
@@ -130,6 +130,7 @@ expr:
   | LPAREN; e = expr; RPAREN { e }
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
+  | e1 = expr; MULT; e2 = expr { MultOp (e1,e2) }
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
   | i = INT { IntLit (Z.of_int i) }
   | lbl = LABEL { Label lbl }

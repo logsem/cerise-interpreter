@@ -2,8 +2,14 @@
 
 exception ExprException of string
 
-type regname = PC | STK | CGP | MTDC | Reg of int
-type expr = IntLit of Z.t | AddOp of expr * expr | SubOp of expr * expr | MaxAddr
+(* type regname = PC | Reg of int *)
+type expr =
+  | IntLit of Z.t
+  | AddOp of expr * expr
+  | SubOp of expr * expr
+  | MultOp of expr * expr
+  | MaxAddr
+
 type perm = Ast.PermSet.t
 type locality = Ast.locality
 type seal_perm = Ast.seal_perm
@@ -13,7 +19,7 @@ type sealable =
   | WSealRange of seal_perm * locality * expr * expr * expr
 
 type word = WI of expr | WSealable of sealable | WSealed of expr * sealable
-type t = (regname * word) list
+type t = (Ast.regname * word) list
 
 let rec eval_expr (e : expr) (max_addr : Z.t) : Z.t =
   match e with
@@ -21,17 +27,10 @@ let rec eval_expr (e : expr) (max_addr : Z.t) : Z.t =
   | MaxAddr -> max_addr
   | AddOp (e1, e2) -> Z.(eval_expr e1 max_addr + eval_expr e2 max_addr)
   | SubOp (e1, e2) -> Z.(eval_expr e1 max_addr - eval_expr e2 max_addr)
+  | MultOp (e1, e2) -> Z.(eval_expr e1 max_addr * eval_expr e2 max_addr)
 
 let translate_perm (p : perm) : Ast.PermSet.t = p
 let translate_locality (g : locality) : Ast.locality = g
-
-let translate_regname (r : regname) : Ast.regname =
-  match r with
-  | PC -> Ast.PC
-  | CGP -> Ast.cgp
-  | STK -> Ast.stk
-  | MTDC -> Ast.mtdc
-  | Reg i -> Ast.Reg i
 
 let translate_sealable (sb : sealable) (max_addr : Z.t) : Ast.sealable =
   match sb with
@@ -65,4 +64,4 @@ let rec translate_regfile (regfile : t) (max_addr : Z.t) : Ast.word Machine.RegM
   | [] -> init_regfile
   | (r, w) :: rf ->
       let nrf = translate_regfile rf max_addr in
-      Machine.RegMap.add (translate_regname r) (translate_word w max_addr) nrf
+      Machine.RegMap.add r (translate_word w max_addr) nrf
