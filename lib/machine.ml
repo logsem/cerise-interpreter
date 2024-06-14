@@ -64,7 +64,7 @@ let check_init_config (m : mchn) : unit =
 
 let init_reg_state_zeros : reg_state =
   let l =
-    let n = 30 in
+    let n = 31 in
     List.init n (fun i -> (Reg (i + 1), I Z.zero))
   in
   let pc_init = [ (PC, I Z.zero) ] in
@@ -83,7 +83,7 @@ let init_reg_state : reg_state =
   let max_otype = Parameters.get_max_otype () in
 
   let l =
-    let n = 30 in
+    let n = 31 in
     List.init n (fun i -> (Reg (i + 1), I Z.zero))
   in
 
