@@ -27,42 +27,40 @@ A:
     #{9: ([R], Global, B_ext, B_ext_end, B_ext_f)} ; import switcher
     #{9: ([R], Global, C_ext, C_ext_end, C_ext_g)} ; import switcher
 A_main:
-    ;; store PCC_A on the stack, will be used to fetch imported entry point
-    mov ct1 PC
-    lea ct1 -3
-    store csp ct1
-    lea csp -1
+    ;; store PCC_A on cs0, will be used to fetch imported entry point and preserved by switcher
+    mov cs0 PC
+    lea cs0 -3
+    mov cs1 cs0
 
     ;; put shared data in argument register ca0
     load ca0 cgp
 
     ;; fetch switcher entry point in cra
-    load cra ct1
+    load cra cs1
     ;; fetch entry point B_f in ct1
-    lea ct1 1
-    load ct1 ct1
+    lea cs1 1
+    load ct1 cs1
     ;; jump to B_f with A_data_shared as argument in ca0
     jalr cra cra
 
     ;; write 0x42 in the shared_data
-    load ct1 cgp
-    store ct1 0x42
+    load cs1 cgp
+    store cs1 0x42
 
     ;; fetch switcher entry point in cra
-    mov ct1 csp
-    load ct1 ct1                  ; ct1 := (RX,Global,A,A_end,A)
-    load cra ct1
+    mov cs1 cs0             ; cs1 := (RX,Global,A,A_end,A)
+    load cra cs1
     ;; fetch entry point C_g in ct1
-    lea ct1 2
-    load ct1 ct1
+    lea cs1 2
+    load ct1 cs1
     ;; jump to C_g with no arguments
     jalr cra cra
 
     ;; assert that shared_data still contains 0x42
-    load ct1 cgp
-    load ct1 ct1
-    sub ct1 ct1 0x42
-    jnz ct1 2
+    load cs1 cgp
+    load cs1 cs1
+    sub cs1 cs1 0x42
+    jnz cs1 2
     jmp 2
     fail
     ;; assert didn't fail
