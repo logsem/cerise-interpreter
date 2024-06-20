@@ -169,7 +169,6 @@ switcher_zero_stk_end_pre:
     load cs1 csp
     lea csp 1
     load cs0 csp
-    lea csp 1
 
     ;; zero the stack frame
     ;; TODO do we want the stack high water mark ?
