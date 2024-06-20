@@ -99,7 +99,6 @@ switcher_zero_stk_end_pre:
     load cs1 csp
     lea csp 1
     load cs0 csp
-    lea csp 1
 switcher_zero_stk_init_post:
     geta ct0 csp
     getb ct1 csp
