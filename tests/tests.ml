@@ -72,6 +72,10 @@ let instr_tests =
     ("loadU r24 r25 3", Op (LoadU (Reg 24, Reg 25, const 3)));
     ("storeu r26 r27 r28", Op (StoreU (Reg 26, Register (Reg 27), Register (Reg 28))));
     ("promoteu r29", Op (PromoteU (Reg 29)));
+    ("isunique r31 r2", Op (IsUnique (Reg 31, Reg 2)));
+    ("einit r1 r3", Op (EInit (Reg 1, Reg 3)));
+    ("edeinit r1 r3", Op (EDeInit (Reg 1, Reg 3)));
+    ("estoreid r1 r3", Op (EStoreId (Reg 1, Reg 3)));
     ("fail", Op Fail);
     ("halt", Op Halt);
   ]
@@ -224,6 +228,10 @@ let test_enc_dec_stm_list =
     (LoadU (Reg 30, stk, encode_perm_loc URWL Local), "encore-decode LoadU R30 stk URWL Local");
     ( LoadU (Reg 31, stk, encode_perm_loc URWLX Directed),
       "encore-decode LoadU R31 stk URWLX Directed" );
+    (EInit (Reg 6, Reg 28), "encode-decode EInit R6 R28");
+    (EDeInit (Reg 6, Reg 28), "encode-decode EDeInit R6 R28");
+    (EStoreId (Reg 6, Reg 28), "encode-decode EStoreId R6 R28");
+    (IsUnique (Reg 6, Reg 28), "encode-decode IsUnique R6 R28");
     (PromoteU stk, "encore-decode PromoteU stk");
     (Fail, "encode-decode Fail");
     (Halt, "encode-decode Halt");

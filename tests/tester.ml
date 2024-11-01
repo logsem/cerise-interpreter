@@ -29,7 +29,9 @@ let run_prog (filename : string) : mchn =
   let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
   let init_regs = Machine.init_reg_state stk_addr in
   let init_mems = Machine.init_mem_state Z.(~$0) parse_res in
-  let m = Machine.init init_regs init_mems in
+  let init_etbl = Machine.ETableMap.empty in
+  let init_ec : Machine.eid = Z.zero in
+  let m = Machine.init init_regs init_mems init_etbl init_ec in
 
   run m
 
@@ -169,6 +171,19 @@ let test_sealing_counter =
       (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m Z.zero));
   ]
 
+let test_isunique =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/isunique.s") in
+  [ test_case "isunique.s should end in halted state" `Quick (test_state Halted (fst m));
+    test_case "isunique.s should end with r5 containing 0" `Quick
+      (test_const_word Z.zero (get_reg_int_word (Ast.Reg 5) m Z.zero));
+    test_case "isunique.s should end with r6 containing 1" `Quick
+      (test_const_word Z.one (get_reg_int_word (Ast.Reg 6) m Z.zero));
+    test_case "isunique.s should end with r7 containing 0" `Quick
+      (test_const_word Z.zero (get_reg_int_word (Ast.Reg 7) m Z.zero));
+  ]
+
+
 let () =
   let open Alcotest in
   run "Run"
@@ -176,6 +191,7 @@ let () =
       ( "Pos",
         test_mov_test @ test_jmper @ test_promote @ test_ucaps @ test_locality_flow
         @ test_directed_store @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+        @ test_isunique
       );
       ("Neg", test_negatives);
     ]

@@ -28,4 +28,6 @@ let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machin
   let addr_start = Z.(~$0) in
   (* TODO lookup the PC *)
   let init_mems = Machine.init_mem_state addr_start prog in
-  Machine.init init_regs init_mems
+  let init_etbl = Machine.ETableMap.empty in
+  let init_ec : Machine.eid = Z.zero in
+  Machine.init init_regs init_mems init_etbl init_ec

@@ -62,6 +62,10 @@ rule token = parse
 | "load" ['u' 'U'] { LOADU }
 | "store" ['u' 'U'] { STOREU }
 | "promote" ['u' 'U'] { PROMOTEU }
+| "einit" { EINIT }
+| "edeinit" { EDEINIT }
+| "estoreid" { ESTOREID }
+| "isunique" { ISUNIQUE }
 | "fail" { FAIL }
 | "halt" { HALT }
 

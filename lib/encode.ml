@@ -374,8 +374,12 @@ let encode_machine_op (s : machine_op) : Z.t =
       let opc, c_enc = two_const_convert ~$0x33 c1 c2 in
       opc ^! encode_int_int (encode_reg r) c_enc
   | PromoteU r -> ~$0x37 ^! encode_reg r
-  | Fail -> ~$0x38
-  | Halt -> ~$0x39
+  | EInit (r1, r2) -> ~$0x38 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | EDeInit (r1, r2) -> ~$0x39 ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | EStoreId (r1, r2) -> ~$0x3a ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | IsUnique (r1, r2) -> ~$0x3b ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | Fail -> ~$0x3c
+  | Halt -> ~$0x3d
 
 let decode_machine_op (i : Z.t) : machine_op =
   (* let dec_perm = *)
@@ -587,10 +591,36 @@ let decode_machine_op (i : Z.t) : machine_op =
     StoreU (r, c1, c2)
   else if (* PromoteU *)
           opc = ~$0x37 && !Parameters.flags.unitialized then PromoteU (decode_reg payload)
+
+  else if (* EInit *)
+          opc = ~$0x38 then
+    let r1_enc, r2_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    EInit (r1, r2)
+  else if (* EDeInit *)
+          opc = ~$0x39 then
+    let r1_enc, r2_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    EDeInit (r1, r2)
+  else if (* EStoreId *)
+          opc = ~$0x3a then
+    let r1_enc, r2_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    EStoreId (r1, r2)
+  else if (* IsUnique *)
+          opc = ~$0x3b then
+    let r1_enc, r2_enc = decode_int payload in
+    let r1 = decode_reg r1_enc in
+    let r2 = decode_reg r2_enc in
+    IsUnique (r1, r2)
+
   else if (* Fail *)
-          opc = ~$0x38 then Fail
+          opc = ~$0x3c then Fail
   else if (* Halt *)
-          opc = ~$0x39 then Halt
+          opc = ~$0x3d then Halt
   else
     raise
     @@ DecodeException

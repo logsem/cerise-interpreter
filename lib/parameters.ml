@@ -216,7 +216,11 @@ let check_machine_op (i : Ast.machine_op) =
   | GetWType (r1, r2)
   | Load (r1, r2)
   | Invoke (r1, r2)
-  | Jnz (r1, r2) ->
+  | Jnz (r1, r2)
+  | EInit (r1, r2)
+  | EDeInit (r1, r2)
+  | EStoreId (r1, r2)
+  | IsUnique (r1, r2) ->
       check_register r1;
       check_register r2
   | Lea (r1, zr2) | Restrict (r1, zr2) | Store (r1, zr2) | Move (r1, zr2) ->
