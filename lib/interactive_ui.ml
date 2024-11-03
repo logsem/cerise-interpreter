@@ -206,7 +206,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
 
   module Identity = struct
     let width = 1 + int_of_float (floor @@ (log (float max_int) /. log 16.))
-    let ui ?(attr = A.empty) z = I.hsnap ~align:`Right width (I.string attr (Int.ui width z))
+    let ui ?(attr = A.empty) z = I.hsnap ~align:`Left width (I.string attr (Int.ui width z))
   end
 
   module ETable_panel = struct
@@ -215,14 +215,24 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
        <eid>: <identity>
     *)
     let ui width (etbl : Machine.e_table) =
-      (* let eid_width = EC_counter.width + 2 + Identity.width +2 in *)
-      let render_etbl enclaves =
-        List.fold_left
-          (fun img (eid, (id, _)) ->
-            img <-> (I.empty <|> EC_counter.ui eid <|> I.string A.empty ": " <|> Identity.ui id))
-          I.empty enclaves
+      let nenclaves = 20. in
+      (* Arbitrary number *)
+      let eid_width = EC_counter.width + 2 + Identity.width + 2 in
+      let ncols = max 1 (width / eid_width) in
+      let nregs_per_col = nenclaves /. float ncols |> ceil |> int_of_float in
+      let rec loop fst_col etable =
+        if etable = [] then I.empty
+        else
+          let col, etable = CCList.take_drop nregs_per_col etable in
+          List.fold_left
+            (fun img (eid, (id, _)) ->
+              img
+              <-> ((if not fst_col then I.string A.empty "  " else I.empty)
+                  <|> EC_counter.ui eid <|> I.string A.empty ": " <|> Identity.ui id))
+            I.empty col
+          <|> loop false etable
       in
-      render_etbl (Machine.ETableMap.to_seq etbl |> List.of_seq) |> I.hsnap ~align:`Left width
+      loop true (Machine.ETableMap.to_seq etbl |> List.of_seq) |> I.hsnap ~align:`Left width
   end
 
   module Instr = struct
@@ -352,10 +362,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       let start_stk = upd_stk stk height start_stk 2 in
 
       let img_of_dataline = render_prog width pc (addr_show start_prog) in
-      (* let img_of_stack = *)
-      (*   if show_stack then render_stack width stk (addr_show start_stk) else I.empty *)
-      (* in *)
-      let img_of_stack = if show_stack then I.empty else I.empty in
+      let img_of_stack =
+        if show_stack then render_stack width stk (addr_show start_stk) else I.empty
+      in
 
       (img_of_dataline </> img_of_stack, start_prog, start_stk)
   end
@@ -400,7 +409,10 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           I.hsnap ~align:`Right term_width
             (I.string A.empty "machine state: " <|> Exec_state.ui (fst m))
         in
-        let img = regs_img <-> mach_state_img <-> etbl_img <-> mem_img in
+        let img =
+          I.string A.empty "REGFILE:" <-> regs_img <-> I.string A.empty "ETABLE:" <-> etbl_img
+          <-> mach_state_img <-> mem_img
+        in
         Term.image term img;
         (* watch for a relevant event *)
         let rec process_events () =

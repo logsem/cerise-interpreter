@@ -100,10 +100,10 @@ let string_of_machine_op (s : machine_op) : string =
   | LoadU (r1, r2, c) -> "loadU" ^- string_of_rrc r1 r2 c
   | StoreU (r, c1, c2) -> "storeU" ^- string_of_rcc r c1 c2
   | PromoteU r -> "promoteU" ^- string_of_regname r
-  | EInit (r1, r2) -> "EInit" ^- string_of_rr r1 r2
-  | EDeInit (r1, r2) -> "EDeInit" ^- string_of_rr r1 r2
-  | EStoreId (r1, r2, r3) -> "EStoreId" ^- string_of_rrr r1 r2 r3
-  | IsUnique (r1, r2) -> "IsUnique" ^- string_of_rr r1 r2
+  | EInit (r1, r2) -> "einit" ^- string_of_rr r1 r2
+  | EDeInit (r1, r2) -> "edeinit" ^- string_of_rr r1 r2
+  | EStoreId (r1, r2, r3) -> "estoreid" ^- string_of_rrr r1 r2 r3
+  | IsUnique (r1, r2) -> "isunique" ^- string_of_rr r1 r2
   | Fail -> "fail"
   | Halt -> "halt"
 
