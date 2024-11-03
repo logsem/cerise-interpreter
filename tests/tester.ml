@@ -174,7 +174,8 @@ let test_sealing_counter =
 let test_isunique =
   let open Alcotest in
   let m = run_prog (test_path "pos/isunique.s") in
-  [ test_case "isunique.s should end in halted state" `Quick (test_state Halted (fst m));
+  [
+    test_case "isunique.s should end in halted state" `Quick (test_state Halted (fst m));
     test_case "isunique.s should end with r5 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 5) m Z.zero));
     test_case "isunique.s should end with r6 containing 1" `Quick
@@ -183,7 +184,6 @@ let test_isunique =
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 7) m Z.zero));
   ]
 
-
 let () =
   let open Alcotest in
   run "Run"
@@ -191,7 +191,6 @@ let () =
       ( "Pos",
         test_mov_test @ test_jmper @ test_promote @ test_ucaps @ test_locality_flow
         @ test_directed_store @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
-        @ test_isunique
-      );
+        @ test_isunique );
       ("Neg", test_negatives);
     ]

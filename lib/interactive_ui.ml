@@ -165,11 +165,23 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       I.hsnap ~align:`Right width (I.string A.empty (Pretty_printer.string_of_regname r))
   end
 
+  module EC_register = struct
+    (* pc or rNN *)
+    let width = Regname.width
+    let ui = I.hsnap ~align:`Right width (I.string A.empty Pretty_printer.string_of_ec)
+  end
+
+  module EC_counter = struct
+    let width = Word.width
+    let ui ?(attr = A.empty) z = I.hsnap ~align:`Right width (I.string attr (Int.ui width z))
+  end
+
   module Regs_panel = struct
     (* <reg>: <word>  <reg>: <word>  <reg>: <word>
        <reg>: <word>  <reg>: <word>
+       EC: <ecounter>
     *)
-    let ui width (regs : Machine.reg_state) =
+    let ui width (regs : Machine.reg_state) (ecounter : Machine.e_counter) =
       let reg_width = Regname.width + 2 + Word.width + 2 in
       let ncols = max 1 (width / reg_width) in
       let nregs_per_col = 33. (* nregs *) /. float ncols |> ceil |> int_of_float in
@@ -185,7 +197,32 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
             I.empty col
           <|> loop false regs
       in
-      loop true (Machine.RegMap.to_seq regs |> List.of_seq) |> I.hsnap ~align:`Left width
+      let ec_reg =
+        (* I.empty *)
+        I.empty <|> EC_register.ui <|> I.string A.empty ": " <|> EC_counter.ui ecounter
+      in
+      loop true (Machine.RegMap.to_seq regs |> List.of_seq) <-> ec_reg |> I.hsnap ~align:`Left width
+  end
+
+  module Identity = struct
+    let width = 1 + int_of_float (floor @@ (log (float max_int) /. log 16.))
+    let ui ?(attr = A.empty) z = I.hsnap ~align:`Right width (I.string attr (Int.ui width z))
+  end
+
+  module ETable_panel = struct
+    (* <eid>: <identity>
+       <eid>: <identity>
+       <eid>: <identity>
+    *)
+    let ui width (etbl : Machine.e_table) =
+      (* let eid_width = EC_counter.width + 2 + Identity.width +2 in *)
+      let render_etbl enclaves =
+        List.fold_left
+          (fun img (eid, (id, _)) ->
+            img <-> (I.empty <|> EC_counter.ui eid <|> I.string A.empty ": " <|> Identity.ui id))
+          I.empty enclaves
+      in
+      render_etbl (Machine.ETableMap.to_seq etbl |> List.of_seq) |> I.hsnap ~align:`Left width
   end
 
   module Instr = struct
@@ -315,9 +352,10 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       let start_stk = upd_stk stk height start_stk 2 in
 
       let img_of_dataline = render_prog width pc (addr_show start_prog) in
-      let img_of_stack =
-        if show_stack then render_stack width stk (addr_show start_stk) else I.empty
-      in
+      (* let img_of_stack = *)
+      (*   if show_stack then render_stack width stk (addr_show start_stk) else I.empty *)
+      (* in *)
+      let img_of_stack = if show_stack then I.empty else I.empty in
 
       (img_of_dataline </> img_of_stack, start_prog, start_stk)
   end
@@ -345,10 +383,13 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         let term_width, term_height = Term.size term in
         let reg = (snd m).Machine.reg in
         let mem = (snd m).Machine.mem in
-        let regs_img = Regs_panel.ui term_width reg in
+        let etbl = (snd m).Machine.etbl in
+        let ec = (snd m).Machine.ec in
+        let regs_img = Regs_panel.ui term_width reg ec in
+        let etbl_img = ETable_panel.ui term_width etbl in
         let mem_img, panel_start, panel_stk =
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
-            (term_height - 1 - I.height regs_img)
+            (term_height - 1 - I.height regs_img - I.height etbl_img)
             term_width mem (Machine.RegMap.find Ast.PC reg)
             (if !flags.stack then Machine.RegMap.find Ast.stk reg else Ast.I Z.zero)
             !prog_panel_start !stk_panel_start
@@ -359,7 +400,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           I.hsnap ~align:`Right term_width
             (I.string A.empty "machine state: " <|> Exec_state.ui (fst m))
         in
-        let img = regs_img <-> mach_state_img <-> mem_img in
+        let img = regs_img <-> mach_state_img <-> etbl_img <-> mem_img in
         Term.image term img;
         (* watch for a relevant event *)
         let rec process_events () =
@@ -421,6 +462,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
               | _ -> loop ~update_prog:Program_panel.follow_addr show_stack m history)
           | `Key (`ASCII 's', _) ->
               loop ~update_prog:Program_panel.id (toggle_show_stack show_stack) m history
+          | `Key (`ASCII '$', _) ->
+              loop ~update_prog:Program_panel.follow_addr ~update_stk:Program_panel.follow_addr
+                show_stack (Machine.run m) (m :: history)
           | `Key (`ASCII ' ', _) -> (
               match Machine.step m with
               | Some m' ->

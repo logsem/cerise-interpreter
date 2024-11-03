@@ -11,6 +11,8 @@ let string_of_regname (r : regname) : string =
       else if r = ddc then "ddc"
       else "r" ^ string_of_int i
 
+let string_of_ec : string = "EC"
+
 let string_of_seal_perm (p : seal_perm) : string =
   match p with false, false -> "SO" | true, false -> "S" | false, true -> "U" | true, true -> "SU"
 
@@ -100,7 +102,7 @@ let string_of_machine_op (s : machine_op) : string =
   | PromoteU r -> "promoteU" ^- string_of_regname r
   | EInit (r1, r2) -> "EInit" ^- string_of_rr r1 r2
   | EDeInit (r1, r2) -> "EDeInit" ^- string_of_rr r1 r2
-  | EStoreId (r1, r2) -> "EStoreId" ^- string_of_rr r1 r2
+  | EStoreId (r1, r2, r3) -> "EStoreId" ^- string_of_rrr r1 r2 r3
   | IsUnique (r1, r2) -> "IsUnique" ^- string_of_rr r1 r2
   | Fail -> "fail"
   | Halt -> "halt"

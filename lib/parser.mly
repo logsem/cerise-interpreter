@@ -54,7 +54,7 @@ main:
   | PROMOTEU; r = reg; p = main ; { PromoteU r :: p }
   | EINIT; r1 = reg; r2 = reg; p = main; { EInit (r1, r2) :: p }
   | EDEINIT; r1 = reg; r2 = reg; p = main; { EDeInit (r1, r2) :: p }
-  | ESTOREID; r1 = reg; r2 = reg; p = main; { EStoreId (r1, r2) :: p }
+  | ESTOREID; r1 = reg; r2 = reg; r3 = reg ; p = main; { EStoreId (r1, r2, r3) :: p }
   | ISUNIQUE; r1 = reg; r2 = reg; p = main; { IsUnique (r1, r2) :: p }
   | FAIL; p = main; { Fail :: p }
   | HALT; p = main; { Halt :: p }

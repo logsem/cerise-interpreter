@@ -26,7 +26,7 @@ type exec_state = Running | Halted | Failed
 type reg_state = word RegMap.t
 type mem_state = word MemMap.t
 type e_table = (eid * e_counter) ETableMap.t
-type exec_conf = { reg : reg_state; mem : mem_state; etbl : e_table ; ec : e_counter }
+type exec_conf = { reg : reg_state; mem : mem_state; etbl : e_table; ec : e_counter }
 
 (* using a record to have notation similar to the paper *)
 type mchn = exec_state * exec_conf
@@ -73,23 +73,28 @@ let get_reg (r : regname) ({ reg; _ } : exec_conf) : word = RegMap.find r reg
 let ( @! ) x y = get_reg x y
 
 let upd_reg (r : regname) (w : word) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
-  { reg = RegMap.add r w reg; mem ; etbl ; ec}
+  { reg = RegMap.add r w reg; mem; etbl; ec }
 
 let get_mem (addr : Z.t) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
 let ( @? ) x y = get_mem x y
 
-let upd_mem (addr : Z.t) (w : word) ({ reg; mem ; etbl ; ec } : exec_conf) : exec_conf =
-  { reg; mem = MemMap.add addr w mem ; etbl ; ec }
+let upd_mem (addr : Z.t) (w : word) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
+  { reg; mem = MemMap.add addr w mem; etbl; ec }
 
 let get_etbl (etbl_idx : Z.t) (conf : exec_conf) : (eid * e_counter) option =
   ETableMap.find_opt etbl_idx conf.etbl
 
-let upd_etbl (etbl_idx : Z.t) (identity : eid) (ecounter : e_counter) ({ reg; mem ; etbl ; ec } : exec_conf) : exec_conf =
-  { reg; mem ; etbl = ETableMap.add etbl_idx (identity, ecounter) etbl ; ec }
+let upd_etbl (etbl_idx : Z.t) (identity : eid) (ecounter : e_counter)
+    ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
+  { reg; mem; etbl = ETableMap.add etbl_idx (identity, ecounter) etbl; ec }
 
-let upd_ec (n : e_counter) ({ reg; mem ; etbl ; _ } : exec_conf) : exec_conf =
-  { reg; mem ; etbl ; ec = n }
+let del_etbl (etbl_idx : Z.t) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
+  { reg; mem; etbl = ETableMap.remove etbl_idx etbl; ec }
 
+let upd_ec (n : e_counter) ({ reg; mem; etbl; _ } : exec_conf) : exec_conf =
+  { reg; mem; etbl; ec = n }
+
+let incr_ec (conf : exec_conf) : exec_conf = upd_ec Z.(conf.ec + ~$1) conf
 
 let init_mem_state (addr_start : Z.t) (prog : t) : mem_state =
   let zeroed_mem =
@@ -118,8 +123,9 @@ let init_mem_state (addr_start : Z.t) (prog : t) : mem_state =
   in
   MemMap.add_seq enc_prog zeroed_mem
 
-let init (initial_regs : reg_state) (initial_mems : mem_state) (initial_etbl : e_table) (initial_ec : e_counter) =
-  (Running, { reg = initial_regs; mem = initial_mems ; etbl = initial_etbl ; ec = initial_ec })
+let init (initial_regs : reg_state) (initial_mems : mem_state) (initial_etbl : e_table)
+    (initial_ec : e_counter) =
+  (Running, { reg = initial_regs; mem = initial_mems; etbl = initial_etbl; ec = initial_ec })
 
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with Register r -> get_reg r conf | Const i -> I i
@@ -207,53 +213,36 @@ let is_cap (sb : sealable) = match sb with Cap _ -> true | _ -> false
 
 let get_scap (w : word) : sealable option =
   match w with
-  | Sealable (Cap (p,l,b,e,a)) -> Some (Cap (p,l,b,e,a))
-  | Sealed (_, (Cap (p,l,b,e,a))) -> Some (Cap (p,l,b,e,a))
+  | Sealable (Cap (p, l, b, e, a)) -> Some (Cap (p, l, b, e, a))
+  | Sealed (_, Cap (p, l, b, e, a)) -> Some (Cap (p, l, b, e, a))
   | _ -> None
 
 let overlap_word (w1 : word) (w2 : word) : bool =
-  match get_scap w1, get_scap w2 with
-  | Some (Cap (_,_,b1,e1,_)), Some (Cap (_,_,b2,e2,_)) ->
-      if (b1 < b2)
-      then (Infinite_z.z_leq b2 (Infinite_z.sub_z e1 Z.one))
-      else (Infinite_z.z_leq b1 (Infinite_z.sub_z e2 Z.one))
-  | _,_ -> false
+  match (get_scap w1, get_scap w2) with
+  | Some (Cap (_, _, b1, e1, _)), Some (Cap (_, _, b2, e2, _)) ->
+      if b1 < b2 then Infinite_z.z_lt b2 e1 else Infinite_z.z_lt b1 e2
+  | _, _ -> false
 
 (* sweep all the register, excluding the register src. *)
 (* Returns false if there exists an overlapping word *)
 let sweep_registers_reg (conf : exec_conf) (src : regname) : bool =
   let w = get_reg src conf in
-  RegMap.for_all
-      (fun r w' ->
-        if r = src
-        then true
-        else not (overlap_word w w'))
-      conf.reg
+  RegMap.for_all (fun r w' -> if r = src then true else not (overlap_word w w')) conf.reg
 
 let sweep_registers_mem (conf : exec_conf) (a : Z.t) : bool =
   match get_mem a conf with
   | None -> false
-  | Some w ->
-      RegMap.for_all
-          (fun _ w' -> not (overlap_word w w'))
-          conf.reg
-
+  | Some w -> RegMap.for_all (fun _ w' -> not (overlap_word w w')) conf.reg
 
 let sweep_memory_reg (conf : exec_conf) (src : regname) : bool =
   let w = get_reg src conf in
-  MemMap.for_all (fun _ w' -> not (overlap_word w w'))
-      conf.mem
+  MemMap.for_all (fun _ w' -> not (overlap_word w w')) conf.mem
 
 let sweep_memory_mem (conf : exec_conf) (a : Z.t) : bool =
   match get_mem a conf with
   | None -> false
   | Some w ->
-      MemMap.for_all (fun a' w' ->
-            if a' = a
-            then true
-            else not (overlap_word w w'))
-          conf.mem
-
+      MemMap.for_all (fun a' w' -> if a' = a then true else not (overlap_word w w')) conf.mem
 
 let sweep_reg (conf : exec_conf) (src : regname) : bool =
   let unique_mem = sweep_memory_reg conf src in
@@ -567,16 +556,72 @@ let exec_single (conf : exec_conf) : mchn =
                     !>(upd_reg r (Sealable (Cap (p', g, b, e', a))) conf)
                 | _ -> fail_state)
             | _ -> fail_state)
-        | EInit (_, _) -> fail_state
-        | EDeInit (_, _) -> fail_state
-        | EStoreId (_, _) -> fail_state
-        | IsUnique (rdst, rsrc) ->
+        | EInit (rdst, rsrc) -> (
             match rsrc @! conf with
-            | Sealable (Cap _)
-            | Sealed (_, Cap _) ->
-                !> (upd_reg rdst (I (if sweep_reg conf rsrc then Z.one else Z.zero)) conf)
-            | _ -> fail_state
-    )
+            | Sealable (Cap (p, _, b, e, _)) when can_read p && is_exec p -> (
+                match b @? conf with
+                | Some (Sealable (Cap (p', _, b', e', _))) when can_read p' && can_write p' ->
+                    let isunique_code = sweep_reg conf rsrc in
+                    let isunique_data = sweep_addr conf b in
+                    if isunique_data then
+                      if isunique_code then
+                        let ot = Z.(~$2 * conf.ec) in
+                        let seal_keys =
+                          Sealable (SealRange ((true, true), Global, ot, Z.(ot + ~$2), ot))
+                        in
+                        let to_list mem = MemMap.bindings mem in
+                        let region_filter b e a _ = b <= a && Infinite_z.z_leq a e in
+                        let region b e =
+                          List.map
+                            (fun (_, w) -> w)
+                            (to_list (MemMap.filter (region_filter b e) conf.mem))
+                        in
+                        let code_region = region Z.(b + ~$1) e in
+                        let data_region = region b' e' in
+                        let enclave_region = List.append code_region data_region in
+                        let identity : Z.t = Z.of_int (Hashtbl.hash enclave_region) in
+
+                        let conf_etbl' = upd_etbl conf.ec identity conf.ec conf in
+                        let conf_mem' = upd_mem b' seal_keys conf_etbl' in
+                        let conf_ec' = incr_ec conf_mem' in
+                        (* upd_ec Z.(conf.ec + ~$1) conf_mem' in *)
+                        !>(upd_reg rdst (Sealable (Cap (E, Global, b, e, Z.(b + ~$1)))) conf_ec')
+                      else (Failed, upd_reg rdst (I ~$3) conf)
+                    else (Failed, upd_reg rdst (I ~$4) conf)
+                    (* fail_state *)
+                | _ -> fail_state)
+            | _ -> fail_state)
+        | EDeInit (rdst, rsrc) -> (
+            match rsrc @! conf with
+            | Sealable (SealRange ((true, true), Global, b, e, _)) when e = Z.(b + ~$2) ->
+                if Z.is_even b then
+                  let eid = Z.(b / ~$2) in
+                  let res = match get_etbl eid conf with Some _ -> I ~$1 | None -> I ~$0 in
+                  !>(upd_reg rdst res (del_etbl eid conf))
+                else fail_state
+            | _ -> fail_state)
+        | EStoreId (rdst, rsrc1, rsrc2) -> (
+            match rsrc1 @! conf with
+            | I s -> (
+                let eid =
+                  let open Z in
+                  if is_even s then s / of_int 2 else (s - Z.one) / of_int 2
+                in
+                match get_etbl eid conf with
+                | Some (identity, _) -> (
+                    match rsrc2 @! conf with
+                    | Sealable (Cap (p, _, b, e, a))
+                      when can_write p && b <= a && Infinite_z.z_leq a e ->
+                        !>(upd_mem a (I identity) (upd_reg rdst (I ~$1) conf))
+                        (* !> (upd_mem a (I ~$357232418) (upd_reg rdst (I ~$1) conf)) *)
+                    | _ -> fail_state)
+                | None -> !>(upd_reg rdst (I ~$0) conf))
+            | _ -> fail_state)
+        | IsUnique (rdst, rsrc) -> (
+            match rsrc @! conf with
+            | Sealable (Cap _) | Sealed (_, Cap _) ->
+                !>(upd_reg rdst (I (if sweep_reg conf rsrc then Z.one else Z.zero)) conf)
+            | _ -> fail_state))
   else fail_state
 
 let step (m : mchn) : mchn option =

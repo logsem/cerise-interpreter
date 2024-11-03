@@ -46,7 +46,7 @@ type machine_op =
   | PromoteU of regname
   | EInit of regname * regname
   | EDeInit of regname * regname
-  | EStoreId of regname * regname
+  | EStoreId of regname * regname * regname
   | IsUnique of regname * regname
   | Fail
   | Halt

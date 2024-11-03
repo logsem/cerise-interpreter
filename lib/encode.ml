@@ -243,7 +243,9 @@ let decode_reg (i : Z.t) : regname = if i = Z.zero then PC else Reg (Z.to_int @@
 
 let rec split_int (i : Z.t) : Z.t * Z.t =
   let open Z in
-  if i = zero then (zero, zero)
+  if i = ~$(-1) then
+    raise @@ DecodeException (Printf.sprintf "Error decoding integer: %0x" (Z.to_int i))
+  else if i = zero then (zero, zero)
   else
     let x1 = i land one in
     let y1 = (i asr 1) land one in
@@ -376,7 +378,8 @@ let encode_machine_op (s : machine_op) : Z.t =
   | PromoteU r -> ~$0x37 ^! encode_reg r
   | EInit (r1, r2) -> ~$0x38 ^! encode_int_int (encode_reg r1) (encode_reg r2)
   | EDeInit (r1, r2) -> ~$0x39 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | EStoreId (r1, r2) -> ~$0x3a ^! encode_int_int (encode_reg r1) (encode_reg r2)
+  | EStoreId (r1, r2, r3) ->
+      ~$0x3a ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
   | IsUnique (r1, r2) -> ~$0x3b ^! encode_int_int (encode_reg r1) (encode_reg r2)
   | Fail -> ~$0x3c
   | Halt -> ~$0x3d
@@ -387,6 +390,7 @@ let decode_machine_op (i : Z.t) : machine_op =
   (* in *)
   let opc = Z.extract i 0 8 in
   let payload = Z.(i asr 8) in
+
   (* Jmp *)
   if opc = ~$0x00 then Jmp (decode_reg payload)
   else if (* Jnz *)
@@ -591,7 +595,6 @@ let decode_machine_op (i : Z.t) : machine_op =
     StoreU (r, c1, c2)
   else if (* PromoteU *)
           opc = ~$0x37 && !Parameters.flags.unitialized then PromoteU (decode_reg payload)
-
   else if (* EInit *)
           opc = ~$0x38 then
     let r1_enc, r2_enc = decode_int payload in
@@ -606,17 +609,18 @@ let decode_machine_op (i : Z.t) : machine_op =
     EDeInit (r1, r2)
   else if (* EStoreId *)
           opc = ~$0x3a then
-    let r1_enc, r2_enc = decode_int payload in
+    let r1_enc, payload' = decode_int payload in
+    let r2_enc, r3_enc = decode_int payload' in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
-    EStoreId (r1, r2)
+    let r3 = decode_reg r3_enc in
+    EStoreId (r1, r2, r3)
   else if (* IsUnique *)
           opc = ~$0x3b then
     let r1_enc, r2_enc = decode_int payload in
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     IsUnique (r1, r2)
-
   else if (* Fail *)
           opc = ~$0x3c then Fail
   else if (* Halt *)
