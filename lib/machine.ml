@@ -13,11 +13,12 @@ module RegMap = Map.Make (struct
   let compare = compare_regname
 end)
 
-type eid = Z.t
+type eidentity = Z.t
 type e_counter = Z.t
+type tindex = Z.t
 
 module ETableMap = Map.Make (struct
-  type t = Z.t
+  type t = tindex
 
   let compare = compare
 end)
@@ -25,7 +26,7 @@ end)
 type exec_state = Running | Halted | Failed
 type reg_state = word RegMap.t
 type mem_state = word MemMap.t
-type e_table = (eid * e_counter) ETableMap.t
+type e_table = eidentity ETableMap.t
 type exec_conf = { reg : reg_state; mem : mem_state; etbl : e_table; ec : e_counter }
 
 (* using a record to have notation similar to the paper *)
@@ -81,15 +82,14 @@ let ( @? ) x y = get_mem x y
 let upd_mem (addr : Z.t) (w : word) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
   { reg; mem = MemMap.add addr w mem; etbl; ec }
 
-let get_etbl (etbl_idx : Z.t) (conf : exec_conf) : (eid * e_counter) option =
-  ETableMap.find_opt etbl_idx conf.etbl
+let get_etbl (tid : tindex) (conf : exec_conf) : eidentity option = ETableMap.find_opt tid conf.etbl
 
-let upd_etbl (etbl_idx : Z.t) (identity : eid) (ecounter : e_counter)
-    ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
-  { reg; mem; etbl = ETableMap.add etbl_idx (identity, ecounter) etbl; ec }
+let upd_etbl (tid : tindex) (identity : eidentity) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf
+    =
+  { reg; mem; etbl = ETableMap.add tid identity etbl; ec }
 
-let del_etbl (etbl_idx : Z.t) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
-  { reg; mem; etbl = ETableMap.remove etbl_idx etbl; ec }
+let del_etbl (tid : tindex) ({ reg; mem; etbl; ec } : exec_conf) : exec_conf =
+  { reg; mem; etbl = ETableMap.remove tid etbl; ec }
 
 let upd_ec (n : e_counter) ({ reg; mem; etbl; _ } : exec_conf) : exec_conf =
   { reg; mem; etbl; ec = n }
@@ -558,9 +558,9 @@ let exec_single (conf : exec_conf) : mchn =
             | _ -> fail_state)
         | EInit (rdst, rsrc) -> (
             match rsrc @! conf with
-            | Sealable (Cap (p, _, b, e, _)) when can_read p && is_exec p -> (
+            | Sealable (Cap (p, _, b, e, a)) when can_read p && is_exec p -> (
                 match b @? conf with
-                | Some (Sealable (Cap (p', _, b', e', _))) when can_read p' && can_write p' ->
+                | Some (Sealable (Cap (p', _, b', _, _))) when can_read p' && can_write p' ->
                     let isunique_code = sweep_reg conf rsrc in
                     let isunique_data = sweep_addr conf b in
                     if isunique_data then
@@ -577,45 +577,35 @@ let exec_single (conf : exec_conf) : mchn =
                             (to_list (MemMap.filter (region_filter b e) conf.mem))
                         in
                         let code_region = region Z.(b + ~$1) e in
-                        let data_region = region b' e' in
-                        let enclave_region = List.append code_region data_region in
-                        let identity : Z.t = Z.of_int (Hashtbl.hash enclave_region) in
+                        let enclave_region = code_region in
+                        let identity : Z.t = Z.of_int (Hashtbl.hash (b, enclave_region)) in
 
-                        let conf_etbl' = upd_etbl conf.ec identity conf.ec conf in
+                        let conf_etbl' = upd_etbl conf.ec identity conf in
                         let conf_mem' = upd_mem b' seal_keys conf_etbl' in
                         let conf_ec' = incr_ec conf_mem' in
-                        (* upd_ec Z.(conf.ec + ~$1) conf_mem' in *)
-                        !>(upd_reg rdst (Sealable (Cap (E, Global, b, e, Z.(b + ~$1)))) conf_ec')
-                      else (Failed, upd_reg rdst (I ~$3) conf)
-                    else (Failed, upd_reg rdst (I ~$4) conf)
-                    (* fail_state *)
+                        !>(upd_reg rdst (Sealable (Cap (E, Global, b, e, a))) conf_ec')
+                      else fail_state
+                    else fail_state
                 | _ -> fail_state)
             | _ -> fail_state)
-        | EDeInit (rdst, rsrc) -> (
+        | EDeInit rsrc -> (
             match rsrc @! conf with
             | Sealable (SealRange ((true, true), Global, b, e, _)) when e = Z.(b + ~$2) ->
                 if Z.is_even b then
-                  let eid = Z.(b / ~$2) in
-                  let res = match get_etbl eid conf with Some _ -> I ~$1 | None -> I ~$0 in
-                  !>(upd_reg rdst res (del_etbl eid conf))
+                  let tid = Z.(b / ~$2) in
+                  !>(del_etbl tid conf)
                 else fail_state
             | _ -> fail_state)
-        | EStoreId (rdst, rsrc1, rsrc2) -> (
-            match rsrc1 @! conf with
+        | EStoreId (rdst, rsrc) -> (
+            match rsrc @! conf with
             | I s -> (
-                let eid =
+                let tid =
                   let open Z in
                   if is_even s then s / of_int 2 else (s - Z.one) / of_int 2
                 in
-                match get_etbl eid conf with
-                | Some (identity, _) -> (
-                    match rsrc2 @! conf with
-                    | Sealable (Cap (p, _, b, e, a))
-                      when can_write p && b <= a && Infinite_z.z_leq a e ->
-                        !>(upd_mem a (I identity) (upd_reg rdst (I ~$1) conf))
-                        (* !> (upd_mem a (I ~$357232418) (upd_reg rdst (I ~$1) conf)) *)
-                    | _ -> fail_state)
-                | None -> !>(upd_reg rdst (I ~$0) conf))
+                match get_etbl tid conf with
+                | Some identity -> !>(upd_reg rdst (I identity) conf)
+                | None -> fail_state)
             | _ -> fail_state)
         | IsUnique (rdst, rsrc) -> (
             match rsrc @! conf with

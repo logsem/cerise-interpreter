@@ -30,7 +30,7 @@ let run_prog (filename : string) : mchn =
   let init_regs = Machine.init_reg_state stk_addr in
   let init_mems = Machine.init_mem_state Z.(~$0) parse_res in
   let init_etbl = Machine.ETableMap.empty in
-  let init_ec : Machine.eid = Z.zero in
+  let init_ec : Machine.e_counter = Z.zero in
   let m = Machine.init init_regs init_mems init_etbl init_ec in
 
   run m

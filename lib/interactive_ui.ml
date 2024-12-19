@@ -210,25 +210,25 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
   end
 
   module ETable_panel = struct
-    (* <eid>: <identity>
-       <eid>: <identity>
-       <eid>: <identity>
+    (* <tid>: <identity>
+       <tid>: <identity>
+       <tid>: <identity>
     *)
     let ui width (etbl : Machine.e_table) =
       let nenclaves = 20. in
       (* Arbitrary number *)
-      let eid_width = EC_counter.width + 2 + Identity.width + 2 in
-      let ncols = max 1 (width / eid_width) in
+      let tid_width = EC_counter.width + 2 + Identity.width + 2 in
+      let ncols = max 1 (width / tid_width) in
       let nregs_per_col = nenclaves /. float ncols |> ceil |> int_of_float in
       let rec loop fst_col etable =
         if etable = [] then I.empty
         else
           let col, etable = CCList.take_drop nregs_per_col etable in
           List.fold_left
-            (fun img (eid, (id, _)) ->
+            (fun img (tid, id) ->
               img
               <-> ((if not fst_col then I.string A.empty "  " else I.empty)
-                  <|> EC_counter.ui eid <|> I.string A.empty ": " <|> Identity.ui id))
+                  <|> EC_counter.ui tid <|> I.string A.empty ": " <|> Identity.ui id))
             I.empty col
           <|> loop false etable
       in

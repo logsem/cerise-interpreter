@@ -12,6 +12,7 @@ boot:
     mov r2 (tc_start-boot)
     mov r3 (tc_data-boot)
     subseg r1 r2 r3
+    lea r1 tc_main
     restrict r1 (RX, Global)
 
     ;; init enclave
@@ -20,8 +21,7 @@ boot:
     lea r31 3
     jmp r0
     getotype r2 r1
-    estoreid r3 r2 r31
-    load r3 r31
+    estoreid r3 r2
 
     ;; deinit enclave
     mov r31 pc
@@ -55,7 +55,7 @@ tc_deinit:
     lea r0 (tc_start-tc_deinit)
     load r1 r0
     load r1 r1
-    edeinit r1 r1
+    edeinit r1
     jmp r31
 tc_data:
     #0

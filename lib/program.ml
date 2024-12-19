@@ -26,11 +26,7 @@ let parse_regfile (filename : string) (stk_addr : Z.t) :
 
 let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machine.mchn =
   let addr_start = Z.(~$0) in
-  (* TODO lookup the PC *)
   let init_mems = Machine.init_mem_state addr_start prog in
   let init_etbl = Machine.ETableMap.empty in
-  (* let init_etbl = Machine.ETableMap.add Z.zero (Z.of_int (Hashtbl.hash init_mems), Z.zero) init_etbl in *)
-  (* let init_etbl = Machine.ETableMap.add Z.one (Z.of_int (Hashtbl.hash init_etbl), Z.one) init_etbl in *)
-  (* let init_etbl = Machine.ETableMap.add (Z.of_int 2) (Z.of_int (Hashtbl.hash init_etbl), (Z.of_int 2)) init_etbl in *)
-  let init_ec : Machine.eid = Z.zero in
+  let init_ec : Machine.e_counter = Z.zero in
   Machine.init init_regs init_mems init_etbl init_ec

@@ -101,8 +101,8 @@ let string_of_machine_op (s : machine_op) : string =
   | StoreU (r, c1, c2) -> "storeU" ^- string_of_rcc r c1 c2
   | PromoteU r -> "promoteU" ^- string_of_regname r
   | EInit (r1, r2) -> "einit" ^- string_of_rr r1 r2
-  | EDeInit (r1, r2) -> "edeinit" ^- string_of_rr r1 r2
-  | EStoreId (r1, r2, r3) -> "estoreid" ^- string_of_rrr r1 r2 r3
+  | EDeInit r -> "edeinit" ^- string_of_regname r
+  | EStoreId (r1, r2) -> "estoreid" ^- string_of_rr r1 r2
   | IsUnique (r1, r2) -> "isunique" ^- string_of_rr r1 r2
   | Fail -> "fail"
   | Halt -> "halt"
