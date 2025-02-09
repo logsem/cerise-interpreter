@@ -69,7 +69,7 @@ nix run #. -- <args>
 ```
 For instance
 ```
-nix run .# -- -I --version vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+nix run .# -- -I --regfile ./tests/test_files/case_studies/mutually_distrustful.reg ./tests/test_files/case_studies/mutually_distrustful.s
 ```
 
 To format
