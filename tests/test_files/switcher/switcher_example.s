@@ -1,6 +1,6 @@
 main:
-    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
-    #{9: (R, Global, ext_adv, ext_adv_end, ext_adv+2)}            ; import ext
+    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{9: ([R Ow LG LM], Global, ext_adv, ext_adv_end, ext_adv+2)}            ; import ext
 
 main_f:
     mov cra PC
@@ -39,8 +39,8 @@ data_adv_end:
 
 ;; export table compartment c
 ext_adv:
-    #([R X], Global, adv, adv_end, adv)                 ; PCC
-    #([R W], Global, data_adv, data_adv_end, data_adv)  ; CGP
+    #([X Ow LG LM], Global, adv, adv_end, adv)                 ; PCC
+    #([R W LG LM], Global, data_adv, data_adv_end, data_adv)  ; CGP
     #00                                                 ; offset + args
 ext_adv_end:
 
@@ -56,15 +56,15 @@ switcher_cc:
     lea csp -1
     store csp cgp
     getp ct2 csp
-    mov ctp [R W WL]
+    mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
     jnz ct2 2
     jmp 2
     fail
-    movsr ct2 mtdc
+    readsr ct2 mtdc
     lea ct2 -1
     store ct2 csp
-    movsr mtdc ct2
+    writesr mtdc ct2
     geta cs0 csp
     getb cs1 csp
     subseg csp cs1 cs0
@@ -133,10 +133,10 @@ switcher_zero_stk_end_pre:
     mov r29 0
     mov r30 0
     jalr cra cra
-    movsr ctp mtdc
+    readsr ctp mtdc
     load csp ctp
     lea ctp 1
-    movsr mtdc ctp
+    writesr mtdc ctp
     load cgp csp
     lea csp 1
     load ca2 csp

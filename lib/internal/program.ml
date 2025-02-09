@@ -44,13 +44,14 @@ let parse_prog_from_string (source : string) : (Ast.t, string) Result.t =
   parse_prog_from_lexbuf filebuf
 
 let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) :
-    (Ast.word Machine.RegMap.t, string) Result.t =
+    (Ast.word Machine.RegMap.t * Ast.word Machine.SRegMap.t, string) Result.t =
   try
     match Parser_driver.parse_regfile filebuf with
     | Error _ as error -> error
-    | Ok parsed ->
+    | Ok (parsed, sparse) ->
         let regfile = Irreg.translate_regfile parsed !Parameters.flags.max_addr in
-        Result.Ok regfile
+        let sregfile = Irreg.translate_sregfile sparse !Parameters.flags.max_addr in
+        Result.Ok (regfile, sregfile)
   with
   | Irreg.ExprException message ->
       Result.Error (message ^ ". Replace `Inf` with a finite integer in this value.")
@@ -59,7 +60,7 @@ let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) :
   | Failure message -> Result.Error (failure_message message)
 
 let parse_regfile_from_file (filename : string) :
-    (Ast.word Machine.RegMap.t, string) Result.t =
+    (Ast.word Machine.RegMap.t * Ast.word Machine.SRegMap.t, string) Result.t =
   let input = open_in filename in
   let filebuf = Lexing.from_channel input in
   Lexing.set_filename filebuf filename;
@@ -68,14 +69,15 @@ let parse_regfile_from_file (filename : string) :
   res
 
 let parse_regfile_from_string (source : string) :
-    (Ast.word Machine.RegMap.t, string) Result.t =
+    (Ast.word Machine.RegMap.t * Ast.word Machine.SRegMap.t, string) Result.t =
   let filebuf = Lexing.from_string source in
   parse_regfile_from_lexbuf filebuf
 
-let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machine.t =
+let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t)
+    (init_sregs : Ast.word Machine.SRegMap.t) : Machine.t =
   let addr_start = Z.(~$0) in
   (* TODO lookup the PC *)
   let init_mems = Machine.init_mem_state addr_start prog in
-  let init_config = Machine.init init_regs init_mems in
+  let init_config = Machine.init init_regs init_sregs init_mems in
   Machine.check_init_config init_config;
   init_config

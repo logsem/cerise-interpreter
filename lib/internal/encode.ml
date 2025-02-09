@@ -83,61 +83,60 @@ let decode_locality (i : Z.t) : locality =
   let dec_type, dec_i = decode_const i in
   if dec_type != _LOCALITY_ENC then dec_loc_exception () else locality_decoding dec_i
 
-let perm_encoding (p : Perm.t) : Z.t =
-  Z.of_int
-  @@
-  match p with
-  | R -> 0b1000000
-  | X -> 0b0100000
-  | W -> 0b0010000
-  | WL -> 0b0001000
-  | SR -> 0b0000100
-  | DL -> 0b0000010
-  | DI -> 0b0000001
+let rxperm_encoding (rx : rxperm) : Z.t =
+  Z.of_int @@ match rx with Orx -> 0b00 | R -> 0b01 | X -> 0b10 | XSR -> 0b11
 
-let fperm_encoding (fp : PermSet.t) : Z.t =
-  PermSet.fold (fun p res -> Z.logor (perm_encoding p) res) fp (Z.of_int 0b0)
+let wperm_encoding (w : wperm) : Z.t =
+  Z.of_int @@ match w with Ow -> 0b00 | W -> 0b01 | WL -> 0b10
 
-let perm_decoding (i : Z.t) : Perm.t =
+let dlperm_encoding (dl : dlperm) : Z.t = Z.of_int @@ match dl with DL -> 0b0 | LG -> 0b1
+let droperm_encoding (dro : droperm) : Z.t = Z.of_int @@ match dro with DRO -> 0b0 | LM -> 0b1
+
+let perm_encoding (p : perm) : Z.t =
+  let open Z in
+  let rx, w, dl, dro = p in
+  let enc_dro = droperm_encoding dro lsl 0 in
+  (* size of DRO_ENCODING *)
+  let enc_dl = dlperm_encoding dl lsl 1 in
+  (* size of DL_ENCODING *)
+  let enc_w = wperm_encoding w lsl 2 in
+  (* size of W_ENCODING *)
+  let enc_rx = rxperm_encoding rx lsl 4 in
+  enc_rx lor enc_w lor enc_dl lor enc_dro
+
+let perm_decoding (i : Z.t) : perm =
   let dec_perm_exception _ =
     raise @@ DecodeException "Error decoding permission: unexpected encoding"
   in
-  if Z.(i > of_int 0b1111111) then dec_perm_exception ()
+  if Z.(i > of_int 0b111111) then dec_perm_exception ()
   else
     let b k = Z.testbit i k in
-    match (b 6, b 5, b 4, b 3, b 2, b 1, b 0) with
-    | true, false, false, false, false, false, false -> R
-    | false, true, false, false, false, false, false -> X
-    | false, false, true, false, false, false, false -> W
-    | false, false, false, true, false, false, false -> WL
-    | false, false, false, false, true, false, false -> SR
-    | false, false, false, false, false, true, false -> DL
-    | false, false, false, false, false, false, true -> DI
-    | _ -> dec_perm_exception ()
-
-let fperm_decoding (i : Z.t) : PermSet.t =
-  let dec_perm_exception _ =
-    raise @@ DecodeException "Error decoding permission: unexpected encoding"
-  in
-  if Z.(i > of_int 0b11111111) then dec_perm_exception ()
-  else
-    let perm_mask =
-      List.map Z.of_int
-        [ 0b10000000; 0b01000000; 0b00100000; 0b00010000; 0b00001000; 0b00000010; 0b00000001 ]
+    let rx =
+      match (b 5, b 4) with
+      | false, false -> Orx
+      | false, true -> R
+      | true, false -> X
+      | true, true -> XSR
     in
-    let masked = List.map (fun mask -> Z.logand mask i) perm_mask in
-    let filtered = List.filter (fun r -> not (r = Z.zero)) masked in
-    let decoded = List.map perm_decoding filtered in
-    PermSet.of_list decoded
+    let w =
+      match (b 3, b 2) with
+      | false, false -> Ow
+      | false, true -> W
+      | true, false -> WL
+      | true, true -> dec_perm_exception ()
+    in
+    let dl = match b 1 with false -> DL | true -> LG in
+    let dro = match b 0 with false -> DRO | true -> LM in
+    (rx, w, dl, dro)
 
-let encode_perm (p : PermSet.t) : Z.t = encode_const _PERM_ENC (fperm_encoding p)
+let encode_perm (p : perm) : Z.t = encode_const _PERM_ENC (perm_encoding p)
 
-let decode_perm (i : Z.t) : PermSet.t =
+let decode_perm (i : Z.t) : perm =
   let dec_perm_exception _ =
     raise @@ DecodeException "Error decoding permission: does not recognize a permission"
   in
   let dec_type, dec_i = decode_const i in
-  if dec_type != _PERM_ENC then dec_perm_exception () else fperm_decoding dec_i
+  if dec_type != _PERM_ENC then dec_perm_exception () else perm_decoding dec_i
 
 (** Sealing Permission *)
 
@@ -169,29 +168,29 @@ let decode_seal_perm (i : Z.t) : seal_perm =
   if dec_type != _SEAL_PERM_ENC then decode_perm_exception () else seal_perm_decoding dec_i
 
 (** Permission-locality encoding *)
-let perm_loc_pair_encoding (p : PermSet.t) (g : locality) : Z.t =
-  let size_perm = 8 in
+let perm_loc_pair_encoding (p : perm) (g : locality) : Z.t =
+  let size_perm = 6 in
   let open Z in
   let encoded_g = locality_encoding g lsl size_perm in
-  let encoded_p = fperm_encoding p in
+  let encoded_p = perm_encoding p in
   encoded_g lor encoded_p
 
-let encode_perm_loc_pair (p : PermSet.t) (g : locality) : Z.t =
+let encode_perm_loc_pair (p : perm) (g : locality) : Z.t =
   encode_const _PERM_LOC_ENC (perm_loc_pair_encoding p g)
 
-let perm_loc_pair_decoding (i : Z.t) : PermSet.t * locality =
-  let size_perm = 8 in
+let perm_loc_pair_decoding (i : Z.t) : perm * locality =
+  let size_perm = 6 in
   let dec_perm_loc_exception _ =
     raise @@ DecodeException "Error decoding permission-locality pair: unexpected encoding"
   in
   let open Z in
-  if i > of_int 0b1111111111 then dec_perm_loc_exception ()
+  if i > of_int 0b11111111 then dec_perm_loc_exception ()
   else
-    let encoded_g = (i land of_int 0b1100000000) asr size_perm in
-    let encoded_p = i land of_int 0b0011111111 in
-    (fperm_decoding encoded_p, locality_decoding encoded_g)
+    let encoded_g = (i land of_int 0b11000000) asr size_perm in
+    let encoded_p = i land of_int 0b00111111 in
+    (perm_decoding encoded_p, locality_decoding encoded_g)
 
-let decode_perm_loc_pair (i : Z.t) : PermSet.t * locality =
+let decode_perm_loc_pair (i : Z.t) : perm * locality =
   let dec_perm_loc_exception _ =
     raise
     @@ DecodeException
@@ -236,6 +235,11 @@ let decode_seal_perm_loc_pair (i : Z.t) : seal_perm * locality =
 
 let encode_reg (r : regname) : Z.t = match r with PC -> Z.zero | Reg i -> Z.succ @@ Z.of_int i
 let decode_reg (i : Z.t) : regname = if i = Z.zero then PC else Reg (Z.to_int @@ Z.pred i)
+let encode_sreg (sr : sregname) : Z.t = match sr with MTDC -> Z.zero
+
+let decode_sreg (i : Z.t) : sregname =
+  if i = Z.zero then MTDC
+  else raise @@ DecodeException "Error decoding system register: unknown sregister"
 
 let rec split_int (i : Z.t) : Z.t * Z.t =
   let open Z in
@@ -313,10 +317,12 @@ let encode_machine_op (s : machine_op) : Z.t =
   | Jalr (r1, r2) ->
       (* 0x04 *)
       ~$0x04 ^! encode_int_int (encode_reg r1) (encode_reg r2)
-  | MoveSR (r, c) ->
-      (* 0x05, 0x06 *)
-      let opc, c_enc = const_convert ~$0x05 c in
-      opc ^! encode_int_int (encode_reg r) c_enc
+  | ReadSR (r, sr) ->
+      (* 0x05 *)
+      ~$0x05 ^! encode_int_int (encode_reg r) (encode_sreg sr)
+  | WriteSR (sr, r) ->
+      (* 0x06 *)
+      ~$0x06 ^! encode_int_int (encode_sreg sr) (encode_reg r)
   | Move (r, c) ->
       (* 0x07, 0x08 *)
       let opc, c_enc = const_convert ~$0x07 c in
@@ -409,17 +415,18 @@ let decode_machine_op (i : Z.t) : machine_op =
     let r1 = decode_reg r1_enc in
     let r2 = decode_reg r2_enc in
     Jalr (r1, r2)
-  else if (* MoveSR *)
-          opc = ~$0x05 (* register register *) then
-    let r_enc, c_enc = decode_int payload in
-    let r1 = decode_reg r_enc in
-    let r2 = Register (decode_reg c_enc) in
-    MoveSR (r1, r2)
-  else if opc = ~$0x06 (* register const *) then
-    let r_enc, c_enc = decode_int payload in
+  else if (* ReadSR *)
+          opc = ~$0x05 (* register sregister *) then
+    let r_enc, sr_enc = decode_int payload in
     let r = decode_reg r_enc in
-    let c = Const c_enc in
-    MoveSR (r, c)
+    let sr = decode_sreg sr_enc in
+    ReadSR (r, sr)
+  else if (* WriteSR *)
+          opc = ~$0x06 (* sregister register *) then
+    let sr_enc, r_enc = decode_int payload in
+    let sr = decode_sreg sr_enc in
+    let r = decode_reg r_enc in
+    WriteSR (sr, r)
   else if (* Move *)
           opc = ~$0x07 (* register register *) then
     let r_enc, c_enc = decode_int payload in

@@ -8,8 +8,8 @@
     ;; main is just a very basic loader that jumps to the main compartment A
     ;; and terminates the machine
 loader:
-    #([R X], Global, A, A_end, A+3)                 ; PCC_A + main
-    #([R W], Global, A_data, A_data_end, A_data)  ; CGP_A
+    #([X Ow LG LM], Global, A, A_end, A+3)                 ; PCC_A + main
+    #([R W LG LM], Global, A_data, A_data_end, A_data)  ; CGP_A
 
 loader_main:
     mov cra PC
@@ -22,10 +22,10 @@ loader_main:
 loader_end:
 
 A:
-    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
     ;; imports B_f and C_g
-    #{9: ([R], Global, B_ext, B_ext_end, B_ext_f)} ; import switcher
-    #{9: ([R], Global, C_ext, C_ext_end, C_ext_g)} ; import switcher
+    #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_f)} ; import switcher
+    #{9: ([R Ow LG LM], Global, C_ext, C_ext_end, C_ext_g)} ; import switcher
 A_main:
     ;; store PCC_A on cs0, will be used to fetch imported entry point and preserved by switcher
     mov cs0 PC
@@ -69,7 +69,7 @@ A_main_end:
 A_end:
 
 B:
-    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
     ;; no import
 B_h:
     #0x00
@@ -83,7 +83,7 @@ B_f:
 B_end:
 
 C:
-    #{0: ([R X SR], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
     ;; no import
 C_h:
     #0x0
@@ -93,7 +93,7 @@ C_g:
 C_end:
 
 A_data:
-    #([R W], Global, A_data_shared, A_data_shared + 1, A_data_shared)
+    #([R W LG LM], Global, A_data_shared, A_data_shared + 1, A_data_shared)
 A_data_shared:
     #0xFF
 A_data_end:
@@ -108,22 +108,22 @@ C_data_end:
 
 ;; export table compartment A -> does not export any entry points
 A_ext:
-    #([R X], Global, A, A_end, A)                 ; PCC
-    #([R W], Global, A_data, A_data_end, A_data)  ; CGP
+    #([X Ow LG LM], Global, A, A_end, A)                 ; PCC
+    #([R W LG LM], Global, A_data, A_data_end, A_data)  ; CGP
 A_ext_end:
 
 ;; export table compartment B -> exports B_f
 B_ext:
-    #([R X], Global, B, B_end, B)                 ; PCC
-    #([R W], Global, B_data, B_data_end, B_data)  ; CGP
+    #([X Ow LG LM], Global, B, B_end, B)                 ; PCC
+    #([R W LG LM], Global, B_data, B_data_end, B_data)  ; CGP
 B_ext_f: #(10 * (B_f - B) + 1)                    ; offset_f
 B_ext_h: #(10 * (B_f - B) + 0)                    ; offset_h
 B_ext_end:
 
 ;; export table compartment C -> exports C_g
 C_ext:
-    #([R X], Global, C, C_end, C)                 ; PCC
-    #([R W], Global, C_data, C_data_end, C_data)  ; CGP
+    #([X Ow LG LM], Global, C, C_end, C)                 ; PCC
+    #([R W LG LM], Global, C_data, C_data_end, C_data)  ; CGP
 C_ext_g: #(10 * (C_g - C) + 0)                    ; offset_g
 C_ext_end:
 
@@ -139,15 +139,15 @@ switcher_cc:
     lea csp -1
     store csp cgp
     getp ct2 csp
-    mov ctp [R W WL]
+    mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
     jnz ct2 2
     jmp 2
     fail
-    movsr ct2 mtdc
+    readsr ct2 mtdc
     lea ct2 -1
     store ct2 csp
-    movsr mtdc ct2
+    writesr mtdc ct2
     geta cs0 csp
     getb cs1 csp
     subseg csp cs1 cs0
@@ -216,10 +216,10 @@ switcher_zero_stk_end_pre:
     mov r29 0
     mov r30 0
     jalr cra cra
-    movsr ctp mtdc
+    readsr ctp mtdc
     load csp ctp
     lea ctp 1
-    movsr mtdc ctp
+    writesr mtdc ctp
     load cgp csp
     lea csp 1
     load ca2 csp

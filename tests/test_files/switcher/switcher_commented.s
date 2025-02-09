@@ -26,7 +26,7 @@ switcher_cc:
     ;; STEP 2: verify csp contains a valid stack pointer
     ;; verify permissions
     getp ct2 csp
-    mov ctp [R W WL]
+    mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
     jnz ct2 2
     jmp 2
@@ -44,10 +44,10 @@ switcher_cc:
     ;; fail                        ; r20 := 0, i.e, the stack does not have enough space
 
     ;; STEP 4: prepare the tstack frame
-    movsr ct2 mtdc
+    readsr ct2 mtdc
     lea ct2 -1
     store ct2 csp
-    movsr mtdc ct2              ; NOTE: in the actual implementation,
+    writesr mtdc ct2              ; NOTE: in the actual implementation,
                                 ; mtdc is not updated, but the offset of the current
                                 ; stack frame is stored directly in the tstack
                                 ; Should I do that too ?
@@ -155,12 +155,12 @@ switcher_zero_stk_end_pre:
     jalr cra cra
 
     ;; STEP 10: pop topmost trusted stack frame
-    movsr ctp mtdc
+    readsr ctp mtdc
     ;; TODO make sure that there is a frame left in the trusted stack
     ;; restore stack pointer and update trusted stack
     load csp ctp
     lea ctp 1
-    movsr mtdc ctp
+    writesr mtdc ctp
     ;; spill the saved registers out
     load cgp csp
     lea csp 1
