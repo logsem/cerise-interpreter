@@ -1,5 +1,5 @@
 %token EOF
-%token PC MTDC CRA CSP CGP
+%token PC MTDC CRA CSP CGP CNULL
 %token CTP CT0 CT1 CT2 CT3 CT4 CT5 CT6
 %token CS0 CS1 CS2 CS3 CS4 CS5 CS6 CS7 CS8 CS9 CS10 CS11
 %token CA0 CA1 CA2 CA3 CA4 CA5 CA6 CA7
@@ -8,7 +8,7 @@
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS MULT AFFECT COMMA COLON
-%token O R X W WL SR DI DL
+%token O Orx R X XSR Ow W WL DL LG DRO LM
 %token SO S U SU
 %token LOCAL GLOBAL
 %left PLUS MINUS MULT EXPR
@@ -21,12 +21,16 @@
 %%
 
 main:
-  | EOF; { ([]: Irreg.t) }
-  | r = reg ; AFFECT ; w = word ; p = main ;{ (r,w) :: p }
+  | EOF; { (([],[]): Irreg.t) }
+  | r = reg ; AFFECT ; w = word ; p = main ;{ ( ( (r,w) :: fst p), snd p) }
+  | sr = sreg ; AFFECT ; w = word ; p = main ;{ ( fst p, ( (sr,w) :: snd p) ) }
+
+sreg:
+  | MTDC; { Ast.MTDC }
 
 reg:
   | PC; { PC }
-  | MTDC; { Ast.mtdc }
+  | CNULL; { Ast.cnull }
   | CRA; { Ast.cra }
   | CSP; { Ast.csp }
   | CGP; { Ast.cgp }
@@ -89,22 +93,28 @@ seal_perm:
   | U; { (false, true) }
   | SU; { (true, true) }
 
-perm_enc:
-  | R; { R: Perm.t }
-  | X; { X: Perm.t }
-  | W; { W: Perm.t }
-  | WL; { WL: Perm.t }
-  | SR; { SR: Perm.t }
-  | DL; { DL: Perm.t }
-  | DI; { DI: Perm.t }
+rxperm_enc:
+  | Orx ; { Orx : rxperm }
+  | R ; { R : rxperm }
+  | X ; { X : rxperm }
+  | XSR ; { XSR : rxperm }
+
+wperm_enc:
+  | Ow ; { Ow : wperm }
+  | W ; { W : wperm }
+  | WL ; { WL : wperm }
+
+dlperm_enc:
+  | DL ; { DL : dlperm }
+  | LG ; { LG : dlperm }
+
+droperm_enc:
+  | DRO ; { DRO : droperm }
+  | LM ; { LM : droperm }
 
 perm:
-  | O; { PermSet.empty }
-  | p = perm_enc; { PermSet.singleton p }
-  | LSBRK; p = perm_list ; RSBRK ; { p }
-perm_list:
-  | p = perm_enc; { PermSet.singleton p }
-  | p = perm_enc ; tl = perm_list { PermSet.add p tl }
+  | O ; { (Orx,Ow,DL,DRO) : perm }
+  | LSBRK; rx = rxperm_enc ; w = wperm_enc ; dl = dlperm_enc ; dro = droperm_enc ; RSBRK ; { (rx,w,dl,dro) : perm}
 
 expr:
   | LPAREN; e = expr; RPAREN { e }

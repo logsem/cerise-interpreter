@@ -15,20 +15,28 @@ let () =
   let stk_addr = Z.(!Parameters.flags.max_addr / ~$2) in
 
   (* Parse initial register file *)
-  let regfile =
+  let regfile, sregfile =
     let init_regfile = Machine.init_reg_state in
-    if regfile_name = "" then init_regfile
+    let init_sregfile = Machine.init_sreg_state_zeros in
+    if regfile_name = "" then (init_regfile, init_sregfile)
     else
       match Program.parse_regfile regfile_name with
-      | Ok regs ->
-          (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs)
-            Machine.init_reg_state_zeros
+      | Ok (regs, sregs) ->
+          let regfile =
+            (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs)
+              Machine.init_reg_state_zeros
+          in
+          let sregfile =
+            (Machine.SRegMap.fold (fun sr w srf -> Machine.SRegMap.add sr w srf) sregs)
+              Machine.init_sreg_state_zeros
+          in
+          (regfile, sregfile)
       | Error msg ->
           Printf.eprintf "Regfile parse error: %s\n" msg;
           exit 1
   in
   let m_init =
-    try Program.init_machine prog regfile
+    try Program.init_machine prog regfile sregfile
     with Machine.CheckInitFailed w ->
       failwith
         ("The word "
@@ -42,7 +50,8 @@ let () =
         let addr_max : Z.t = Parameters.get_max_addr ()
       end in
       let module Ui = Interactive_ui.MkUi (Cfg) in
-      let show_stack = false in
+      (* let show_stack = false in *)
+      let show_stack = true in
       let prog_panel_start = ref Z.zero in
       let stk_panel_start = ref stk_addr in
       Ui.render_loop ~show_stack prog_panel_start stk_panel_start m_init

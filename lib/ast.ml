@@ -1,7 +1,9 @@
 (* Type definitions for the syntax AST *)
 type regname = PC | Reg of int
+type sregname = MTDC
 
 (* https://github.com/CHERIoT-Platform/llvm-project/blob/f39e8860b29668f986b11d29fa953c96a25373f1/llvm/lib/Target/RISCV/RISCVRegisterInfo.td#L138 *)
+let cnull = Reg 0
 let cra = Reg 1 (* link register *)
 let csp = Reg 2 (* compartment stack register *)
 let cgp = Reg 3 (* global data register *)
@@ -12,6 +14,7 @@ let ct2 = Reg 7
 let ct3 = Reg 28
 let ct4 = Reg 29
 let ct5 = Reg 30
+let ct6 = Reg 31
 let cs0 = Reg 8 (* temporary registers ? *)
 let cs1 = Reg 9
 let cs2 = Reg 18
@@ -33,39 +36,18 @@ let ca5 = Reg 15
 let ca6 = Reg 16
 let ca7 = Reg 17
 
-(* Instead of a new regname, we use r31 as mtdc, and r0 as ct6 *)
-let mtdc = Reg 31
-let ct6 = Reg 0
-
-module Perm = struct
-  type t =
-    | R (* read                    ---  LG, MC and LD *)
-    | X (* execute                 ---  EX *)
-    | W (* write                   ---  LM, MC and SD *)
-    | WL (* write local             ---  SL *)
-    | SR (* system register access  ---  SR *)
-    | DL (* deep locality           ---  inverse of LG *)
-    | DI (* deep immutability       ---  inverse of LM *)
-
-  let compare p1 p2 =
-    if p1 = p2 then 0
-    else
-      (* Just an order for pretty printing *)
-      let weight p =
-        match p with R -> 0 | X -> 1 | W -> 2 | WL -> 3 | SR -> 4 | DL -> 5 | DI -> 6
-      in
-      weight p2 - weight p1
-end
-
-module PermSet = Set.Make (Perm)
-
+type rxperm = Orx | R | X | XSR
+type wperm = Ow | W | WL
+type dlperm = DL | LG
+type droperm = DRO | LM
+type perm = rxperm * wperm * dlperm * droperm
 type locality = Global | Local
 type wtype = W_I | W_Cap | W_SealRange | W_Sealed
 type seal_perm = bool * bool
 type reg_or_const = Register of regname | Const of Z.t
 
 type sealable =
-  | Cap of PermSet.t * locality * Z.t * Z.t * Z.t
+  | Cap of perm * locality * Z.t * Z.t * Z.t
   | SealRange of seal_perm * locality * Z.t * Z.t * Z.t
 
 type word = I of Z.t | Sealable of sealable | Sealed of Z.t * sealable
@@ -75,7 +57,8 @@ type machine_op =
   | Jmp of reg_or_const (* immediate jump *)
   | Jnz of regname * reg_or_const (* jump non zero *)
   (* system access registers *)
-  | MoveSR of regname * reg_or_const
+  | ReadSR of regname * sregname
+  | WriteSR of sregname * regname
   | Move of regname * reg_or_const
   | Load of regname * regname
   | Store of regname * reg_or_const
@@ -103,11 +86,16 @@ type machine_op =
 type statement = Op of machine_op | Word of word (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
 
+let null_perm = (Orx, Ow, DL, DRO)
+
 let compare_regname (r1 : regname) (r2 : regname) : int =
   match (r1, r2) with
   | PC, PC -> 0
   | PC, Reg _ -> -1
   | Reg _, PC -> 1
   | Reg i, Reg j -> Int.compare i j
+
+let compare_sregname (sr1 : sregname) (sr2 : sregname) : int =
+  match (sr1, sr2) with MTDC, MTDC -> 0
 
 let const n = Const (Z.of_int n)

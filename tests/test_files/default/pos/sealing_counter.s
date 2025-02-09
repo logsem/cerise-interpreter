@@ -47,12 +47,12 @@ main:
 
 	halt
 data:
-	#{1: ([R W], Global, counter, counter+1, counter)}
+	#{1: ([R W LG LM], Global, counter, counter+1, counter)}
 linking_table:
 	;; #(E, Global, get, incr, get+1) 		; get
 	;; #(E, Global, incr, end, incr+2)		; incr
-	#{0: ([R X], Global, get, incr, get+1)}		; get
-	#{0: ([R X], Global, incr, end, incr+2)}	; incr
+	#{0: ([X Ow LG LM], Global, get, incr, get+1)}		; get
+	#{0: ([X Ow LG LM], Global, incr, end, incr+2)}	; incr
 counter:
 	#1
 get: 							; check whether the otype matches with the actual value
@@ -75,7 +75,7 @@ get: 							; check whether the otype matches with the actual value
 	fail 						; Case r3 != 0, then fail
 incr:
 	#[SU, Global, 1, 10, 1]
-	#([R W], Global, incr, incr+1, incr)
+	#([R W LG LM], Global, incr, incr+1, incr)
 	;; r0 contains callback / r1 = {ot: (RO, counter, counter+1, counter)}
 	mov r2 pc 					; r2 = (RX, incr, end, incr+2)
 	lea r2 (-2)					; r2 = (RX, incr, end, incr)

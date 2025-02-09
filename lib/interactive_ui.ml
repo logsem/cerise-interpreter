@@ -15,10 +15,10 @@ end
 
 module MkUi (Cfg : MachineConfig) : Ui = struct
   module Perm = struct
-    let width = 12
+    let width = 15
 
-    let ui ?(attr = A.empty) (p : Ast.PermSet.t) =
-      I.hsnap ~align:`Left width (I.string attr (Pretty_printer.string_of_fperm p))
+    let ui ?(attr = A.empty) (p : Ast.perm) =
+      I.hsnap ~align:`Left width (I.string attr (Pretty_printer.string_of_perm p))
   end
 
   module Locality = struct
@@ -160,6 +160,14 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       I.hsnap ~align:`Right width (I.string A.empty (Pretty_printer.string_of_regname r))
   end
 
+  module SRegname = struct
+    (* pc or rNN or mtdc *)
+    let width = 4
+
+    let ui (sr : Ast.sregname) =
+      I.hsnap ~align:`Right width (I.string A.empty (Pretty_printer.string_of_sregname sr))
+  end
+
   module Regs_panel = struct
     (* <reg>: <word>  <reg>: <word>  <reg>: <word>
        <reg>: <word>  <reg>: <word>
@@ -181,6 +189,29 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           <|> loop false regs
       in
       loop true (Machine.RegMap.to_seq regs |> List.of_seq) |> I.hsnap ~align:`Left width
+  end
+
+  module SRegs_panel = struct
+    (* <reg>: <word>  <reg>: <word>  <reg>: <word>
+       <reg>: <word>  <reg>: <word>
+    *)
+    let ui width (sregs : Machine.sreg_state) =
+      let sreg_width = SRegname.width + 2 + Word.width + 2 in
+      let ncols = max 1 (width / sreg_width) in
+      let nsregs_per_col = 1. (* nsregs *) /. float ncols |> ceil |> int_of_float in
+      let rec loop fst_col sregs =
+        if sregs = [] then I.empty
+        else
+          let col, sregs = CCList.take_drop nsregs_per_col sregs in
+          List.fold_left
+            (fun img (r, w) ->
+              img
+              <-> ((if not fst_col then I.string A.empty "  " else I.empty)
+                  <|> SRegname.ui r <|> I.string A.empty ": " <|> Word.ui w Left))
+            I.empty col
+          <|> loop false sregs
+      in
+      loop true (Machine.SRegMap.to_seq sregs |> List.of_seq) |> I.hsnap ~align:`Left width
   end
 
   module Instr = struct
@@ -330,11 +361,13 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           history =
         let term_width, term_height = Term.size term in
         let reg = (snd m).Machine.reg in
+        let sreg = (snd m).Machine.sreg in
         let mem = (snd m).Machine.mem in
         let regs_img = Regs_panel.ui term_width reg in
+        let sregs_img = SRegs_panel.ui term_width sreg in
         let mem_img, panel_start, panel_stk =
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
-            (term_height - 1 - I.height regs_img)
+            (term_height - 1 - I.height regs_img - I.height sregs_img)
             term_width mem (Machine.RegMap.find Ast.PC reg) (Machine.RegMap.find Ast.csp reg)
             !prog_panel_start !stk_panel_start
         in
@@ -344,7 +377,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           I.hsnap ~align:`Right term_width
             (I.string A.empty "machine state: " <|> Exec_state.ui (fst m))
         in
-        let img = regs_img <-> mach_state_img <-> mem_img in
+        let img = regs_img <-> sregs_img <-> mach_state_img <-> mem_img in
         Term.image term img;
         (* watch for a relevant event *)
         let rec process_events () =

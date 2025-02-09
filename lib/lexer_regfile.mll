@@ -27,7 +27,7 @@ rule token = parse
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
-| ['m' 'M'] ['t' 'T'] ['d' 'D'] ['c' 'C'] { MTDC }
+| ['c' 'C'] ['n' 'N'] ['u' 'U'] ['l' 'L'] ['l' 'L'] { CNULL }
 | ['c' 'C'] ['r' 'R'] ['a' 'A'] { CRA }
 | ['c' 'C'] ['s' 'S'] ['p' 'P'] { CSP }
 | ['c' 'C'] ['g' 'G'] ['p' 'P'] { CGP }
@@ -66,6 +66,9 @@ rule token = parse
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n)
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
 
+(* system register *)
+| ['m' 'M'] ['t' 'T'] ['d' 'D'] ['c' 'C'] { MTDC }
+
 (* addresses *)
 | "MAX_ADDR" { MAX_ADDR }
 
@@ -89,13 +92,17 @@ rule token = parse
 
 (* permissions *)
 | 'O' { O }
+| "Orx" { Orx }
 | 'R' { R }
 | 'X' { X }
+| "XSR" { XSR }
+| "Ow" { Ow }
 | 'W' { W }
 | "WL" { WL }
-| "SR" { SR }
 | "DL" { DL }
-| "DI" { DI }
+| "LG" { LG }
+| "DRO" { DRO }
+| "LM" { LM }
 | "SO" { SO }
 | 'S' { S }
 | 'U' { U }

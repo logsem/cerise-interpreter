@@ -1,5 +1,5 @@
 %token EOF
-%token PC MTDC CRA CSP CGP
+%token PC MTDC CNULL CRA CSP CGP
 %token CTP CT0 CT1 CT2 CT3 CT4 CT5 CT6
 %token CS0 CS1 CS2 CS3 CS4 CS5 CS6 CS7 CS8 CS9 CS10 CS11
 %token CA0 CA1 CA2 CA3 CA4 CA5 CA6 CA7
@@ -9,11 +9,11 @@
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS MULT COMMA SHARP COLON
-%token JALR JMP JNZ MOVESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
+%token JALR JMP JNZ READSR WRITESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
 %token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
 %token FAIL HALT
 %token LOCAL GLOBAL
-%token O R X W WL SR DI DL
+%token O Orx R X XSR Ow W WL DL LG DRO LM
 %token SO S U SU
 %token Int Cap SealRange Sealed
 %left PLUS MINUS MULT EXPR
@@ -32,7 +32,8 @@ main:
   | JMP; c = reg_const; p = main; { Jmp c :: p }
   | JNZ; r = reg; c = reg_const; p = main; { Jnz (r, c) :: p }
 
-  | MOVESR; r = reg; c = reg_const; p = main; { MoveSR (r, c) :: p }
+  | READSR; r = reg; sr = sreg; p = main; { ReadSR (r, sr) :: p }
+  | WRITESR; sr = sreg; r = reg; p = main; { WriteSR (sr, r) :: p }
 
   | MOVE; r = reg; c = reg_const; p = main; { Move (r, c) :: p }
   | LOAD; r1 = reg; r2 = reg; p = main; { Load (r1, r2) :: p }
@@ -79,9 +80,12 @@ sealed_def:
   | LCBRK; o = expr; COLON; sb = sealable_def ; RCBRK
     { Sealed (o, sb) }
 
+sreg:
+  | MTDC; { Ast.MTDC }
+
 reg:
   | PC; { PC }
-  | MTDC; { Ast.mtdc }
+  | CNULL; { Ast.cnull }
   | CRA; { Ast.cra }
   | CSP; { Ast.csp }
   | CGP; { Ast.cgp }
@@ -145,22 +149,28 @@ locality:
   | LOCAL; { Local }
   | GLOBAL; { Global }
 
-perm_enc:
-  | R; { R: Perm.t }
-  | X; { X: Perm.t }
-  | W; { W: Perm.t }
-  | WL; { WL: Perm.t }
-  | SR; { SR: Perm.t }
-  | DL; { DL: Perm.t }
-  | DI; { DI: Perm.t }
+rxperm_enc:
+  | Orx ; { Orx : rxperm }
+  | R ; { R : rxperm }
+  | X ; { X : rxperm }
+  | XSR ; { XSR : rxperm }
+
+wperm_enc:
+  | Ow ; { Ow : wperm }
+  | W ; { W : wperm }
+  | WL ; { WL : wperm }
+
+dlperm_enc:
+  | DL ; { DL : dlperm }
+  | LG ; { LG : dlperm }
+
+droperm_enc:
+  | DRO ; { DRO : droperm }
+  | LM ; { LM : droperm }
 
 perm:
-  | O; { PermSet.empty }
-  | p = perm_enc; { PermSet.singleton p }
-  | LSBRK; p = perm_list ; RSBRK ; { p }
-perm_list:
-  | p = perm_enc; { PermSet.singleton p }
-  | p = perm_enc ; tl = perm_list { PermSet.add p tl }
+  | O ; { null_perm : perm }
+  | LSBRK; rx = rxperm_enc ; w = wperm_enc ; dl = dlperm_enc ; dro = droperm_enc ; RSBRK ; { (rx,w,dl,dro) : perm}
 
 expr:
   | LPAREN; e = expr; RPAREN { e }

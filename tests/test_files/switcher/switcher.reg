@@ -1,8 +1,8 @@
-PC := ([R X], Global, 0, 17, 2)
-CSP := ([R W WL], Local, 0x100, 0x120, 0x11f)
+PC := ([X Ow LG LM], Global, 0, 17, 2)
+CSP := ([R WL LG LM], Local, 0x100, 0x120, 0x11f)
 CGP := (O, Global, 0x0, 0x0, 0x0)
 
-MTDC := ([R W WL], Local, 0x1000, 0x10000, 0xffff)
+MTDC := ([R WL LG LM], Local, 0x1000, 0x10000, 0xffff)
 
 R20 := 13
 R21 := 14
