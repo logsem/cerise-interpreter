@@ -45,3 +45,26 @@ For an interactive version of the interpreter: `./interpreter -I <file>`
 
 The `Arrow` keybindings can be combined with `CTLR` for navigating in the stack.
 It is possible to scroll for navigating through the memory and the stack (depending on the position of cursor of the mouse). Combine mouse scroll + `CTLR` for navigating faster.
+
+## Using Nix
+
+To compile
+
+```
+nix build
+```
+
+To run
+```
+nix run #. -- <args>
+```
+For instance
+```
+nix run .# -- -I --regfile ./tests/test_files/case_studies/mutually_distrustful.reg ./tests/test_files/case_studies/mutually_distrustful.s
+```
+
+To format
+
+```
+nix develop --command dune fmt
+```
