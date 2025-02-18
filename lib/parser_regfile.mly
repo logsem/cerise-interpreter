@@ -7,11 +7,11 @@
 %token <int> INT
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS MULT AFFECT COMMA COLON
+%token PLUS MINUS MULT AFFECT COMMA COLON LANDOP LOROP LSL LSR
 %token O Orx R X XSR Ow W WL DL LG DRO LM
 %token SO S U SU
 %token LOCAL GLOBAL
-%left PLUS MINUS MULT EXPR
+%left PLUS MINUS MULT EXPR LANDOP LOROP LSL LSR
 %left UMINUS
 
 %start <Irreg.t> main
@@ -122,6 +122,10 @@ expr:
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
   | e1 = expr; MULT; e2 = expr { MultOp (e1,e2) }
+  | e1 = expr; LANDOP; e2 = expr { LandOp (e1,e2) }
+  | e1 = expr; LOROP; e2 = expr { LorOp (e1,e2) }
+  | e1 = expr; LSL; e2 = expr { LslOp (e1,e2) }
+  | e1 = expr; LSR; e2 = expr { LsrOp (e1,e2) }
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
   | i = INT { IntLit (Z.of_int i) }
 

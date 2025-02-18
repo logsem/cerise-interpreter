@@ -83,6 +83,10 @@ let string_of_machine_op (s : machine_op) : string =
   | Mul (r, c1, c2) -> "mul" ^- string_of_rcc r c1 c2
   | Rem (r, c1, c2) -> "rem" ^- string_of_rcc r c1 c2
   | Div (r, c1, c2) -> "div" ^- string_of_rcc r c1 c2
+  | LAnd (r, c1, c2) -> "land" ^- string_of_rcc r c1 c2
+  | LOr (r, c1, c2) -> "lor" ^- string_of_rcc r c1 c2
+  | LShiftL (r, c1, c2) -> "lshiftl" ^- string_of_rcc r c1 c2
+  | LShiftR (r, c1, c2) -> "lshiftr" ^- string_of_rcc r c1 c2
   | Lt (r, c1, c2) -> "lt" ^- string_of_rcc r c1 c2
   | Lea (r, c) -> "lea" ^- string_of_rc r c
   (* NOTE Restrict is a special case, because we know that we are supposed to restrict with a

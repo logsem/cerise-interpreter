@@ -12,6 +12,10 @@ type expr =
   | AddOp of expr * expr
   | SubOp of expr * expr
   | MultOp of expr * expr
+  | LandOp of expr * expr
+  | LorOp of expr * expr
+  | LslOp of expr * expr
+  | LsrOp of expr * expr
 
 type perm = Ast.perm
 type locality = Ast.locality
@@ -51,6 +55,10 @@ type machine_op =
   | Mul of regname * reg_or_const * reg_or_const
   | Rem of regname * reg_or_const * reg_or_const
   | Div of regname * reg_or_const * reg_or_const
+  | LAnd of regname * reg_or_const * reg_or_const
+  | LOr of regname * reg_or_const * reg_or_const
+  | LShiftL of regname * reg_or_const * reg_or_const
+  | LShiftR of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const
@@ -80,15 +88,24 @@ let rec compute_env (i : int) (prog : t) (envr : env) : env =
   | _ :: p -> compute_env (i + 1) p envr
 
 let rec eval_expr (envr : env) (e : expr) : Z.t =
+  let binop_eval (binop : Z.t -> Z.t -> Z.t) ( e1 : expr ) ( e2 : expr ) : Z.t =
+    binop (eval_expr envr e1) (eval_expr envr e2)
+  in
+  let lshiftl (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int ((Z.to_int z1) lsl (Z.to_int z2)) in
+  let lshiftr (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int ((Z.to_int z1) lsr (Z.to_int z2)) in
   match e with
   | IntLit i -> i
   | Label s -> (
       match List.find_opt (fun p -> fst p = s) envr with
       | Some (_, i) -> Z.of_int i
       | None -> raise (UnknownLabelException s))
-  | AddOp (e1, e2) -> Z.(eval_expr envr e1 + eval_expr envr e2)
-  | SubOp (e1, e2) -> Z.(eval_expr envr e1 - eval_expr envr e2)
-  | MultOp (e1, e2) -> Z.(eval_expr envr e1 * eval_expr envr e2)
+  | AddOp (e1, e2) -> binop_eval Z.(+) e1 e2
+  | SubOp (e1, e2) -> binop_eval Z.(-) e1 e2
+  | MultOp (e1, e2) -> binop_eval Z.( * ) e1 e2
+  | LandOp (e1, e2) -> binop_eval Z.(land) e1 e2
+  | LorOp (e1, e2) -> binop_eval Z.(lor) e1 e2
+  | LslOp (e1, e2) -> binop_eval lshiftl e1 e2
+  | LsrOp (e1, e2) -> binop_eval lshiftr e1 e2
 
 let translate_perm (p : perm) : Ast.perm = p
 let translate_locality (g : locality) : Ast.locality = g
@@ -152,6 +169,14 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
       Ast.Rem (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
   | Div (r, c1, c2) ->
       Ast.Div (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+  | LAnd (r, c1, c2) ->
+      Ast.LAnd (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+  | LOr (r, c1, c2) ->
+      Ast.LOr (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+  | LShiftL (r, c1, c2) ->
+      Ast.LShiftL (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+  | LShiftR (r, c1, c2) ->
+      Ast.LShiftR (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
   | Lt (r, c1, c2) ->
       Ast.Lt (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
   | Lea (r, c) -> Ast.Lea (translate_regname r, translate_reg_or_const envr c)

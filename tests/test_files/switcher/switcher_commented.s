@@ -90,16 +90,14 @@ switcher_zero_stk_end_pre:
     unseal ct1 cs0 ct1          ; ct1 := (RO, Global, b_ext, e_ext, a_ext)
     ; load entry point
     load cs0 ct1                ; cs0 := encodeEntry(offset, args)
-    ;; encodeEntry(offset, args) = (10 x offset) + args
-    ;; decodeEntry_args(z) = mod(10,z)
-    ;; decodeEntry_offset(z) = (z - mod(10,z)) / 10
+    ;; encodeEntry(offset, args) = args at 3 first bits, rest is offset
+    ;; decodeEntry(args) = mask 3 first bits
+    ;; decodeEntry(offset) = shift_right 3 first bits
 
     ;; get the number of registers to zero in ct2
-    rem ct2 cs0 10              ; ct2 := args
-    ; TODO check that args < 7
+    land ct2 cs0 7
     ;; get the offset
-    sub cs0 cs0 ct2             ; encodeEntry(offset, args) - args
-    div cs0 cs0 10              ; offset
+    lshiftr cs0 cs0 3           ; cs0 := offset
 
     getb cgp ct1                ; cgp := b_ext
     geta cs1 ct1                ; cs1 := a_ext

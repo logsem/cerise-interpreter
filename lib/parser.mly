@@ -8,15 +8,16 @@
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
-%token PLUS MINUS MULT COMMA SHARP COLON
+%token PLUS MINUS MULT COMMA SHARP COLON LANDOP LOROP LSL LSR
 %token JALR JMP JNZ READSR WRITESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
+%token LAND LOR LSHIFTL LSHIFTR
 %token GETL GETB GETE GETA GETP GETOTYPE GETWTYPE SEAL UNSEAL
 %token FAIL HALT
 %token LOCAL GLOBAL
 %token O Orx R X XSR Ow W WL DL LG DRO LM
 %token SO S U SU
 %token Int Cap SealRange Sealed
-%left PLUS MINUS MULT EXPR
+%left PLUS MINUS MULT EXPR LANDOP LOROP LSL LSR
 %left UMINUS
 
 %start <Ir.t> main
@@ -44,6 +45,10 @@ main:
   | REM; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Rem (r, c1, c2) :: p }
   | DIV; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Div (r, c1, c2) :: p }
   | LT; r = reg; c1 = reg_const; c2 = reg_const; p = main; { Lt (r, c1, c2) :: p }
+  | LAND; r = reg; c1 = reg_const; c2 = reg_const; p = main; { LAnd (r, c1, c2) :: p }
+  | LOR; r = reg; c1 = reg_const; c2 = reg_const; p = main; { LOr (r, c1, c2) :: p }
+  | LSHIFTL; r = reg; c1 = reg_const; c2 = reg_const; p = main; { LShiftL (r, c1, c2) :: p }
+  | LSHIFTR; r = reg; c1 = reg_const; c2 = reg_const; p = main; { LShiftR (r, c1, c2) :: p }
   | LEA; r = reg; c = reg_const; p = main; { Lea (r, c) :: p }
   | RESTRICT; r = reg; c = reg_const; p = main; { Restrict (r, c) :: p }
   | SUBSEG; r = reg; c1 = reg_const; c2 = reg_const; p = main; { SubSeg (r, c1, c2) :: p }
@@ -177,6 +182,10 @@ expr:
   | e1 = expr; PLUS; e2 = expr { AddOp (e1,e2) }
   | e1 = expr; MINUS; e2 = expr { SubOp (e1,e2) }
   | e1 = expr; MULT; e2 = expr { MultOp (e1,e2) }
+  | e1 = expr; LANDOP; e2 = expr { LandOp (e1,e2) }
+  | e1 = expr; LOROP; e2 = expr { LorOp (e1,e2) }
+  | e1 = expr; LSL; e2 = expr { LslOp (e1,e2) }
+  | e1 = expr; LSR; e2 = expr { LsrOp (e1,e2) }
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
   | i = INT { IntLit (Z.of_int i) }
   | lbl = LABEL { Label lbl }
