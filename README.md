@@ -20,7 +20,13 @@ Executable: `./interpreter <file>`
 Assembly examples in `./tests/test_files` (for the syntax)
 
 The default version of the interpreter uses a version of Cerise with seals, uninitialized and directed capabilities. 
-For a version of Cerise without these features, use `./interpreter --version vanilla`.
+For a version of Cerise without those features, use `./interpreter --version vanilla`.
+
+Example:
+
+```
+./interpreter -I --version vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+```
 
 For more information about the options, `./interpreter --help`.
 
