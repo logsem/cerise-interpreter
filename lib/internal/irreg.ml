@@ -8,6 +8,10 @@ type expr =
   | AddOp of expr * expr
   | SubOp of expr * expr
   | MultOp of expr * expr
+  | LandOp of expr * expr
+  | LorOp of expr * expr
+  | LslOp of expr * expr
+  | LsrOp of expr * expr
   | MaxAddr
 
 type perm = Ast.perm
@@ -24,12 +28,27 @@ type sregfile_t = (Ast.sregname * word) list
 type t = regfile_t * sregfile_t
 
 let rec eval_expr (e : expr) (max_addr : Z.t) : Z.t =
+  let binop_eval (binop : Z.t -> Z.t -> Z.t) ( e1 : expr ) ( e2 : expr ) : Z.t =
+    binop (eval_expr e1 max_addr) (eval_expr e2 max_addr)
+  in
+  let lshiftl (z1 : Z.t) (z2 : Z.t) : Z.t =
+    print_string (Z.to_string z1 ^ "\n");
+    print_newline;
+    print_string (Z.to_string z2 ^ "\n");
+    print_newline;
+    print_string (Z.to_string (Z.of_int ((Z.to_int z1) lsl (Z.to_int z2))) ^ "\n");
+    Z.of_int ((Z.to_int z1) lsl (Z.to_int z2)) in
+  let lshiftr (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int ((Z.to_int z1) lsr (Z.to_int z2)) in
   match e with
   | IntLit i -> i
   | MaxAddr -> max_addr
-  | AddOp (e1, e2) -> Z.(eval_expr e1 max_addr + eval_expr e2 max_addr)
-  | SubOp (e1, e2) -> Z.(eval_expr e1 max_addr - eval_expr e2 max_addr)
-  | MultOp (e1, e2) -> Z.(eval_expr e1 max_addr * eval_expr e2 max_addr)
+  | AddOp (e1, e2) -> binop_eval Z.(+) e1 e2
+  | SubOp (e1, e2) -> binop_eval Z.(-) e1 e2
+  | MultOp (e1, e2) -> binop_eval Z.( * ) e1 e2
+  | LandOp (e1, e2) -> binop_eval Z.(land) e1 e2
+  | LorOp (e1, e2) -> binop_eval Z.(lor) e1 e2
+  | LslOp (e1, e2) -> binop_eval lshiftl e1 e2
+  | LsrOp (e1, e2) -> binop_eval lshiftr e1 e2
 
 let translate_perm (p : perm) : Ast.perm = p
 let translate_locality (g : locality) : Ast.locality = g

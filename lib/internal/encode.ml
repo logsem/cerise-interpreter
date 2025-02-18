@@ -383,6 +383,22 @@ let encode_machine_op (s : machine_op) : Z.t =
       ~$0x34 ^! encode_int_int (encode_reg r1) (encode_int_int (encode_reg r2) (encode_reg r3))
   | Fail -> ~$0x35
   | Halt -> ~$0x36
+  | LAnd (r, c1, c2) ->
+      (* 0x37, 0x38, 0x39, 0x3a *)
+      let opc, c_enc = two_const_convert ~$0x37 c1 c2 in
+      opc ^! encode_int_int (encode_reg r) c_enc
+  | LOr (r, c1, c2) ->
+      (* 0x3b, 0x3c, 0x3d, 0x3e *)
+      let opc, c_enc = two_const_convert ~$0x3b c1 c2 in
+      opc ^! encode_int_int (encode_reg r) c_enc
+  | LShiftL (r, c1, c2) ->
+      (* 0x3f, 0x40, 0x41, 0x42 *)
+      let opc, c_enc = two_const_convert ~$0x3f c1 c2 in
+      opc ^! encode_int_int (encode_reg r) c_enc
+  | LShiftR (r, c1, c2) ->
+      (* 0x43, 0x44, 0x45, 0x46 *)
+      let opc, c_enc = two_const_convert ~$0x43 c1 c2 in
+      opc ^! encode_int_int (encode_reg r) c_enc
 
 let decode_machine_op (i : Z.t) : machine_op =
   (* let dec_perm = *)
@@ -593,6 +609,38 @@ let decode_machine_op (i : Z.t) : machine_op =
     UnSeal (r1, r2, r3)
   else if (* Fail *) opc = ~$0x35 then Fail
   else if (* Halt *) opc = ~$0x36 then Halt
+  else if (* LAnd *)
+          ~$0x37 <= opc && opc <= ~$0x3a then
+    let r_enc, payload' = decode_int payload in
+    let c1_enc, c2_enc = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = if opc = ~$0x37 || opc = ~$0x38 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x37 || opc = ~$0x39 then Register (decode_reg c2_enc) else Const c2_enc in
+    LAnd (r, c1, c2)
+  else if (* LOr *)
+          ~$0x3b <= opc && opc <= ~$0x3e then
+    let r_enc, payload' = decode_int payload in
+    let c1_enc, c2_enc = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = if opc = ~$0x3b || opc = ~$0x3c then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x3b || opc = ~$0x3d then Register (decode_reg c2_enc) else Const c2_enc in
+    LOr (r, c1, c2)
+  else if (* LShiftL *)
+          ~$0x3f <= opc && opc <= ~$0x42 then
+    let r_enc, payload' = decode_int payload in
+    let c1_enc, c2_enc = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = if opc = ~$0x3f || opc = ~$0x40 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x3f || opc = ~$0x41 then Register (decode_reg c2_enc) else Const c2_enc in
+    LShiftL (r, c1, c2)
+  else if (* LShiftR *)
+          ~$0x43 <= opc && opc <= ~$0x47 then
+    let r_enc, payload' = decode_int payload in
+    let c1_enc, c2_enc = decode_int payload' in
+    let r = decode_reg r_enc in
+    let c1 = if opc = ~$0x43 || opc = ~$0x44 then Register (decode_reg c1_enc) else Const c1_enc in
+    let c2 = if opc = ~$0x43 || opc = ~$0x45 then Register (decode_reg c2_enc) else Const c2_enc in
+    LShiftR (r, c1, c2)
   else
     raise
     @@ DecodeException

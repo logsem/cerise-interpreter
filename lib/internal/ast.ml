@@ -67,6 +67,10 @@ type machine_op =
   | Mul of regname * reg_or_const * reg_or_const
   | Rem of regname * reg_or_const * reg_or_const
   | Div of regname * reg_or_const * reg_or_const
+  | LAnd of regname * reg_or_const * reg_or_const
+  | LOr of regname * reg_or_const * reg_or_const
+  | LShiftL of regname * reg_or_const * reg_or_const
+  | LShiftR of regname * reg_or_const * reg_or_const
   | Lt of regname * reg_or_const * reg_or_const
   | Lea of regname * reg_or_const
   | Restrict of regname * reg_or_const

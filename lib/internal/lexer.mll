@@ -96,6 +96,10 @@ rule token = parse
 | "rem" { REM }
 | "div" { DIV }
 | "lt" { LT }
+| "land" { LAND }
+| "lor" { LOR }
+| "lshiftl" { LSHIFTL }
+| "lshiftr" { LSHIFTR }
 | "lea" { LEA }
 | "restrict" { RESTRICT }
 | "subseg" { SUBSEG }
@@ -125,6 +129,10 @@ rule token = parse
 | ',' { COMMA }
 | ':' { COLON }
 | '#' { SHARP }
+| "&&" { LANDOP }
+| "||" { LOROP }
+| "<<" { LSL }
+| ">>" { LSR }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }

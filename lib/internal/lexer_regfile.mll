@@ -91,6 +91,10 @@ rule token = parse
 | ',' { COMMA }
 | ':' { COLON }
 | ":=" { AFFECT }
+| "&&" { LANDOP }
+| "||" { LOROP }
+| "<<" { LSL }
+| ">>" { LSR }
 
 (* locality *)
 | "LOCAL"    | "Local" { LOCAL }

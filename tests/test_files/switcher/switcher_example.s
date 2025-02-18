@@ -1,6 +1,6 @@
 main:
     #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
-    #{9: ([R Ow LG LM], Global, ext_adv, ext_adv_end, ext_adv+2)}            ; import ext
+    #{9: ([R Ow LG LM], Global, ext_adv, ext_adv_end, ext_adv+2)}       ; import ext
 
 main_f:
     mov cra PC
@@ -40,8 +40,8 @@ data_adv_end:
 ;; export table compartment c
 ext_adv:
     #([X Ow LG LM], Global, adv, adv_end, adv)                 ; PCC
-    #([R W LG LM], Global, data_adv, data_adv_end, data_adv)  ; CGP
-    #00                                                 ; offset + args
+    #([R W LG LM], Global, data_adv, data_adv_end, data_adv)   ; CGP
+    #00                                                        ; offset + args
 ext_adv_end:
 
 ;; Concatenate this file at the end of any example that require the switcher
@@ -91,9 +91,8 @@ switcher_zero_stk_end_pre:
     load cs0 cs0
     unseal ct1 cs0 ct1
     load cs0 ct1
-    rem ct2 cs0 10
-    sub cs0 cs0 ct2
-    div cs0 cs0 10
+    land ct2 cs0 7
+    lshiftr cs0 cs0 3
     getb cgp ct1
     geta cs1 ct1
     sub cs1 cgp cs1

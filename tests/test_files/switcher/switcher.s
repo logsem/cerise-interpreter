@@ -46,9 +46,8 @@ switcher_zero_stk_end_pre:
     load cs0 cs0
     unseal ct1 cs0 ct1
     load cs0 ct1
-    rem ct2 cs0 10
-    sub cs0 cs0 ct2
-    div cs0 cs0 10
+    land ct2 cs0 7
+    lshiftr cs0 cs0 3
     getb cgp ct1
     geta cs1 ct1
     sub cs1 cgp cs1

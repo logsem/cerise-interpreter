@@ -109,23 +109,24 @@ C_data_end:
 ;; export table compartment A -> does not export any entry points
 A_ext:
     #([X Ow LG LM], Global, A, A_end, A)                 ; PCC
-    #([R W LG LM], Global, A_data, A_data_end, A_data)  ; CGP
+    #([R W LG LM], Global, A_data, A_data_end, A_data)   ; CGP
 A_ext_end:
 
 ;; export table compartment B -> exports B_f
 B_ext:
     #([X Ow LG LM], Global, B, B_end, B)                 ; PCC
-    #([R W LG LM], Global, B_data, B_data_end, B_data)  ; CGP
-B_ext_f: #(10 * (B_f - B) + 1)                    ; offset_f
-B_ext_h: #(10 * (B_f - B) + 0)                    ; offset_h
+    #([R W LG LM], Global, B_data, B_data_end, B_data)   ; CGP
+B_ext_f: #(((B_f - B) << 3) || 1)                         ; offset_f
+B_ext_h: #(((B_h - B) << 3) || 0)                         ; offset_h
 B_ext_end:
 
 ;; export table compartment C -> exports C_g
 C_ext:
     #([X Ow LG LM], Global, C, C_end, C)                 ; PCC
-    #([R W LG LM], Global, C_data, C_data_end, C_data)  ; CGP
-C_ext_g: #(10 * (C_g - C) + 0)                    ; offset_g
+    #([R W LG LM], Global, C_data, C_data_end, C_data)   ; CGP
+C_ext_g: #(((C_g - C) << 3) || 0)                         ; offset_g
 C_ext_end:
+
 
 ;; Concatenate this file at the end of any example that require the switcher
 switcher:
@@ -174,9 +175,8 @@ switcher_zero_stk_end_pre:
     load cs0 cs0
     unseal ct1 cs0 ct1
     load cs0 ct1
-    rem ct2 cs0 10
-    sub cs0 cs0 ct2
-    div cs0 cs0 10
+    land ct2 cs0 7
+    lshiftr cs0 cs0 3
     getb cgp ct1
     geta cs1 ct1
     sub cs1 cgp cs1
