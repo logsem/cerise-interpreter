@@ -4,12 +4,13 @@ switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
     store csp cs0
-    lea csp -1
+    lea csp 1
     store csp cs1
-    lea csp -1
+    lea csp 1
     store csp cra
-    lea csp -1
+    lea csp 1
     store csp cgp
+    lea csp 1
     getp ct2 csp
     mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
@@ -17,16 +18,15 @@ switcher_cc:
     jmp 2
     fail
     readsr ct2 mtdc
-    lea ct2 -1
+    lea ct2 1
     store ct2 csp
     writesr mtdc ct2
-    geta cs0 csp
-    getb cs1 csp
+    gete cs0 csp
+    geta cs1 csp
     subseg csp cs1 cs0
 switcher_zero_stk_init_pre:
     sub cs0 cs1 cs0
     mov cs1 csp
-    lea cs1 cs0
 switcher_zero_stk_loop_pre:
     jnz cs0 2
     jmp (switcher_zero_stk_end_pre - switcher_zero_stk_loop_pre - 1)
@@ -36,7 +36,6 @@ switcher_zero_stk_loop_pre:
 switcher_zero_stk_loop_end_pre:
     jmp (switcher_zero_stk_loop_pre - switcher_zero_stk_loop_end_pre)
 switcher_zero_stk_end_pre:
-    lea csp -1
     getb cs1 PC
     geta cs0 PC
     sub cs1 cs1 cs0
@@ -89,24 +88,23 @@ switcher_zero_stk_end_pre:
     jalr cra cra
     readsr ctp mtdc
     load csp ctp
-    lea ctp 1
+    lea ctp -1
     writesr mtdc ctp
     load cgp csp
-    lea csp 1
+    lea csp -1
     load ca2 csp
-    lea csp 1
+    lea csp -1
     load cs1 csp
-    lea csp 1
+    lea csp -1
     load cs0 csp
 switcher_zero_stk_init_post:
-    geta ct0 csp
-    getb ct1 csp
+    gete ct0 csp
+    geta ct1 csp
     sub ct0 ct1 ct0
     mov ct1 csp
-    lea ct1 ct0
 switcher_zero_stk_loop_post:
     jnz ct0 2
-    jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)  ;
+    jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)
     store ct1 0
     lea ct1 1
     add ct0 ct0 1

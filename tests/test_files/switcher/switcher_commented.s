@@ -16,11 +16,11 @@ switcher:
 switcher_cc:
     ;; STEP 1: store content in compartment's stack
     store csp cs0
-    lea csp -1
+    lea csp 1
     store csp cs1
-    lea csp -1
+    lea csp 1
     store csp cra
-    lea csp -1
+    lea csp 1
     store csp cgp
 
     ;; STEP 2: verify csp contains a valid stack pointer
@@ -45,7 +45,7 @@ switcher_cc:
 
     ;; STEP 4: prepare the tstack frame
     readsr ct2 mtdc
-    lea ct2 -1
+    lea ct2 1
     store ct2 csp
     writesr mtdc ct2              ; NOTE: in the actual implementation,
                                 ; mtdc is not updated, but the offset of the current
@@ -53,29 +53,28 @@ switcher_cc:
                                 ; Should I do that too ?
 
     ;; STEP 5: restrict bounds of the stack
-    geta cs0 csp                ; cs0 := a
-    getb cs1 csp                ; cs1 := b
-    subseg csp cs1 cs0          ; csp := (p,g,b,a,a)
+    gete cs0 csp                ; cs0 := e
+    geta cs1 csp                ; cs1 := a
+    subseg csp cs1 cs0          ; csp := (p,g,a,e,a)
 
     ;; STEP 6: zero the callee's stack frame
     ;; TODO do we want the stack high water mark ?
     ;; if so, we would need to implement more special registers
 switcher_zero_stk_init_pre:
-    sub cs0 cs1 cs0             ; cs0 := b-a
-    mov cs1 csp                 ; cs1 := (p,g,b,a,a)
-    lea cs1 cs0                 ; cs1 := (p,g,b,a,b)
-    ;; cs0: i := -(b-a)
+    sub cs0 cs1 cs0             ; cs0 := a-e
+    mov cs1 csp                 ; cs1 := (p,g,a,e,a)
+    ;; lea cs1 cs0              ; cs1 := (p,g,a,e,a+a-e)
+    ;; cs0: i := (a-e)
 switcher_zero_stk_loop_pre:
     jnz cs0 2                   ; if (i = 0) then (end of loop), otherwise continue
     jmp (switcher_zero_stk_end_pre - switcher_zero_stk_loop_pre - 1)  ;
 
     store cs1 0                 ; mem[b+i] := 0
-    lea cs1 1                   ; cs1 := (p,g,b,a,b+i)
+    lea cs1 1                   ; cs1 := (p,g,a,e,a+i)
     add cs0 cs0 1               ; i := i + 1
 switcher_zero_stk_loop_end_pre:
     jmp (switcher_zero_stk_loop_pre - switcher_zero_stk_loop_end_pre)
 switcher_zero_stk_end_pre:
-    lea csp -1
 
     ;; STEP 7: unseal the callee's entry point
     ; LoadCapPCC ......
@@ -157,32 +156,32 @@ switcher_zero_stk_end_pre:
     ;; TODO make sure that there is a frame left in the trusted stack
     ;; restore stack pointer and update trusted stack
     load csp ctp
-    lea ctp 1
+    lea ctp -1
     writesr mtdc ctp
     ;; spill the saved registers out
     load cgp csp
-    lea csp 1
+    lea csp -1
     load ca2 csp
-    lea csp 1
+    lea csp -1
     load cs1 csp
-    lea csp 1
+    lea csp -1
     load cs0 csp
 
     ;; zero the stack frame
     ;; TODO do we want the stack high water mark ?
 switcher_zero_stk_init_post:
-    geta ct0 csp                ; r20 := a
-    getb ct1 csp                ; ctp := b
-    sub ct0 ct1 ct0             ; ct0 := b-a
-    mov ct1 csp                 ; ct1 := (p,g,b,a,a)
-    lea ct1 ct0                 ; ct1 := (p,g,b,a,b)
-    ;; ct0: i := -(b-a)
+    gete ct0 csp                ; ct0 := e
+    geta ct1 csp                ; ctp := a
+    sub ct0 ct1 ct0             ; ct0 := a-e
+    mov ct1 csp                 ; ct1 := (p,g,a,e,a)
+    ;; lea ct1 ct0                 ; ct1 := (p,g,b,a,b)
+    ;; ct0: i := (a-e)
 switcher_zero_stk_loop_post:
     jnz ct0 2                   ; if (i = 0) then (end of loop), otherwise continue
     jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)  ;
 
     store ct1 0                 ; mem[b+i] := 0
-    lea ct1 1                   ; ct1 := (p,g,b,a,b+i)
+    lea ct1 1                   ; ct1 := (p,g,a,e,a+i)
     add ct0 ct0 1               ; i := i + 1
 switcher_zero_stk_loop_end_post:
     jmp (switcher_zero_stk_loop_post - switcher_zero_stk_loop_end_post)
