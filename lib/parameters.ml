@@ -206,7 +206,7 @@ let check_machine_op (i : Ast.machine_op) =
   | PromoteU _ -> if not !flags.unitialized then instruction_not_supported "PromoteU"
   | _ -> ());
   match i with
-  | PromoteU r | EDeInit r | Jmp r -> check_register r
+  | PromoteU r | EInit r | EDeInit r | Jmp r -> check_register r
   | GetL (r1, r2)
   | GetB (r1, r2)
   | GetE (r1, r2)
@@ -217,7 +217,6 @@ let check_machine_op (i : Ast.machine_op) =
   | Load (r1, r2)
   | Invoke (r1, r2)
   | Jnz (r1, r2)
-  | EInit (r1, r2)
   | EStoreId (r1, r2)
   | IsUnique (r1, r2) ->
       check_register r1;

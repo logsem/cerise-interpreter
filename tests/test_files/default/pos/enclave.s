@@ -16,10 +16,10 @@ boot:
     restrict r1 (RX, Global)
 
     ;; init enclave
-    einit r0 r1
+    einit r1
     mov r31 pc
     lea r31 3
-    jmp r0
+    jmp r1
     getotype r2 r1
     estoreid r3 r2
 

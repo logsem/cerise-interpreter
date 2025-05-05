@@ -61,7 +61,7 @@ type machine_op =
   | LoadU of regname * regname * reg_or_const
   | StoreU of regname * reg_or_const * reg_or_const
   | PromoteU of regname
-  | EInit of regname * regname
+  | EInit of regname
   | EDeInit of regname
   | EStoreId of regname * regname
   | IsUnique of regname * regname
@@ -224,7 +224,7 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
       Ast.StoreU
         (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
   | PromoteU r -> Ast.PromoteU (translate_regname r)
-  | EInit (r1, r2) -> Ast.EInit (translate_regname r1, translate_regname r2)
+  | EInit r -> Ast.EInit (translate_regname r)
   | EDeInit r -> Ast.EDeInit (translate_regname r)
   | EStoreId (r1, r2) -> Ast.EStoreId (translate_regname r1, translate_regname r2)
   | IsUnique (r1, r2) -> Ast.IsUnique (translate_regname r1, translate_regname r2)

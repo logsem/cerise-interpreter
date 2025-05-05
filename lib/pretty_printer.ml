@@ -100,7 +100,7 @@ let string_of_machine_op (s : machine_op) : string =
   | LoadU (r1, r2, c) -> "loadU" ^- string_of_rrc r1 r2 c
   | StoreU (r, c1, c2) -> "storeU" ^- string_of_rcc r c1 c2
   | PromoteU r -> "promoteU" ^- string_of_regname r
-  | EInit (r1, r2) -> "einit" ^- string_of_rr r1 r2
+  | EInit r -> "einit" ^- string_of_regname r
   | EDeInit r -> "edeinit" ^- string_of_regname r
   | EStoreId (r1, r2) -> "estoreid" ^- string_of_rr r1 r2
   | IsUnique (r1, r2) -> "isunique" ^- string_of_rr r1 r2

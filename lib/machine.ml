@@ -556,12 +556,12 @@ let exec_single (conf : exec_conf) : mchn =
                     !>(upd_reg r (Sealable (Cap (p', g, b, e', a))) conf)
                 | _ -> fail_state)
             | _ -> fail_state)
-        | EInit (rdst, rsrc) -> (
-            match rsrc @! conf with
-            | Sealable (Cap (p, _, b, e, a)) when can_read p && is_exec p -> (
+        | EInit r -> (
+            match r @! conf with
+            | Sealable (Cap (p, _, b, e, a)) when can_read p && is_exec p && not (can_write p) -> (
                 match b @? conf with
-                | Some (Sealable (Cap (p', _, b', _, _))) when can_read p' && can_write p' ->
-                    let isunique_code = sweep_reg conf rsrc in
+                | Some (Sealable (Cap (p', _, b', _, _))) when can_read p' && can_write p' && not (is_exec p')->
+                    let isunique_code = sweep_reg conf r in
                     let isunique_data = sweep_addr conf b in
                     if isunique_data then
                       if isunique_code then
@@ -583,7 +583,7 @@ let exec_single (conf : exec_conf) : mchn =
                         let conf_etbl' = upd_etbl conf.ec identity conf in
                         let conf_mem' = upd_mem b' seal_keys conf_etbl' in
                         let conf_ec' = incr_ec conf_mem' in
-                        !>(upd_reg rdst (Sealable (Cap (E, Global, b, e, a))) conf_ec')
+                        !>(upd_reg r (Sealable (Cap (E, Global, b, e, a))) conf_ec')
                       else fail_state
                     else fail_state
                 | _ -> fail_state)
