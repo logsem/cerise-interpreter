@@ -44,7 +44,7 @@ type machine_op =
   | LoadU of regname * regname * reg_or_const
   | StoreU of regname * reg_or_const * reg_or_const
   | PromoteU of regname
-  | EInit of regname
+  | EInit of regname * regname
   | EDeInit of regname
   | EStoreId of regname * regname
   | IsUnique of regname * regname

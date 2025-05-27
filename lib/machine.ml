@@ -556,38 +556,46 @@ let exec_single (conf : exec_conf) : mchn =
                     !>(upd_reg r (Sealable (Cap (p', g, b, e', a))) conf)
                 | _ -> fail_state)
             | _ -> fail_state)
-        | EInit r -> (
-            match r @! conf with
-            | Sealable (Cap (p, _, b, e, a)) when can_read p && is_exec p && not (can_write p) -> (
-                match b @? conf with
-                | Some (Sealable (Cap (p', _, b', _, _))) when can_read p' && can_write p' && not (is_exec p')->
-                    let isunique_code = sweep_reg conf r in
-                    let isunique_data = sweep_addr conf b in
-                    if isunique_data then
-                      if isunique_code then
-                        let ot = Z.(~$2 * conf.ec) in
-                        let seal_keys =
-                          Sealable (SealRange ((true, true), Global, ot, Z.(ot + ~$2), ot))
-                        in
-                        let to_list mem = MemMap.bindings mem in
-                        let region_filter b e a _ = b <= a && Infinite_z.z_leq a e in
-                        let region b e =
-                          List.map
-                            (fun (_, w) -> w)
-                            (to_list (MemMap.filter (region_filter b e) conf.mem))
-                        in
-                        let code_region = region Z.(b + ~$1) e in
-                        let enclave_region = code_region in
-                        let identity : Z.t = Z.of_int (Hashtbl.hash (b, enclave_region)) in
-
-                        let conf_etbl' = upd_etbl conf.ec identity conf in
-                        let conf_mem' = upd_mem b' seal_keys conf_etbl' in
-                        let conf_ec' = incr_ec conf_mem' in
-                        !>(upd_reg r (Sealable (Cap (E, Global, b, e, a))) conf_ec')
+        | EInit (rcode, rdata) -> (
+            if rcode == PC then fail_state
+            else
+              match rcode @! conf with
+              | Sealable (Cap (p, _, b, e, a))
+                when can_read p && is_exec p && (not (can_write p)) && Infinite_z.z_lt b e -> (
+                  match rdata @! conf with
+                  | Sealable (Cap (p', g', b', e', a'))
+                    when can_read p' && (not (is_exec p')) && can_write p' && Infinite_z.z_lt b' e'
+                    ->
+                      let isunique_code = sweep_reg conf rcode in
+                      let isunique_data = sweep_reg conf rdata in
+                      if isunique_data then
+                        if isunique_code then
+                          let ot = Z.(~$2 * conf.ec) in
+                          let seal_keys =
+                            Sealable (SealRange ((true, true), Global, ot, Z.(ot + ~$2), ot))
+                          in
+                          let to_list mem = MemMap.bindings mem in
+                          let region_filter b e a _ = b <= a && Infinite_z.z_leq a e in
+                          let region b e =
+                            List.map
+                              (fun (_, w) -> w)
+                              (to_list (MemMap.filter (region_filter b e) conf.mem))
+                          in
+                          let code_region = region Z.(b + ~$1) e in
+                          let enclave_region = code_region in
+                          let identity : Z.t = Z.of_int (Hashtbl.hash (b, enclave_region)) in
+                          let conf_etbl' = upd_etbl conf.ec identity conf in
+                          let conf_data' =
+                            upd_mem b (Sealable (Cap (p', g', b', e', a'))) conf_etbl'
+                          in
+                          let conf_mem' = upd_mem b' seal_keys conf_data' in
+                          let conf_ec' = incr_ec conf_mem' in
+                          !>(upd_reg rdata (I ~$0)
+                               (upd_reg rcode (Sealable (Cap (E, Global, b, e, a))) conf_ec'))
+                        else fail_state
                       else fail_state
-                    else fail_state
-                | _ -> fail_state)
-            | _ -> fail_state)
+                  | _ -> fail_state)
+              | _ -> fail_state)
         | EDeInit rsrc -> (
             match rsrc @! conf with
             | Sealable (SealRange ((true, true), Global, b, e, _)) when e = Z.(b + ~$2) ->

@@ -52,7 +52,7 @@ main:
   | LOADU; r1 = reg; r2 = reg; c = reg_const; p = main; { LoadU (r1, r2, c) :: p }
   | STOREU; r = reg; c1 = reg_const; c2 = reg_const; p = main; { StoreU (r, c1, c2) :: p }
   | PROMOTEU; r = reg; p = main ; { PromoteU r :: p }
-  | EINIT; r1 = reg; p = main; { EInit r1 :: p }
+  | EINIT; r1 = reg; r2 = reg; p = main; { EInit (r1,r2) :: p }
   | EDEINIT; r1 = reg; p = main; { EDeInit r1 :: p }
   | ESTOREID; r1 = reg; r2 = reg ; p = main; { EStoreId (r1, r2) :: p }
   | ISUNIQUE; r1 = reg; r2 = reg; p = main; { IsUnique (r1, r2) :: p }

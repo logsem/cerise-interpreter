@@ -48,7 +48,7 @@ callback:
    getotype r2 r0
    estoreid r4 r2
    ; check otype(w_res) against identity of the enclave
-   sub r4 r4 0x2C771E89
+   sub r4 r4 0x358D2190
    jnz r3 r4
 
    ; get returned value and assert it to be 42
@@ -82,6 +82,7 @@ adv_start:
     add r4 r4 (enclave_end-adv_start)
     subseg r2 r3 r4
     lea r2 (enclave-adv_start+1)
+    mov r5 r2
     restrict r2 (RX, Global)
     mov r0 0
 
@@ -89,8 +90,14 @@ adv_start:
     getb r4 pc
     subseg pc r4 r3
 
+    ; get the data capability
+    lea r5 -1
+    load r4 r5
+    store r5 0
+    mov r5 0
+
     ; initialise the enclave
-    einit r2
+    einit r2 r4
     ; store r1 in r31
     mov r31 r1
 
