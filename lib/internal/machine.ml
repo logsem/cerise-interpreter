@@ -295,8 +295,8 @@ let load_word (p : perm) (w : word) : word =
 let authorised_access_system_register (conf : exec_conf) : bool =
   match PC @! conf with Sealable (Cap ((XSR, _, _, _), _, _, _, _)) -> true | _ -> false
 
-let lshiftl (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int ((Z.to_int z1) lsl (Z.to_int z2))
-let lshiftr (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int ((Z.to_int z1) lsr (Z.to_int z2))
+let lshiftl (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int (Z.to_int z1 lsl Z.to_int z2)
+let lshiftr (z1 : Z.t) (z2 : Z.t) : Z.t = Z.of_int (Z.to_int z1 lsr Z.to_int z2)
 
 (* NOTE Although we've already check that not supported instructions / capabilities *)
 (*  are not in the initial machine, we still need to make sure that *)
@@ -469,19 +469,27 @@ let exec_single (conf : exec_conf) : mchn =
         | LAnd (r, c1, c2) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
-            match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 land z2)) conf) | _ -> fail_state)
+            match (w1, w2) with
+            | I z1, I z2 -> !>(upd_reg r (I Z.(z1 land z2)) conf)
+            | _ -> fail_state)
         | LOr (r, c1, c2) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
-            match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I Z.(z1 lor z2)) conf) | _ -> fail_state)
+            match (w1, w2) with
+            | I z1, I z2 -> !>(upd_reg r (I Z.(z1 lor z2)) conf)
+            | _ -> fail_state)
         | LShiftL (r, c1, c2) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
-            match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I (lshiftl z1 z2)) conf) | _ -> fail_state)
+            match (w1, w2) with
+            | I z1, I z2 -> !>(upd_reg r (I (lshiftl z1 z2)) conf)
+            | _ -> fail_state)
         | LShiftR (r, c1, c2) -> (
             let w1 = get_word conf c1 in
             let w2 = get_word conf c2 in
-            match (w1, w2) with I z1, I z2 -> !>(upd_reg r (I (lshiftr z1 z2)) conf) | _ -> fail_state)
+            match (w1, w2) with
+            | I z1, I z2 -> !>(upd_reg r (I (lshiftr z1 z2)) conf)
+            | _ -> fail_state)
         | GetL (r1, r2) -> (
             match r2 @! conf with
             | Sealable sb | Sealed (_, sb) ->
