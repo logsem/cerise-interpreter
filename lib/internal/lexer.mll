@@ -162,6 +162,8 @@ rule token = parse
 | "SealRange" { SealRange }
 | "Sealed" { Sealed }
 
+| "&CURRENT_ADDR" { CURRENTADDR }
+
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }
 | label as lbl { LABEL (lbl) }

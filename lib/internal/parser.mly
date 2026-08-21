@@ -7,6 +7,7 @@
 %token <int> INT
 %token <string> LABELDEF
 %token <string> LABEL
+%token CURRENTADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS MULT COMMA SHARP COLON LANDOP LOROP LSL LSR
 %token JALR JMP JNZ READSR WRITESR MOVE LOAD STORE ADD SUB MUL REM DIV LT LEA RESTRICT SUBSEG
@@ -203,5 +204,6 @@ expr:
   | MINUS; e = expr %prec UMINUS { SubOp (IntLit (Z.of_int 0),e) }
   | i = INT { IntLit (Z.of_int i) }
   | lbl = LABEL { Label lbl }
+  | CURRENTADDR { CurrentAddr }
 
 %%
