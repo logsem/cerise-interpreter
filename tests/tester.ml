@@ -67,7 +67,8 @@ let test_mov_test =
   let r2_res = match Machine.read_reg (Reg 2) m with I z -> z | _ -> Z.zero in
   let r5_res = match Machine.read_reg (Reg 5) m with I z -> z | _ -> Z.zero in
   [
-    test_case "mov_test.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "mov_test.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "mov_test.s PC should point to address 2" `Quick (fun _ ->
         check int "Ints match" 2 (Z.to_int pc_a));
     test_case "mov_test.s R2 should contain 28" `Quick (test_const_word Z.(~$28) r2_res);
@@ -78,7 +79,8 @@ let test_jmper =
   let open Alcotest in
   let m = run_prog (test_path "pos/jmper.s") in
   [
-    test_case "jmper.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "jmper.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "jmper.s should end with r2 containing 12" `Quick
       (test_const_word Z.(~$12) (get_reg_int_word (Ast.Reg 2) m Z.zero));
     test_case "jmper.s should contain E permission in r1" `Quick
@@ -89,7 +91,8 @@ let test_promote =
   let open Alcotest in
   let m = run_prog (test_path "pos/ucap_promote.s") in
   [
-    test_case "ucap_promote.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "ucap_promote.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "ucap_promote.s should contain RWLX permission in r0" `Quick
       (test_perm RWLX (get_reg_cap_perm (Reg 0) m O));
     test_case "ucap_promote.s should contain RWL permission in r1" `Quick
@@ -104,7 +107,8 @@ let test_ucaps =
   let open Alcotest in
   let m = run_prog (test_path "pos/test_ucaps.s") in
   [
-    test_case "test_ucaps.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "test_ucaps.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "test_ucaps.s should contain 42 in r0" `Quick
       (test_const_word (Z.of_int 42) (get_reg_int_word (Reg 0) m Z.one));
     test_case "test_ucaps.s should contain 43 in r1" `Quick
@@ -116,20 +120,25 @@ let test_ucaps =
 let test_locality_flow =
   let open Alcotest in
   let m = run_prog (test_path "pos/test_locality_flow.s") in
-  [ test_case "test_locality.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m)) ]
+  [
+    test_case "test_locality.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
+  ]
 
 let test_directed_store =
   let open Alcotest in
   let m = run_prog (test_path "pos/test_directed_store.s") in
   [
-    test_case "test_directed_store.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "test_directed_store.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
   ]
 
 let test_getotype =
   let open Alcotest in
   let m = run_prog (test_path "pos/get_otype.s") in
   [
-    test_case "get_otype.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "get_otype.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "get_otype.s should end with r0 containing (-1)" `Quick
       (test_const_word Z.(~$(-1)) (get_reg_int_word (Ast.Reg 0) m Z.zero));
     test_case "get_otype.s should end with r1 containing (-1)" `Quick
@@ -144,7 +153,8 @@ let test_getwtype =
   let open Alcotest in
   let m = run_prog (test_path "pos/get_wtype.s") in
   [
-    test_case "get_otype.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "get_otype.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "get_otype.s should end with r0 containing 0" `Quick
       (test_const_word Z.zero (get_reg_int_word (Ast.Reg 0) m Z.zero));
     test_case "get_otype.s should end with r1 containing 0" `Quick
@@ -158,13 +168,17 @@ let test_getwtype =
 let test_sealing =
   let open Alcotest in
   let m = run_prog (test_path "pos/seal_unseal.s") in
-  [ test_case "get_otype.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m)) ]
+  [
+    test_case "get_otype.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
+  ]
 
 let test_sealing_counter =
   let open Alcotest in
   let m = run_prog (test_path "pos/sealing_counter.s") in
   [
-    test_case "sealing_counter.s should end in halted state" `Quick (test_state Halted (Machine.get_exec_state m));
+    test_case "sealing_counter.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
     test_case "sealing_counter.s should end with r2 containing 3" `Quick
       (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m Z.zero));
   ]

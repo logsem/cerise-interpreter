@@ -498,17 +498,14 @@ let rec run (m : mchn) : mchn = match step m with Some m' -> run m' | None -> m
 
 type t = mchn
 
-
 let get_exec_state (m : mchn) : exec_state = fst m
 let get_exec_conf (m : mchn) : exec_conf = snd m
 let get_regfile (m : mchn) : reg_state = (get_exec_conf m).reg
 let get_memory (m : mchn) : mem_state = (get_exec_conf m).mem
-
-let read_reg (r : regname) (m : mchn) = r @! (get_exec_conf m)
-let read_mem (a : Z.t) (m : mchn) = a @? (get_exec_conf m)
-
+let read_reg (r : regname) (m : mchn) = r @! get_exec_conf m
+let read_mem (a : Z.t) (m : mchn) = a @? get_exec_conf m
 let set_reg (r : regname) (w : word) (m : mchn) = (fst m, upd_reg r w (snd m))
 let set_mem (a : Z.t) (w : word) (m : mchn) = (fst m, upd_mem a w (snd m))
-
 let decode_machine_op (i : Z.t) : Ast.machine_op = Encode.decode_machine_op i
+
 exception DecodeException = Encode.DecodeException

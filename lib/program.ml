@@ -38,7 +38,6 @@ let parse_regfile_from_string (source : string) (stk_addr : Z.t) :
   let filebuf = Lexing.from_string source in
   parse_regfile_from_lexbuf filebuf stk_addr
 
-
 let init_machine (prog : Ast.t) (init_regs : Ast.word Machine.RegMap.t) : Machine.t =
   let addr_start = Z.(~$0) in
   (* TODO lookup the PC *)

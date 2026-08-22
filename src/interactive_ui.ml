@@ -343,8 +343,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         if show_stack then if showing then false else true else false
       in
       let rec loop ?(update_prog = Program_panel.id) ?(update_stk = Program_panel.id) show_stack
-                (m : Machine.t)
-          history =
+          (m : Machine.t) history =
         let term_width, term_height = Term.size term in
         let reg = Machine.get_regfile m in
         let mem = Machine.get_memory m in

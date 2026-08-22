@@ -9,8 +9,7 @@ type machineFlags = {
   max_addr : Infinite_z.t; (* Maximum memory address (can be infinite) *)
 }
 
-let max_addr =
-  Z.div (Z.of_int32 Int32.max_int) (Z.of_int 4096) (* (2^31 - 1) / 2^12 *)
+let max_addr = Z.div (Z.of_int32 Int32.max_int) (Z.of_int 4096) (* (2^31 - 1) / 2^12 *)
 
 let vanilla_cerise : machineFlags =
   {
