@@ -9,5 +9,5 @@ depends: [
   "zarith"
   "containers"
   "alcotest"
-  "notty"
+  "notty-community"
 ]

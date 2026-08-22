@@ -1,6 +1,6 @@
 (library
  (name libinterp)
- (libraries containers notty notty.unix zarith))
+ (libraries containers notty-community notty-community.unix zarith))
 
 (ocamllex lexer lexer_regfile)
 

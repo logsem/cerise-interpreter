@@ -9,7 +9,7 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        ocamlPackages = pkgs.ocamlPackages;
+        ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_4;
       in with ocamlPackages; rec {
         defaultPackage = buildDunePackage {
           pname = "cerise-interpreter";
@@ -28,7 +28,7 @@
             };
 
           nativeBuildInputs = [ menhir ];
-          buildInputs = [ containers notty zarith ];
+          buildInputs = [ containers notty-community zarith ];
           checkInputs = [ alcotest ];
 
           doCheck = true;
@@ -42,10 +42,13 @@
         };
 
         devShell = pkgs.mkShell {
-          packages = (with defaultPackage; [ buildInputs nativeBuildInputs ])
-            ++ [ merlin ocaml-lsp ocamlformat ];
-
           inputsFrom = [ defaultPackage ];
+
+          packages = [
+            merlin
+            ocaml-lsp
+            ocamlformat
+          ];
         };
 
         formatter = pkgs.nixfmt;

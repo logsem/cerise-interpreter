@@ -8,7 +8,7 @@ Dependencies: opam
 ```
 git clone https://github.com/logsem/cerise-interpreter.git 
 cd cerise-interpreter
-opam switch create -y --repositories=default . ocaml-base-compiler.4.14.0
+opam switch create -y --repositories=default . ocaml-base-compiler.5.4.1
 eval $(opam env --set-switch)
 make
 ```
