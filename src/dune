@@ -1,5 +1,5 @@
 (executable
  (name interpreter)
  (public_name cerise-interpreter)
- (modules interpreter)
- (libraries containers libinterp notty-community))
+ (modules cli_parser interactive_ui interpreter_ui interpreter)
+ (libraries cerise notty-community notty-community.unix))

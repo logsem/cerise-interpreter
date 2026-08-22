@@ -1,6 +1,6 @@
-open Libinterp
-open Libinterp.Pretty_printer
-open Libinterp.Ast
+open Cerise
+open Cerise.Pretty_printer
+open Cerise.Ast
 
 let statement_eq (a : statement) (b : statement) = a = b
 let pprint_statement = Fmt.of_to_string string_of_statement

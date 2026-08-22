@@ -1,4 +1,4 @@
-open Libinterp
+open Cerise
 open Scall_dcap
 
 let () =

@@ -1,6 +1,7 @@
 open Notty
 open Notty.Infix
 open Notty_unix
+open Cerise
 open Parameters
 
 type side = Left | Right
@@ -11,7 +12,7 @@ module type MachineConfig = sig
 end
 
 module type Ui = sig
-  val render_loop : ?show_stack:bool -> Z.t ref -> Z.t ref -> Machine.mchn -> unit
+  val render_loop : ?show_stack:bool -> Z.t ref -> Z.t ref -> Machine.t -> unit
 end
 
 module MkUi (Cfg : MachineConfig) : Ui = struct
@@ -220,9 +221,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let img_instr in_range a w =
       match w with
       | Ast.I z when in_range a <> `No -> (
-          match Encode.decode_machine_op z with
+          match Machine.decode_machine_op z with
           | i -> Instr.ui i
-          | exception Encode.DecodeException _ -> I.string A.(fg green) "???")
+          | exception Machine.DecodeException _ -> I.string A.(fg green) "???")
       | _ -> I.empty
 
     let render_prog width (pc : Ast.word) data_range =
@@ -341,11 +342,12 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       let toggle_show_stack showing =
         if show_stack then if showing then false else true else false
       in
-      let rec loop ?(update_prog = Program_panel.id) ?(update_stk = Program_panel.id) show_stack m
+      let rec loop ?(update_prog = Program_panel.id) ?(update_stk = Program_panel.id) show_stack
+                (m : Machine.t)
           history =
         let term_width, term_height = Term.size term in
-        let reg = (snd m).Machine.reg in
-        let mem = (snd m).Machine.mem in
+        let reg = Machine.get_regfile m in
+        let mem = Machine.get_memory m in
         let regs_img = Regs_panel.ui term_width reg in
         let mem_img, panel_start, panel_stk =
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
@@ -358,7 +360,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         stk_panel_start := panel_stk;
         let mach_state_img =
           I.hsnap ~align:`Right term_width
-            (I.string A.empty "machine state: " <|> Exec_state.ui (fst m))
+            (I.string A.empty "machine state: " <|> Exec_state.ui (Machine.get_exec_state m))
         in
         let img = regs_img <-> mach_state_img <-> mem_img in
         Term.image term img;

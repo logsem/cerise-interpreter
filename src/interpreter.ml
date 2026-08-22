@@ -1,11 +1,11 @@
-open Libinterp
+open Cerise
 
 let () =
   let mode, filename_prog, regfile_name = Cli_parser.parse_arguments () in
 
   (* Parse initial memory (program) *)
   let prog =
-    match Program.parse_prog filename_prog with
+    match Program.parse_prog_from_file filename_prog with
     | Ok prog -> prog
     | Error msg ->
         Printf.eprintf "Program parse error: %s\n" msg;
@@ -24,7 +24,7 @@ let () =
     let init_regfile = Machine.init_reg_state stk_addr in
     if regfile_name = "" then init_regfile
     else
-      match Program.parse_regfile regfile_name stk_addr with
+      match Program.parse_regfile_from_file regfile_name stk_addr with
       | Ok regs -> (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
       | Error msg ->
           Printf.eprintf "Regfile parse error: %s\n" msg;

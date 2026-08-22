@@ -3,8 +3,6 @@ open Parameters
 
 let ( ~$ ) = Z.( ~$ )
 
-exception NotYetImplemented
-
 module MemMap = Map.Make (Z)
 
 module RegMap = Map.Make (struct
@@ -19,6 +17,7 @@ type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state }
 
 (* using a record to have notation similar to the paper *)
+
 type mchn = exec_state * exec_conf
 
 let init_reg_state (stk_addr : Z.t) : reg_state =
@@ -496,3 +495,20 @@ let rec step_n (m : mchn) n : mchn option =
   if n > 0 then match step m with Some m' -> step_n m' (n - 1) | None -> Some m else Some m
 
 let rec run (m : mchn) : mchn = match step m with Some m' -> run m' | None -> m
+
+type t = mchn
+
+
+let get_exec_state (m : mchn) : exec_state = fst m
+let get_exec_conf (m : mchn) : exec_conf = snd m
+let get_regfile (m : mchn) : reg_state = (get_exec_conf m).reg
+let get_memory (m : mchn) : mem_state = (get_exec_conf m).mem
+
+let read_reg (r : regname) (m : mchn) = r @! (get_exec_conf m)
+let read_mem (a : Z.t) (m : mchn) = a @? (get_exec_conf m)
+
+let set_reg (r : regname) (w : word) (m : mchn) = (fst m, upd_reg r w (snd m))
+let set_mem (a : Z.t) (w : word) (m : mchn) = (fst m, upd_mem a w (snd m))
+
+let decode_machine_op (i : Z.t) : Ast.machine_op = Encode.decode_machine_op i
+exception DecodeException = Encode.DecodeException

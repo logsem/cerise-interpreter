@@ -1,6 +1,7 @@
 (library
- (name libinterp)
- (libraries containers notty-community notty-community.unix zarith))
+ (name cerise)
+ (public_name cerise-interpreter)
+ (libraries containers zarith))
 
 (ocamllex lexer lexer_regfile)
 
