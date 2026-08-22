@@ -2,8 +2,8 @@
 
 type cli_mode = Interactive_mode | Interpreter_mode
 
-(** Initialize the Cerise version and returns
-    (mode, program_filename, register_filename, size_mem) *)
+(** Initialize the Cerise version and returns (mode, program_filename, register_filename, size_mem)
+*)
 let parse_arguments () : cli_mode * string * string =
   let usage_msg =
     "interpreter [-I] [--interactive] [--version version] [--locality locality] [--sealing | \

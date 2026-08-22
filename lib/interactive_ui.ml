@@ -84,7 +84,10 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       assert (max_width >= 4);
       let s = Z.format "%X" z in
       if String.length s > max_width then
-        let ndigits = max_width - 2 (* ".." *) in
+        let ndigits =
+          max_width - 2
+          (* ".." *)
+        in
         let ndigits_l = ndigits / 2 and ndigits_r = (ndigits / 2) + (ndigits mod 2) in
         String.sub s 0 ndigits_l ^ ".." ^ String.sub s (ndigits_l + 2) ndigits_r
       else s
@@ -227,10 +230,10 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       let at_pc a = at_reg pc a in
       let img_of_prog a w =
         (match is_in_pc_range a with
-        | `No -> I.string A.empty " "
-        | `AtStart -> I.string A.(fg red) "┏"
-        | `InRange -> I.string A.(fg red) "┃"
-        | `AtLast -> I.string A.(fg red) "┗")
+          | `No -> I.string A.empty " "
+          | `AtStart -> I.string A.(fg red) "┏"
+          | `InRange -> I.string A.(fg red) "┃"
+          | `AtLast -> I.string A.(fg red) "┗")
         <|> (if at_pc a then I.string A.(fg red) " ▶ " else I.string A.empty "   ")
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> I.string A.empty "  " <|> Word.ui w Left <|> I.string A.empty "  "
@@ -249,10 +252,10 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         <|> Addr.ui ~attr:A.(fg yellow) a
         <|> (if at_stk a then I.string A.(fg color_indicator) " ◀ " else I.string A.empty "   ")
         <|> (match is_in_stk_range a with
-            | `No -> I.string A.empty " "
-            | `AtStart -> I.string A.(fg color_indicator) "┓"
-            | `InRange -> I.string A.(fg color_indicator) "┃"
-            | `AtLast -> I.string A.(fg color_indicator) "┛")
+          | `No -> I.string A.empty " "
+          | `AtStart -> I.string A.(fg color_indicator) "┓"
+          | `InRange -> I.string A.(fg color_indicator) "┃"
+          | `AtLast -> I.string A.(fg color_indicator) "┛")
         |> I.hsnap ~align:`Right width
       in
       I.string A.empty "STACK" |> I.hsnap ~align:`Right width
@@ -304,11 +307,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         let start_addr_int = Z.to_int start_addr in
         CCList.(start_addr_int --^ (start_addr_int + height))
         |> List.filter (fun a ->
-               a >= 0 && (!Parameters.flags.max_addr = Inf || a < Z.to_int Cfg.addr_max))
+            a >= 0 && (!Parameters.flags.max_addr = Inf || a < Z.to_int Cfg.addr_max))
         |> List.map (fun a ->
-               Z.
-                 ( ~$a,
-                   match Machine.MemMap.find_opt ~$a mem with Some w -> w | None -> Ast.I Z.zero ))
+            Z.(~$a, match Machine.MemMap.find_opt ~$a mem with Some w -> w | None -> Ast.I Z.zero))
       in
 
       let start_prog = upd_prog pc height start_prog 2 in
