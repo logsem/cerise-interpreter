@@ -1,6 +1,7 @@
 (library
  (name cerise)
  (public_name cerise-interpreter)
+ (private_modules parser_driver)
  (libraries containers menhirLib zarith))
 
 (ocamllex lexer lexer_regfile)
