@@ -1,9 +1,10 @@
 (library
  (name cerise)
  (public_name cerise-interpreter)
- (libraries containers zarith))
+ (libraries containers menhirLib zarith))
 
 (ocamllex lexer lexer_regfile)
 
 (menhir
- (modules parser parser_regfile))
+ (modules parser parser_regfile)
+ (flags --table))

@@ -28,7 +28,7 @@
             };
 
           nativeBuildInputs = [ menhir ];
-          buildInputs = [ containers notty-community zarith ];
+          buildInputs = [ containers menhirLib notty-community zarith ];
           checkInputs = [ alcotest ];
 
           doCheck = true;

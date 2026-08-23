@@ -27,7 +27,9 @@ rule token = parse
 | '\n' { Lexing.new_line lexbuf; token lexbuf }
 | ';' { comment lexbuf }
 | ((digit+) | ("0x" hex+)) as i { try INT (int_of_string i)
-                                  with Failure _ -> error lexbuf ("Invalid integer '" ^ i ^ "'.")}
+                                  with Failure _ -> error lexbuf
+                                    ("invalid integer '" ^ i
+                                     ^ "'; use a value that fits in a machine integer")}
 | ("Inf" | "inf" | "∞") { INF }
 
 (* registers *)
@@ -114,7 +116,9 @@ rule token = parse
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }
 | label as lbl { LABEL (lbl) }
-| _ as c { error lexbuf (Printf.sprintf "unexpected character %C" c) }
+| _ as c { error lexbuf
+              (Printf.sprintf
+                 "unexpected character %C; remove it or replace it with a valid Cerise token" c) }
 
 and comment = parse
 | eof { EOF }
