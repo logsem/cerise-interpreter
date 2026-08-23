@@ -9,6 +9,6 @@ depends: [
   "menhirLib"
   "zarith"
   "containers"
-  "alcotest"
+  "alcotest" {with-test}
   "notty-community"
 ]

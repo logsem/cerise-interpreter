@@ -1,6 +1,9 @@
-open Cerise
 open Cerise.Pretty_printer
 open Cerise.Ast
+module Encode = Cerise_internal.Encode
+module Ir = Cerise_internal.Ir
+module Lexer = Cerise_internal.Lexer
+module Parser = Cerise_internal.Parser
 
 let statement_eq (a : statement) (b : statement) = a = b
 let pprint_statement = Fmt.of_to_string string_of_statement

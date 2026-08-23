@@ -1,6 +1,9 @@
 open Cerise
 open Cerise.Machine
 open Cerise.Ast
+module Ir = Cerise_internal.Ir
+module Lexer = Cerise_internal.Lexer
+module Parser = Cerise_internal.Parser
 
 let make_test_list (dir : string) : string array =
   try Sys.readdir dir with Failure _ -> raise Sys.Break

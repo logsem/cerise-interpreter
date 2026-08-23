@@ -1,0 +1,11 @@
+(library
+ (name cerise_internal)
+ (package cerise-interpreter)
+ (private_modules parser_driver)
+ (libraries containers menhirLib zarith))
+
+(ocamllex lexer lexer_regfile)
+
+(menhir
+ (modules parser parser_regfile)
+ (flags --table))
