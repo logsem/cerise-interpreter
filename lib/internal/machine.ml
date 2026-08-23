@@ -65,14 +65,6 @@ let upd_reg (r : regname) (w : word) ({ reg; mem } : exec_conf) : exec_conf =
   { reg = RegMap.add r w reg; mem }
 
 let init_mem_state (addr_start : Z.t) (prog : t) : mem_state =
-  let zeroed_mem =
-    let rec loop (i : Z.t) m =
-      let addr_max = Parameters.get_max_addr () in
-      (* NB: addr_max is not addressable *)
-      if i >= addr_max then m else loop Z.(i + ~$1) (MemMap.add i (I ~$0) m)
-    in
-    loop Z.zero MemMap.empty
-  in
   let enc_prog =
     List.to_seq
     @@ List.mapi
@@ -89,9 +81,13 @@ let init_mem_state (addr_start : Z.t) (prog : t) : mem_state =
              | Word (Ast.Sealed (o, sb)) -> Sealed (o, sb) ))
          prog
   in
-  MemMap.add_seq enc_prog zeroed_mem
+  MemMap.of_seq enc_prog
 
-let get_mem (addr : Z.t) (conf : exec_conf) : word option = MemMap.find_opt addr conf.mem
+let get_mem (addr : Z.t) (conf : exec_conf) : word option =
+  match MemMap.find_opt addr conf.mem with
+  | Some _ as word -> word
+  | None -> if Z.(addr >= zero && addr < Parameters.get_max_addr ()) then Some (I Z.zero) else None
+
 let ( @? ) x y = get_mem x y
 
 let upd_mem (addr : Z.t) (w : word) ({ reg; mem } : exec_conf) : exec_conf =

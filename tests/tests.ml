@@ -4,6 +4,8 @@ module Encode = Cerise_internal.Encode
 module Ir = Cerise_internal.Ir
 module Lexer = Cerise_internal.Lexer
 module Parser = Cerise_internal.Parser
+module Machine = Cerise.Machine
+module Parameters = Cerise.Parameters
 
 let statement_eq (a : statement) (b : statement) = a = b
 let pprint_statement = Fmt.of_to_string string_of_statement
@@ -11,6 +13,7 @@ let machine_op_eq (a : machine_op) (b : machine_op) = a = b
 let pprint_machine_op = Fmt.of_to_string string_of_machine_op
 let statement_tst = Alcotest.testable pprint_statement statement_eq
 let machine_op_tst = Alcotest.testable pprint_machine_op machine_op_eq
+let word_tst = Alcotest.testable (Fmt.of_to_string string_of_word) ( = )
 
 module To_test = struct
   let lex_parse x = List.hd @@ Ir.translate_prog @@ Parser.main Lexer.token @@ Lexing.from_string x
@@ -133,6 +136,47 @@ let make_enc_dec_stm_tests (stm, test_name) =
   Alcotest.test_case test_name `Quick (fun _ ->
       Alcotest.(check machine_op_tst) "same statement" stm (To_test.enc_dec_op stm))
 
+let test_sparse_zeroed_memory () =
+  let previous_flags = !Parameters.flags in
+  Fun.protect
+    ~finally:(fun () -> Parameters.flags := previous_flags)
+    (fun () ->
+      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      let memory = Machine.init_mem_state Z.zero [] in
+      Alcotest.(check int) "empty backing map" 0 (Machine.MemMap.cardinal memory);
+      let machine = Machine.init Machine.RegMap.empty memory in
+      Alcotest.(check (option word_tst))
+        "first address is zero" (Some (I Z.zero)) (Machine.read_mem Z.zero machine);
+      Alcotest.(check (option word_tst))
+        "last address is zero" (Some (I Z.zero))
+        (Machine.read_mem (Z.of_int 3) machine);
+      Alcotest.(check (option word_tst))
+        "negative address is unmapped" None
+        (Machine.read_mem Z.minus_one machine);
+      Alcotest.(check (option word_tst))
+        "upper bound is unmapped" None
+        (Machine.read_mem (Z.of_int 4) machine))
+
+let test_sparse_program_memory () =
+  let previous_flags = !Parameters.flags in
+  Fun.protect
+    ~finally:(fun () -> Parameters.flags := previous_flags)
+    (fun () ->
+      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      let memory = Machine.init_mem_state (Z.of_int 2) [ Word (I (Z.of_int 42)) ] in
+      Alcotest.(check int) "only program words are stored" 1 (Machine.MemMap.cardinal memory);
+      let machine = Machine.init Machine.RegMap.empty memory in
+      Alcotest.(check (option word_tst))
+        "program word overrides zero"
+        (Some (I (Z.of_int 42)))
+        (Machine.read_mem (Z.of_int 2) machine);
+      Alcotest.(check (option word_tst))
+        "adjacent address remains zero" (Some (I Z.zero))
+        (Machine.read_mem (Z.of_int 3) machine);
+      let machine = Machine.set_mem Z.one (I Z.one) machine in
+      Alcotest.(check (option word_tst))
+        "writes remain readable" (Some (I Z.one)) (Machine.read_mem Z.one machine))
+
 (* TODO add test cases for mul/rem/div *)
 let test_enc_dec_stm_list =
   [
@@ -247,4 +291,10 @@ let () =
         :: test_case "encode-decode pos/pos int" `Quick test_encode_decode_pos_pos_int
         :: List.map test_encode_decode_int_bulk test_int_pair_list );
       ("Encode/Decode Statement", List.map make_enc_dec_stm_tests test_enc_dec_stm_list);
+      ( "Memory",
+        [
+          test_case "zero-filled memory uses a sparse backing map" `Quick test_sparse_zeroed_memory;
+          test_case "program words and writes override implicit zeroes" `Quick
+            test_sparse_program_memory;
+        ] );
     ]

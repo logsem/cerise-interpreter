@@ -4,6 +4,8 @@ module RegMap : Map.S with type key = regname
 
 type exec_state = Running | Halted | Failed
 type reg_state = word RegMap.t
+
+(* Sparse backing map. Missing addressable words are read as integer zero by [read_mem]. *)
 type mem_state = word MemMap.t
 type exec_conf = { reg : reg_state; mem : mem_state }
 type t
