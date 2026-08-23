@@ -185,10 +185,10 @@ let test_sparse_zeroed_memory () =
   Fun.protect
     ~finally:(fun () -> Parameters.flags := previous_flags)
     (fun () ->
-      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      Parameters.flags := { previous_flags with max_addr = Z.of_int 4 };
       let memory = Machine.init_mem_state Z.zero [] in
       Alcotest.(check int) "empty backing map" 0 (Machine.MemMap.cardinal memory);
-      let machine = Machine.init Machine.RegMap.empty memory in
+      let machine = Machine.init Machine.RegMap.empty Machine.SRegMap.empty memory in
       Alcotest.(check (option word_tst))
         "first address is zero" (Some (I Z.zero)) (Machine.read_mem Z.zero machine);
       Alcotest.(check (option word_tst))
@@ -206,10 +206,10 @@ let test_sparse_program_memory () =
   Fun.protect
     ~finally:(fun () -> Parameters.flags := previous_flags)
     (fun () ->
-      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      Parameters.flags := { previous_flags with max_addr = Z.of_int 4 };
       let memory = Machine.init_mem_state (Z.of_int 2) [ Word (I (Z.of_int 42)) ] in
       Alcotest.(check int) "only program words are stored" 1 (Machine.MemMap.cardinal memory);
-      let machine = Machine.init Machine.RegMap.empty memory in
+      let machine = Machine.init Machine.RegMap.empty Machine.SRegMap.empty memory in
       Alcotest.(check (option word_tst))
         "program word overrides zero"
         (Some (I (Z.of_int 42)))
