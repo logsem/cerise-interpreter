@@ -30,6 +30,8 @@ rule token = parse
                                   with Failure _ -> error lexbuf
                                     ("invalid integer '" ^ i
                                      ^ "'; use a value that fits in a machine integer")}
+| ("Inf" | "inf" | "∞") { error lexbuf
+    "infinite values are not supported by Griotte; use a finite integer" }
 
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
@@ -68,9 +70,10 @@ rule token = parse
 | ['c' 'C'] ['a' 'A'] '5' { CA5 }
 | ['c' 'C'] ['a' 'A'] '6' { CA6 }
 | ['c' 'C'] ['a' 'A'] '7' { CA7 }
-
 | ['r' 'R'] (reg_num as n) { try REG (int_of_string n)
                              with Failure _ -> error lexbuf ("Invalid register id '" ^ n ^ "'.")}
+| (['r' 'R'] digit+ as r) { error lexbuf
+    ("invalid register '" ^ r ^ "'; use `r0`–`r31`") }
 
 (* system register *)
 | ['m' 'M'] ['t' 'T'] ['d' 'D'] ['c' 'C'] { MTDC }

@@ -39,7 +39,8 @@ let string_of_regname (r : regname) : string =
       | 14 -> "ca4"
       | 15 -> "ca5"
       | 16 -> "ca6"
-      | 17 -> "ca7")
+      | 17 -> "ca7"
+      | i -> "r" ^ string_of_int i)
 
 (* if r = csp then "csp" else if r = cgp then "cgp" else "r" ^ string_of_int i *)
 

@@ -33,9 +33,9 @@ let rec eval_expr (e : expr) (max_addr : Z.t) : Z.t =
   in
   let lshiftl (z1 : Z.t) (z2 : Z.t) : Z.t =
     print_string (Z.to_string z1 ^ "\n");
-    print_newline;
+    print_newline ();
     print_string (Z.to_string z2 ^ "\n");
-    print_newline;
+    print_newline ();
     print_string (Z.to_string (Z.of_int (Z.to_int z1 lsl Z.to_int z2)) ^ "\n");
     Z.of_int (Z.to_int z1 lsl Z.to_int z2)
   in

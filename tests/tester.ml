@@ -65,7 +65,7 @@ let test_negatives =
          test_case
            (Printf.sprintf "%s should end in Failed state" t)
            `Quick
-          (test_state Failed (Machine.get_exec_state (run_prog (path ^ t)))))
+           (test_state Failed (Machine.get_exec_state (run_prog (path ^ t)))))
        test_names
 
 (* let test_mov_test = *)

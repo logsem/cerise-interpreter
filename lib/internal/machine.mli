@@ -17,6 +17,7 @@ val init_reg_state_zeros : reg_state
 val init_sreg_state_zeros : sreg_state
 val init_mem_state : Z.t -> Ast.t -> mem_state
 val init : word RegMap.t -> word SRegMap.t -> word MemMap.t -> t
+val check_init_config : t -> unit
 val step : t -> t option
 val step_n : t -> int -> t option
 val run : t -> t

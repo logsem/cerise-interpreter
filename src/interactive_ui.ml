@@ -2,7 +2,6 @@ open Notty
 open Notty.Infix
 open Notty_unix
 open Cerise
-open Parameters
 
 type side = Left | Right
 (* ui components *)
@@ -326,8 +325,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       let addr_show (start_addr : Z.t) =
         let start_addr_int = Z.to_int start_addr in
         CCList.(start_addr_int --^ (start_addr_int + height))
-        |> List.filter (fun a ->
-            a >= 0 && a < Z.to_int Cfg.addr_max)
+        |> List.filter (fun a -> a >= 0 && a < Z.to_int Cfg.addr_max)
         |> List.map (fun a ->
             Z.(~$a, match Machine.MemMap.find_opt ~$a mem with Some w -> w | None -> Ast.I Z.zero))
       in

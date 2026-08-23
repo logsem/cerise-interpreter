@@ -6,27 +6,9 @@ type machineFlags = {
 
 let max_addr = Z.div (Z.of_int32 Int32.max_int) (Z.of_int 4096) (* (2^31 - 1) / 2^12 *)
 let max_otype = Z.div (Z.of_int32 Int32.max_int) (Z.of_int 4096) (* (2^31 - 1) / 2^12 *)
-
-let vanilla_cerise : machineFlags =
-  {
-    version = "vanilla-cerise";
-    max_addr;
-    max_otype;
-  }
-
-let full_cerise : machineFlags =
-  {
-    version = "cerise";
-    max_addr;
-    max_otype;
-  }
-
-let griotte : machineFlags =
-  {
-    version = "griotte";
-    max_addr;
-    max_otype = Z.of_int 15;
-  }
+let vanilla_cerise : machineFlags = { version = "vanilla-cerise"; max_addr; max_otype }
+let full_cerise : machineFlags = { version = "cerise"; max_addr; max_otype }
+let griotte : machineFlags = { version = "griotte"; max_addr; max_otype = Z.of_int 15 }
 let default : machineFlags = griotte
 let flags : machineFlags ref = ref default
 

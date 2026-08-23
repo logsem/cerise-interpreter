@@ -20,15 +20,6 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
       Result.Error
         "A word was used where an instruction was expected. Prefix literal data with `#`, or use a \
          machine instruction."
-  | Asm_ir.UnexpandedMacroException construct ->
-      Result.Error ("Internal assembler error: unexpanded " ^ construct ^ ".")
-  | Asm_ir.UnresolvedExpressionException _ ->
-      Result.Error "Internal assembler error: unresolved expression reached IR translation."
-  | Asm_ir.UnresolvedIrException construct ->
-      Result.Error ("Internal assembler error: unresolved " ^ construct ^ " reached IR translation.")
-  | Parameters.NotSupported message ->
-      Result.Error
-        (message ^ ". Choose a compatible architecture or remove the unsupported construct.")
   | Failure message -> Result.Error (failure_message message)
 
 let parse_prog_from_file (filename : string) : (Ast.t, string) Result.t =
@@ -55,8 +46,6 @@ let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) :
   with
   | Irreg.ExprException message ->
       Result.Error (message ^ ". Replace `Inf` with a finite integer in this value.")
-  | Parameters.NotSupported message ->
-      Result.Error (message ^ ". Choose a compatible architecture or remove the unsupported value.")
   | Failure message -> Result.Error (failure_message message)
 
 let parse_regfile_from_file (filename : string) :

@@ -60,12 +60,12 @@ let () =
                  "| ^";
                ]);
           Alcotest.test_case "invalid register" `Quick
-            (program "jmp r32" [ "unexpected token \"r32\""; "`r0`–`r31`" ]);
+            (program "jmp r32" [ "invalid register 'r32'"; "`r0`–`r31`" ]);
           Alcotest.test_case "unknown label" `Quick
             (program "mov r1 missing" [ "Unknown label \"missing\""; "Define it with `missing:`" ]);
           Alcotest.test_case "invalid expression" `Quick
             (program "mov r1 Inf"
-               [ "Constants expressions cannot be ∞"; "Replace `Inf` with a finite integer" ]);
+               [ "infinite values are not supported by Griotte"; "use a finite integer" ]);
           Alcotest.test_case "invalid integer" `Quick
             (program "mov r1 999999999999999999999999999999"
                [ "invalid integer"; "use a value that fits in a machine integer" ]);
@@ -92,7 +92,7 @@ let () =
                ]);
           Alcotest.test_case "invalid expression" `Quick
             (regfile "pc := Inf"
-               [ "Integer machine word cannot be ∞"; "Replace `Inf` with a finite integer" ]);
+               [ "infinite values are not supported by Griotte"; "use a finite integer" ]);
         ] );
       ( "macros",
         [

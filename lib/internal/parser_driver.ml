@@ -66,11 +66,11 @@ let failure_message message =
 let program_candidates =
   [
     ("an instruction", Parser.HALT);
-    ("a register (`pc`, `stk`, `ddc`, or `r0`–`r31`)", Parser.REG 0);
-    ("an integer, `Inf`, or label", Parser.INT 0);
-    ("a permission such as `RO` or `RWX`", Parser.RO);
+    ("a register (`pc`, a CHERIoT register name, or `r0`–`r31`)", Parser.REG 0);
+    ("an integer or label", Parser.INT 0);
+    ("a permission such as `O` or `[R W LG LM]`", Parser.O);
     ("a sealing permission (`SO`, `S`, `U`, or `SU`)", Parser.SO);
-    ("a locality (`GLOBAL`, `LOCAL`, or `DIRECTED`)", Parser.GLOBAL);
+    ("a locality (`GLOBAL` or `LOCAL`)", Parser.GLOBAL);
     ("a word type such as `Int` or `Cap`", Parser.Int);
     ("a label definition ending in `:`", Parser.LABELDEF "label");
     ("a word declaration beginning with `#`", Parser.SHARP);
@@ -94,11 +94,11 @@ let program_candidates =
 
 let regfile_candidates =
   [
-    ("a register (`pc`, `stk`, `ddc`, or `r0`–`r31`)", Parser_regfile.REG 0);
-    ("an integer, `Inf`, `MAX_ADDR`, or `STK_ADDR`", Parser_regfile.INT 0);
-    ("a permission such as `RO` or `RWX`", Parser_regfile.RO);
+    ("a register (`pc`, a CHERIoT register name, or `r0`–`r31`)", Parser_regfile.REG 0);
+    ("an integer or `MAX_ADDR`", Parser_regfile.INT 0);
+    ("a permission such as `O` or `[R W LG LM]`", Parser_regfile.O);
     ("a sealing permission (`SO`, `S`, `U`, or `SU`)", Parser_regfile.SO);
-    ("a locality (`GLOBAL`, `LOCAL`, or `DIRECTED`)", Parser_regfile.GLOBAL);
+    ("a locality (`GLOBAL` or `LOCAL`)", Parser_regfile.GLOBAL);
     ("`:=`", Parser_regfile.AFFECT);
     ("`(`", Parser_regfile.LPAREN);
     ("`)`", Parser_regfile.RPAREN);

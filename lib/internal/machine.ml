@@ -3,7 +3,6 @@ open Ast
 
 let ( ~$ ) = Z.( ~$ )
 
-exception NotYetImplemented
 exception CheckInitFailed of Ast.word
 
 module MemMap = Map.Make (Z)
@@ -252,20 +251,6 @@ let get_wtype (w : word) : wtype =
 
 let get_locality_sealable (s : sealable) =
   match s with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
-
-let is_sealrange (sb : sealable) = match sb with SealRange _ -> true | _ -> false
-let is_cap (sb : sealable) = match sb with Cap _ -> true | _ -> false
-
-let load_borrow_sealable (w : sealable) : sealable =
-  match w with
-  | Cap (p, _, b, e, a) -> Cap (p, Local, b, e, a)
-  | SealRange (p, _, b, e, a) -> SealRange (p, Local, b, e, a)
-
-let load_borrow (w : word) : word =
-  match w with
-  | Sealable s -> Sealable (load_borrow_sealable s)
-  | Sealed (ot, s) -> Sealed (ot, load_borrow_sealable s)
-  | _ -> w
 
 let load_deep_local_sealable (w : sealable) : sealable =
   match w with
