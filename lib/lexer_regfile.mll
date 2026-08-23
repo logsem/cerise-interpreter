@@ -3,9 +3,13 @@
   exception Error of string
   let error lexbuf msg =
     let position = Lexing.lexeme_start_p lexbuf in
-    let err_str = Printf.sprintf "Lexing error in file %s at position %d:%d\n"
-                  position.pos_fname position.pos_lnum (position.pos_cnum - position.pos_bol + 1)
-                  ^ msg ^ "\n" in
+    let column = position.pos_cnum - position.pos_bol + 1 in
+    let location =
+      if String.equal position.pos_fname "" then
+        Printf.sprintf "line %d, column %d" position.pos_lnum column
+      else Printf.sprintf "%s:%d:%d" position.pos_fname position.pos_lnum column
+    in
+    let err_str = Printf.sprintf "%s: lexical error: %s" location msg in
     raise (Error err_str)
 }
 
@@ -72,6 +76,7 @@ rule token = parse
 | 'S' { S }
 | 'U' { U }
 | "SU" { SU }
+| _ as c { error lexbuf (Printf.sprintf "unexpected character %C" c) }
 
 and comment = parse
 | eof { EOF }
