@@ -16,8 +16,8 @@ loader_end:
 
 ;; Client
 C:
-    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
-    #0xFF                                                               ; placeholder for assert
+    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
+    #(E-[X Ow LG LM], Global, assert, assert_end, assert)                 ; assert
     #{9: ([R Ow LG LM], Global, A_ext, A_ext_end, A_ext_adv)} ; import A.adv
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_insert)} ; import KVS.insert
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_read)} ; import KVS.read
@@ -137,11 +137,19 @@ C_main:
     ;; (* case PASS *)
     mov ct0 ca1
     mov ct1 12
-    sub ct0 ct0 ct1
-    jnz ct0 2
-    jmp 2
-    fail
-    ;; assert didn't fail
+    ;; assert(ct0 == ct1), using import-table offset 1
+    mov ct2 PC
+    getb ct3 ct2
+    geta ct4 ct2
+    sub ct3 ct3 ct4
+    lea ct2 ct3
+    lea ct2 1
+    load ct2 ct2
+    mov ct3 cra
+    jalr cra ct2
+    mov cra ct3
+    mov ct3 0
+    mov ct2 0
     halt
 C_main_end:
 C_end:
@@ -161,7 +169,7 @@ C_ext_end:
 
 ;; Adversary
 A:
-    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
+    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_insert)} ; import KVS.insert
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_read)} ; import KVS.read
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_erase)} ; import KVS.erase
@@ -190,22 +198,19 @@ A_ext_end:
 
 ;; KVS
 KVS:
-    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
+    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
     #[SU, Global, 10, 11, 10] ;; unsealing key for KVS
 KVS_insert:
-    ;; 
-    ;; TODO the computation of labels is wrong: the labels are replaced
-    ;; by their absolute placement, whereas jmp/jnz expects relative displacement
 KVS_insert_kvs_key_check:
-    lt ct1 (-1) ct1
+    lt ct1 (-1) ca1
     jnz ct1 (KVS_insert_kvs_key_check_uint16_min-&CURRENT_ADDR)
     mov ct1 (-1)
     jmp (KVS_insert_kvs_key_ret-&CURRENT_ADDR)
 KVS_insert_kvs_key_check_uint16_min:
-    lt ct1 ct1 65536 
+    lt ct1 ca1 65536
     jnz ct1 (KVS_insert_kvs_key_check_uint16_max-&CURRENT_ADDR)
     mov ct1 (-1)
-    jmp (KVS_insert_kvs_key_ret)
+    jmp (KVS_insert_kvs_key_ret-&CURRENT_ADDR)
 KVS_insert_kvs_key_check_uint16_max:
     mov ct1 0
 KVS_insert_kvs_key_ret:
@@ -302,12 +307,12 @@ KVS_insert_end:
 KVS_read:
 
 KVS_read_kvs_key_check:
-    lt ct1 (-1) ct1
+    lt ct1 (-1) ca1
     jnz ct1 (KVS_read_kvs_key_check_uint16_min-&CURRENT_ADDR)
     mov ct1 (-1)
     jmp (KVS_read_kvs_key_ret-&CURRENT_ADDR)
 KVS_read_kvs_key_check_uint16_min:
-    lt ct1 ct1 65536 
+    lt ct1 ca1 65536
     jnz ct1 (KVS_read_kvs_key_check_uint16_max-&CURRENT_ADDR)
     mov ct1 (-1)
     jmp (KVS_read_kvs_key_ret-&CURRENT_ADDR)
@@ -388,12 +393,12 @@ KVS_read_end:
 
 KVS_erase:
 KVS_erase_kvs_key_check:
-    lt ct1 (-1) ct1
+    lt ct1 (-1) ca1
     jnz ct1 (KVS_erase_kvs_key_check_uint16_min-&CURRENT_ADDR)
     mov ct1 (-1)
-    jmp (KVS_erase_kvs_key_ret)
+    jmp (KVS_erase_kvs_key_ret-&CURRENT_ADDR)
 KVS_erase_kvs_key_check_uint16_min:
-    lt ct1 ct1 65536 
+    lt ct1 ca1 65536
     jnz ct1 (KVS_erase_kvs_key_check_uint16_max-&CURRENT_ADDR)
     mov ct1 (-1)
     jmp (KVS_erase_kvs_key_ret-&CURRENT_ADDR)
@@ -530,6 +535,30 @@ KVS_ext_erase: #(((KVS_erase - KVS) << 3) || 2)                         ; offset
 KVS_ext_end:
 
 
+;; Assert library from theories/case_studies/macros/assert.v.
+assert:
+    sub ct0 ct0 ct1
+    jnz ct0 (assert_fail - &CURRENT_ADDR)
+assert_success:
+    mov ct0 0
+    mov ct1 0
+    jalr cnull cra
+assert_fail:
+    mov ct1 PC
+    ;; ct1 contains the address of the preceding mov, hence the +1.
+    lea ct1 (assert_flag_cap + 1 - &CURRENT_ADDR)
+    load ct1 ct1
+    store ct1 1
+    mov ct0 0
+    mov ct1 0
+    jalr cnull cra
+assert_flag_cap:
+    #([R W LG LM], Global, assert_flag, assert_data_end, assert_flag)
+assert_end:
+assert_flag:
+    #0
+assert_data_end:
+
 ;; Concatenate this file at the end of any example that require the switcher
 switcher:
     #[SU, Global, 9, 10, 9]
@@ -537,11 +566,11 @@ switcher_cc:
     getp ct2 csp
     mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
-    jnz ct2 switcher_force_unwind
+    jnz ct2 (switcher_force_unwind - &CURRENT_ADDR)
     getl ct2 csp
     mov ctp Local
     sub ct2 ct2 ctp
-    jnz ct2 switcher_force_unwind
+    jnz ct2 (switcher_force_unwind - &CURRENT_ADDR)
     store csp cs0
     lea csp 1
     store csp cs1
@@ -556,7 +585,7 @@ switcher_cc:
     gete ctp ct2
     lt ctp cs0 ctp
     jnz ctp 2
-    jmp switcher_trusted_stack_exhausted
+    jmp (switcher_trusted_stack_exhausted - &CURRENT_ADDR)
     lea ct2 1
     store ct2 csp
     writesr mtdc ct2
@@ -689,9 +718,9 @@ switcher_trusted_stack_exhausted:
     load cs0 csp
     mov ca0 -141
     mov ca1 0
-    jmp switcher_callee_dead_zeros
+    jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
     mov ca0 -1
     mov ca1 0
-    jmp switcher_after_compartment_call
+    jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

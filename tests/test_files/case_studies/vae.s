@@ -1,162 +1,169 @@
-    ;; TODO Something that could be cool !!
-    ;; is to randomly generate code for B_f and C_g,
-    ;; and run the tests for all generated code,
-    ;; and have an assert flag in A,
-    ;; and verify that for any executions, the flag does not change
-
-
-    ;; main is just a very basic loader that jumps to the main compartment A
-    ;; and terminates the machine
+;; Very Awkward Example: nested callbacks preserve well-bracketed control flow.
 loader:
-    #([X Ow LG LM], Global, A, A_end, A_main)
-    #([R W LG LM], Global, A_data, A_data_end, A_data)
-
+    #([X Ow LG LM], Global, VAE, VAE_end, VAE_init)
+    #([R W LG LM], Global, VAE_data, VAE_data_end, VAE_data)
 loader_main:
     mov cra PC
     lea cra -1
-    load cgp cra                 ; puts CGP_A in CGP
+    load cgp cra
     lea cra -1
     load cra cra
-    jalr cra cra                  ; jumps to A_main
-    fail                        ; should never been reach, as A_main terminates the program
+    jalr cra cra
+    fail
 loader_end:
 
-A:
+VAE:
     #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc)
     #(E-[X Ow LG LM], Global, assert, assert_end, assert)
-    #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_f)}
-    #{9: ([R Ow LG LM], Global, C_ext, C_ext_end, C_ext_g)}
-A_main:
-    ;; b := 0; c := 0; call B.f with a bounded capability to b.
+    #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_adv)}
+VAE_init:
     store cgp 0
-    mov ca0 cgp
-    lea cgp 1
-    store cgp 0
-    geta ct0 ca0
-    add ct1 ct0 1
-    subseg ca0 ct0 ct1
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    load ctp ctp
+    mov ct0 PC
+    getb cs0 ct0
+    geta cs1 ct0
+    sub cs0 cs0 cs1
+    lea ct0 cs0
+    load ct0 ct0
     mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
+    getb cs0 ct1
+    geta cs1 ct1
+    sub cs0 cs0 cs1
+    lea ct1 cs0
     lea ct1 2
     load ct1 ct1
-    jalr cra ctp
-    ;; assert(c == 0)
-    load ct0 cgp
-    mov ct1 0
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
-    ;; b := 42; call C.g with a bounded capability to c.
-    mov ca0 cgp
-    mov ca1 0
-    lea cgp -1
-    store cgp 42
-    lea cgp 1
-    geta ct0 ca0
-    add ct1 ct0 1
-    subseg ca0 ct0 ct1
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    load ctp ctp
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 3
-    load ct1 ct1
-    jalr cra ctp
-    ;; assert(b == 42)
-    lea cgp -1
-    load ct0 cgp
-    mov ct1 42
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    jalr cra ct0
     halt
-A_end:
+
+VAE_awkward:
+    store cgp 0
+    ;; ca0 is the adversary callback g.
+    mov ct1 ca0
+    mov ct0 PC
+    getb ct2 ct0
+    geta ct3 ct0
+    sub ct2 ct2 ct3
+    lea ct0 ct2
+    load ct0 ct0
+    mov cs0 cra
+    mov cs1 ct1
+    mov ca0 0
+    jalr cra ct0
+    store cgp 1
+    mov cra cs0
+    mov ct1 cs1
+    mov ct0 PC
+    getb ct2 ct0
+    geta ct3 ct0
+    sub ct2 ct2 ct3
+    lea ct0 ct2
+    load ct0 ct0
+    mov cs0 cra
+    mov ca0 0
+    mov ca1 0
+    jalr cra ct0
+    load ct0 cgp
+    mov ct1 1
+    ;; assert(ct0 == ct1)
+    mov ct2 PC
+    getb ct3 ct2
+    geta ct4 ct2
+    sub ct3 ct3 ct4
+    lea ct2 ct3
+    lea ct2 1
+    load ct2 ct2
+    mov ct3 cra
+    jalr cra ct2
+    mov cra ct3
+    mov ct3 0
+    mov ct2 0
+    mov cra cs0
+    mov ca0 0
+    mov ca1 0
+    jalr cnull cra
+VAE_end:
 
 B:
-    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
-    ;; no import
-B_f:
-    store ca0 7
-    store csp ca0
+    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc)
+    #{9: ([R Ow LG LM], Global, VAE_ext, VAE_ext_end, VAE_ext_awkward)}
+    #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_g)}
+B_adv:
+    ;; Call VAE.awkward and pass B.g as its callback.
+    mov ct0 PC
+    getb cs0 ct0
+    geta cs1 ct0
+    sub cs0 cs0 cs1
+    lea ct0 cs0
+    load ct0 ct0
+    mov ct1 PC
+    getb cs0 ct1
+    geta cs1 ct1
+    sub cs0 cs0 cs1
+    lea ct1 cs0
+    lea ct1 1
+    load ct1 ct1
+    mov ca0 PC
+    getb cs0 ca0
+    geta cs1 ca0
+    sub cs0 cs0 cs1
+    lea ca0 cs0
+    lea ca0 2
+    load ca0 ca0
+    mov cs0 cra
+    jalr cra ct0
+    mov cra cs0
+    jalr cnull cra
+
+B_g:
+    ;; On the first callback, make one nested call to awkward. The flag avoids
+    ;; unbounded recursion; subsequent callbacks return normally.
+    load ct0 cgp
+    jnz ct0 (B_g_return - &CURRENT_ADDR)
+    store cgp 1
+    mov ct0 PC
+    getb cs0 ct0
+    geta cs1 ct0
+    sub cs0 cs0 cs1
+    lea ct0 cs0
+    load ct0 ct0
+    mov ct1 PC
+    getb cs0 ct1
+    geta cs1 ct1
+    sub cs0 cs0 cs1
+    lea ct1 cs0
+    lea ct1 1
+    load ct1 ct1
+    mov ca0 PC
+    getb cs0 ca0
+    geta cs1 ca0
+    sub cs0 cs0 cs1
+    lea ca0 cs0
+    lea ca0 2
+    load ca0 ca0
+    mov cs0 cra
+    jalr cra ct0
+    mov cra cs0
+B_g_return:
     jalr cnull cra
 B_end:
 
-C:
-    #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
-    ;; no import
-C_g:
-    store ca0 9
-    jalr cnull cra
-C_end:
-
-A_data:
+VAE_data:
     #0
-    #0
-A_data_end:
-
+VAE_data_end:
 B_data:
-    #0x0
+    #0
 B_data_end:
-
-C_data:
-    #0x0
-C_data_end:
-
-;; export table compartment A -> does not export any entry points
-A_ext:
-    #([X Ow LG LM], Global, A, A_end, A)                 ; PCC
-    #([R W LG LM], Global, A_data, A_data_end, A_data)   ; CGP
-A_ext_end:
-
-;; export table compartment B -> exports B_f
+VAE_ext:
+    #([X Ow LG LM], Global, VAE, VAE_end, VAE)
+    #([R W LG LM], Global, VAE_data, VAE_data_end, VAE_data)
+VAE_ext_awkward: #(((VAE_awkward - VAE) << 3) || 1)
+VAE_ext_end:
 B_ext:
-    #([X Ow LG LM], Global, B, B_end, B)                 ; PCC
-    #([R W LG LM], Global, B_data, B_data_end, B_data)   ; CGP
-B_ext_f: #(((B_f - B) << 3) || 1)                         ; offset_f
+    #([X Ow LG LM], Global, B, B_end, B)
+    #([R W LG LM], Global, B_data, B_data_end, B_data)
+B_ext_adv: #(((B_adv - B) << 3) || 0)
+B_ext_g: #(((B_g - B) << 3) || 0)
 B_ext_end:
 
-;; export table compartment C -> exports C_g
-C_ext:
-    #([X Ow LG LM], Global, C, C_end, C)                 ; PCC
-    #([R W LG LM], Global, C_data, C_data_end, C_data)   ; CGP
-C_ext_g: #(((C_g - C) << 3) || 1)                         ; offset_g
-C_ext_end:
-
-;; Assert library from theories/case_studies/macros/assert.v.
 assert:
     sub ct0 ct0 ct1
     jnz ct0 (assert_fail - &CURRENT_ADDR)
@@ -180,8 +187,7 @@ assert_flag:
     #0
 assert_data_end:
 
-
-;; Concatenate this file at the end of any example that require the switcher
+;; Griotte trusted switcher.
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
@@ -296,7 +302,7 @@ switcher_zero_stk_init_post:
     mov ct1 csp
 switcher_zero_stk_loop_post:
     jnz ct0 2
-    jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)  ;
+    jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)
     store ct1 0
     lea ct1 1
     add ct0 ct0 1
