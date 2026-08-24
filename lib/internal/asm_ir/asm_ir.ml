@@ -1,8 +1,8 @@
-(* Type definitions for the syntax AST *)
+(* Types and final AST translation for the assembler intermediate representation. *)
 
-exception UnknownLabelException of string
 exception ExprException of string
 exception UnexpandedMacroException of string
+exception UnresolvedIrException of string
 
 type location = { filename : string; line : int; column : int }
 
@@ -29,6 +29,8 @@ type expr =
   | AddOp of expr * expr
   | SubOp of expr * expr
   | ExprParam of string
+
+exception UnresolvedExpressionException of expr
 
 type perm =
   | O
@@ -116,25 +118,6 @@ and macro_definition = {
 
 type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
-type env = (string * int) list
-
-let rec compute_env (i : int) (prog : t) (envr : env) : env =
-  match prog with
-  | [] -> envr
-  | Lbl s :: p -> compute_env (i + 1) p ((s, i - List.length envr) :: envr)
-  | _ :: p -> compute_env (i + 1) p envr
-
-let rec eval_expr (envr : env) (e : expr) : Infinite_z.t =
-  match e with
-  | IntLit i -> i
-  | Symbol name -> raise (UnexpandedMacroException ("unresolved symbol " ^ name))
-  | Label s -> (
-      match List.find_opt (fun p -> fst p = s) envr with
-      | Some (_, i) -> Int (Z.of_int i)
-      | None -> raise (UnknownLabelException s))
-  | AddOp (e1, e2) -> Infinite_z.(eval_expr envr e1 + eval_expr envr e2)
-  | SubOp (e1, e2) -> Infinite_z.(eval_expr envr e1 - eval_expr envr e2)
-  | ExprParam name -> raise (UnexpandedMacroException ("expression parameter $" ^ name))
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -204,10 +187,17 @@ let check_ir_const (c : const_encoded) =
   | PairParam (name, _) -> raise (UnexpandedMacroException ("permission-pair parameter $" ^ name))
   | Wtype _ | ConstExpr _ -> ()
 
-let eval_to_z (envr : env) (e : expr) (except_str : string) =
-  match eval_expr envr e with Int z -> z | Inf -> raise @@ ExprException except_str
+let resolved_expression (expression : expr) : Infinite_z.t =
+  match expression with
+  | IntLit value -> value
+  | _ -> raise (UnresolvedExpressionException expression)
 
-let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
+let resolved_finite_expression (expression : expr) (error : string) : Z.t =
+  match resolved_expression expression with
+  | Int value -> value
+  | Inf -> raise (ExprException error)
+
+let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
   | ValueParam name -> raise (UnexpandedMacroException ("value parameter $" ^ name))
@@ -215,7 +205,8 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
       check_ir_const c;
       Ast.Const
         (match c with
-        | ConstExpr e -> eval_to_z envr e "Constants expressions cannot be ∞"
+        | ConstExpr expression ->
+            resolved_finite_expression expression "Constants expressions cannot be ∞"
         | Locality l -> Encode.encode_locality (translate_locality l)
         | Perm p -> Encode.encode_perm (translate_perm p)
         | SealPerm sp -> Encode.encode_seal_perm (translate_seal_perm sp)
@@ -226,52 +217,51 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
         | PairParam (name, _) ->
             raise (UnexpandedMacroException ("permission-pair parameter $" ^ name)))
 
-let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
+let translate_sealable (s : sealable) : Ast.sealable =
   match s with
   | Cap (p, l, b, e, a) ->
-      let b' = eval_to_z envr b "Lower capability bound cannot be ∞" in
-      let a' = eval_to_z envr a "Current capability address cannot be ∞" in
-      Ast.Cap (translate_perm p, translate_locality l, b', eval_expr envr e, a')
+      let b' = resolved_finite_expression b "Lower capability bound cannot be ∞" in
+      let a' = resolved_finite_expression a "Current capability address cannot be ∞" in
+      Ast.Cap (translate_perm p, translate_locality l, b', resolved_expression e, a')
   | SealRange (p, l, b, e, a) ->
-      let b' = eval_to_z envr b "Lower otype bound cannot be ∞" in
-      let e' = eval_to_z envr e "Upper otype bound cannot be ∞" in
-      let a' = eval_to_z envr a "Current sealing otype cannot be ∞" in
+      let b' = resolved_finite_expression b "Lower otype bound cannot be ∞" in
+      let e' = resolved_finite_expression e "Upper otype bound cannot be ∞" in
+      let a' = resolved_finite_expression a "Current sealing otype cannot be ∞" in
       Ast.SealRange (translate_seal_perm p, translate_locality l, b', e', a')
 
-let translate_word (envr : env) (w : word) : Ast.statement =
+let translate_word (w : word) : Ast.statement =
   match w with
   | I e ->
-      let z' = eval_to_z envr e "Integer machine word cannot be ∞" in
+      let z' = resolved_finite_expression e "Integer machine word cannot be ∞" in
       Ast.Word (Ast.I z')
-  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable envr sb))
+  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable sb))
   | Sealed (o, sb) ->
-      let ot = eval_to_z envr o "OType of sealed word cannot be ∞" in
-      Ast.Word (Ast.Sealed (ot, translate_sealable envr sb))
+      let ot = resolved_finite_expression o "OType of sealed word cannot be ∞" in
+      Ast.Word (Ast.Sealed (ot, translate_sealable sb))
 
-let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
+let translate_instr (instr : machine_op) : Ast.machine_op =
   match instr with
   | Jmp r -> Ast.Jmp (translate_regname r)
   | Jnz (r1, r2) -> Ast.Jnz (translate_regname r1, translate_regname r2)
-  | Move (r, c) -> Ast.Move (translate_regname r, translate_reg_or_const envr c)
+  | Move (r, c) -> Ast.Move (translate_regname r, translate_reg_or_const c)
   | Load (r1, r2) -> Ast.Load (translate_regname r1, translate_regname r2)
-  | Store (r, c) -> Ast.Store (translate_regname r, translate_reg_or_const envr c)
+  | Store (r, c) -> Ast.Store (translate_regname r, translate_reg_or_const c)
   | Add (r, c1, c2) ->
-      Ast.Add (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.Add (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | Sub (r, c1, c2) ->
-      Ast.Sub (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.Sub (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | Mul (r, c1, c2) ->
-      Ast.Mul (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.Mul (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | Rem (r, c1, c2) ->
-      Ast.Rem (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.Rem (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | Div (r, c1, c2) ->
-      Ast.Div (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.Div (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | Lt (r, c1, c2) ->
-      Ast.Lt (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
-  | Lea (r, c) -> Ast.Lea (translate_regname r, translate_reg_or_const envr c)
-  | Restrict (r, c) -> Ast.Restrict (translate_regname r, translate_reg_or_const envr c)
+      Ast.Lt (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
+  | Lea (r, c) -> Ast.Lea (translate_regname r, translate_reg_or_const c)
+  | Restrict (r, c) -> Ast.Restrict (translate_regname r, translate_reg_or_const c)
   | SubSeg (r, c1, c2) ->
-      Ast.SubSeg
-        (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.SubSeg (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | GetL (r1, r2) -> Ast.GetL (translate_regname r1, translate_regname r2)
   | GetB (r1, r2) -> Ast.GetB (translate_regname r1, translate_regname r2)
   | GetE (r1, r2) -> Ast.GetE (translate_regname r1, translate_regname r2)
@@ -284,15 +274,14 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
       Ast.UnSeal (translate_regname r1, translate_regname r2, translate_regname r3)
   | Invoke (r1, r2) -> Ast.Invoke (translate_regname r1, translate_regname r2)
   | LoadU (r1, r2, c) ->
-      Ast.LoadU (translate_regname r1, translate_regname r2, translate_reg_or_const envr c)
+      Ast.LoadU (translate_regname r1, translate_regname r2, translate_reg_or_const c)
   | StoreU (r, c1, c2) ->
-      Ast.StoreU
-        (translate_regname r, translate_reg_or_const envr c1, translate_reg_or_const envr c2)
+      Ast.StoreU (translate_regname r, translate_reg_or_const c1, translate_reg_or_const c2)
   | PromoteU r -> Ast.PromoteU (translate_regname r)
   | Fail -> Ast.Fail
   | Halt -> Ast.Halt
   | Word w -> raise (WordException w)
-  | Lbl s -> raise (UnknownLabelException s)
+  | Lbl name -> raise (UnresolvedIrException ("label declaration " ^ name))
   | Define (_, _, location) ->
       raise
         (UnexpandedMacroException
@@ -300,13 +289,9 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | MacroDef definition -> raise (UnexpandedMacroException ("macro definition " ^ definition.name))
   | MacroCall call -> raise (UnexpandedMacroException ("macro call " ^ call.name))
 
-let rec translate_prog_aux (envr : env) (prog : t) : Ast.t =
-  match prog with
-  | [] -> []
-  | Lbl _ :: p -> translate_prog_aux envr p
-  | Word w :: p -> translate_word envr w :: translate_prog_aux envr p
-  | instr :: p -> Op (translate_instr envr instr) :: translate_prog_aux envr p
+let translate_statement (statement : statement) : Ast.statement =
+  match statement with
+  | Word word -> translate_word word
+  | instruction -> Op (translate_instr instruction)
 
-let translate_prog (prog : t) : Ast.t =
-  let envr = compute_env 0 prog [] in
-  translate_prog_aux envr prog
+let translate_prog (program : t) : Ast.t = List.map translate_statement program

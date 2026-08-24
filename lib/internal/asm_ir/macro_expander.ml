@@ -1,4 +1,5 @@
-open Ir
+(* Typed macro expansion over assembler IR. *)
+open Asm_ir
 
 exception Expansion_error of string
 

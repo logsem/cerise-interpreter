@@ -1,8 +1,10 @@
 open Cerise.Pretty_printer
 open Cerise.Ast
 module Encode = Cerise_internal.Encode
-module Ir = Cerise_internal.Ir
+module Expression_evaluator = Cerise_internal.Expression_evaluator
+module Asm_ir = Cerise_internal.Asm_ir
 module Lexer = Cerise_internal.Lexer
+module Label_resolver = Cerise_internal.Label_resolver
 module Parser = Cerise_internal.Parser
 module Machine = Cerise.Machine
 module Parameters = Cerise.Parameters
@@ -16,7 +18,10 @@ let machine_op_tst = Alcotest.testable pprint_machine_op machine_op_eq
 let word_tst = Alcotest.testable (Fmt.of_to_string string_of_word) ( = )
 
 module To_test = struct
-  let lex_parse x = List.hd @@ Ir.translate_prog @@ Parser.main Lexer.token @@ Lexing.from_string x
+  let lex_parse x =
+    List.hd @@ Asm_ir.translate_prog @@ Expression_evaluator.evaluate @@ Label_resolver.resolve
+    @@ Parser.main Lexer.token @@ Lexing.from_string x
+
   let enc_interleave a b = Encode.interleave_int (Z.of_string a) (Z.of_string b)
   let enc_int a b = Encode.encode_int_int a b
   let enc_split = Encode.split_int

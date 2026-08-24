@@ -1,6 +1,8 @@
 open Cerise
 open Cerise.Ast
-module Asm_ir = Cerise_internal.Ir
+module Asm_ir = Cerise_internal.Asm_ir
+module Asm_expression_evaluator = Cerise_internal.Expression_evaluator
+module Asm_label_resolver = Cerise_internal.Label_resolver
 module Asm_lexer = Cerise_internal.Lexer
 module Asm_parser = Cerise_internal.Parser
 
@@ -18,6 +20,46 @@ let test_parser_uses_symbol () =
   match Asm_parser.main Asm_lexer.token (Lexing.from_string "mov r1 VALUE") with
   | [ Asm_ir.Move (Asm_ir.Reg 1, Asm_ir.Const (Asm_ir.ConstExpr (Asm_ir.Symbol "VALUE"))) ] -> ()
   | _ -> Alcotest.fail "expected an unresolved Symbol, not a resolved Label"
+
+let test_label_resolution_pass () =
+  let open Asm_ir in
+  let input =
+    [
+      Lbl "start";
+      Move (Reg 1, Const (ConstExpr (AddOp (Label "ending", IntLit (Infinite_z.of_int 1)))));
+      Word (I (SubOp (Label "ending", Label "start")));
+      Lbl "ending";
+      Halt;
+    ]
+  in
+  let expected =
+    [
+      Move
+        ( Reg 1,
+          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
+      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 0))));
+      Halt;
+    ]
+  in
+  Alcotest.(check bool) "resolved IR" true (Asm_label_resolver.resolve input = expected)
+
+let test_expression_evaluation_pass () =
+  let open Asm_ir in
+  let input =
+    [
+      Move
+        ( Reg 1,
+          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
+      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1))));
+    ]
+  in
+  let expected =
+    [
+      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 3))));
+      Word (I (IntLit (Infinite_z.of_int 1)));
+    ]
+  in
+  Alcotest.(check bool) "evaluated IR" true (Asm_expression_evaluator.evaluate input = expected)
 
 let test_literal_definition () =
   check_program "literal definition" [ Op (Move (Reg 1, const 3)) ] "%define VALUE 3\nmov r1 VALUE"
@@ -152,6 +194,8 @@ let () =
       ( "integer definitions",
         [
           Alcotest.test_case "parser symbols" `Quick test_parser_uses_symbol;
+          Alcotest.test_case "label resolution pass" `Quick test_label_resolution_pass;
+          Alcotest.test_case "expression evaluation pass" `Quick test_expression_evaluation_pass;
           Alcotest.test_case "literal" `Quick test_literal_definition;
           Alcotest.test_case "chained and forward" `Quick test_chained_definitions;
           Alcotest.test_case "labels" `Quick test_label_definition;

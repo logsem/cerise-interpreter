@@ -10,22 +10,28 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
         match Macro_expander.expand parsed with
         | Error _ as error -> error
         | Ok expanded ->
-            let program = Ir.translate_prog expanded in
+            let labels_resolved = Label_resolver.resolve expanded in
+            let expressions_evaluated = Expression_evaluator.evaluate labels_resolved in
+            let program = Asm_ir.translate_prog expressions_evaluated in
             Parameters.check_program program;
             Result.Ok program)
   with
-  | Ir.UnknownLabelException label ->
+  | Label_resolver.Unknown_label label ->
       Result.Error
         (Printf.sprintf "Unknown label %S. Define it with `%s:` or correct the label reference."
            label label)
-  | Ir.ExprException message ->
+  | Asm_ir.ExprException message ->
       Result.Error (message ^ ". Replace `Inf` with a finite integer in this expression.")
-  | Ir.WordException _ ->
+  | Asm_ir.WordException _ ->
       Result.Error
         "A word was used where an instruction was expected. Prefix literal data with `#`, or use a \
          machine instruction."
-  | Ir.UnexpandedMacroException construct ->
+  | Asm_ir.UnexpandedMacroException construct ->
       Result.Error ("Internal assembler error: unexpanded " ^ construct ^ ".")
+  | Asm_ir.UnresolvedExpressionException _ ->
+      Result.Error "Internal assembler error: unresolved expression reached IR translation."
+  | Asm_ir.UnresolvedIrException construct ->
+      Result.Error ("Internal assembler error: unresolved " ^ construct ^ " reached IR translation.")
   | Parameters.NotSupported message ->
       Result.Error
         (message ^ ". Choose a compatible architecture or remove the unsupported construct.")

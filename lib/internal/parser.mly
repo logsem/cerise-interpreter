@@ -19,9 +19,9 @@
 %left PLUS MINUS EXPR
 %left UMINUS
 
-%start <Ir.t> main
+%start <Asm_ir.t> main
 %{
-  open! Ir
+  open! Asm_ir
 
   let location position =
     {
@@ -50,7 +50,7 @@
 %%
 
 main:
-  | EOF; { ([]: Ir.t) }
+  | EOF; { ([]: Asm_ir.t) }
   | statement = top_statement; program = main; { statement :: program }
 
 top_statement:
