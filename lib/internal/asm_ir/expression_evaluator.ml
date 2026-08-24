@@ -7,7 +7,8 @@ let rec evaluate_expression (expression : expr) : Infinite_z.t =
   | IntLit value -> value
   | AddOp (left, right) -> Infinite_z.(evaluate_expression left + evaluate_expression right)
   | SubOp (left, right) -> Infinite_z.(evaluate_expression left - evaluate_expression right)
-  | Label _ | Symbol _ | ExprParam _ -> raise (UnresolvedExpressionException expression)
+  | CurrentAddr | Label _ | Symbol _ | ExprParam _ ->
+      raise (UnresolvedExpressionException expression)
 
 (* Evaluate one complete expression and return its literal IR representation. *)
 let evaluate_to_literal (expression : expr) : expr = IntLit (evaluate_expression expression)

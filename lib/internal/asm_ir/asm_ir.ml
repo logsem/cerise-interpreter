@@ -24,6 +24,7 @@ let stk = Reg 31
 
 type expr =
   | IntLit of Infinite_z.t
+  | CurrentAddr
   | Symbol of string
   | Label of string
   | AddOp of expr * expr

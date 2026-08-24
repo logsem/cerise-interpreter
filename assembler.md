@@ -120,6 +120,21 @@ The forms are:
 Bounds, addresses, and object types are expressions. Only a capability's upper bound may evaluate to
 `Inf`.
 
+## Current address
+
+The special expression `&CURRENT_ADDR` evaluates to the address of the instruction or literal word
+that contains it:
+
+```asm
+mov r1 &CURRENT_ADDR
+# (&CURRENT_ADDR + 1)
+```
+
+Labels and assembler declarations do not occupy addresses. Current-address expressions are resolved
+after sequence macros expand, so each expanded macro instruction receives its actual address. The
+expression may be combined with integers, labels, and definitions using `+` and `-` anywhere an
+ordinary integer expression is accepted.
+
 ## Integer definitions
 
 `%define` creates an immutable, file-wide integer symbol:

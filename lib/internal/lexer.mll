@@ -33,6 +33,7 @@ rule token = parse
 | ("Inf" | "inf" | "∞") { INF }
 
 (* assembler directives and macro references *)
+| "&CURRENT_ADDR" { CURRENTADDR }
 | "%macro" { MACRO }
 | "%endmacro" { ENDMACRO }
 | "%define" { DEFINE }

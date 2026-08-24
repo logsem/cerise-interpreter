@@ -37,7 +37,7 @@ let rec resolve_expression (environment : environment) (expression : expr) : exp
       AddOp (resolve_expression environment left, resolve_expression environment right)
   | SubOp (left, right) ->
       SubOp (resolve_expression environment left, resolve_expression environment right)
-  | IntLit _ | Symbol _ | ExprParam _ -> expression
+  | IntLit _ | CurrentAddr | Symbol _ | ExprParam _ -> expression
 
 (* Remove a label declaration while preserving every emitted operation. *)
 let remove_label_declaration (operation : machine_op) : machine_op option =

@@ -10,7 +10,8 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
         match Macro_expander.expand parsed with
         | Error _ as error -> error
         | Ok expanded ->
-            let labels_resolved = Label_resolver.resolve expanded in
+            let current_addresses_resolved = Current_address_resolver.resolve expanded in
+            let labels_resolved = Label_resolver.resolve current_addresses_resolved in
             let expressions_evaluated = Expression_evaluator.evaluate labels_resolved in
             let program = Asm_ir.translate_prog expressions_evaluated in
             Parameters.check_program program;

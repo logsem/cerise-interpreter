@@ -53,7 +53,7 @@ let kind_fits_slot (kind : parameter_kind) (slot : slot_kind) : bool =
 let rec expression_contains_inf (expression : expr) : bool =
   match expression with
   | IntLit Infinite_z.Inf -> true
-  | IntLit (Infinite_z.Int _) | Symbol _ | Label _ | ExprParam _ -> false
+  | IntLit (Infinite_z.Int _) | CurrentAddr | Symbol _ | Label _ | ExprParam _ -> false
   | AddOp (left, right) | SubOp (left, right) ->
       expression_contains_inf left || expression_contains_inf right
 
@@ -61,7 +61,7 @@ let rec expression_contains_inf (expression : expr) : bool =
 let rec expression_contains_parameter (expression : expr) : bool =
   match expression with
   | ExprParam _ -> true
-  | IntLit _ | Symbol _ | Label _ -> false
+  | IntLit _ | CurrentAddr | Symbol _ | Label _ -> false
   | AddOp (left, right) | SubOp (left, right) ->
       expression_contains_parameter left || expression_contains_parameter right
 
@@ -98,7 +98,7 @@ let initial_private_label_capacity : int = 8
 (* Structurally rewrite every symbolic component of an expression. *)
 let rec map_expr (mapper : mapper) (expression : expr) : expr =
   match expression with
-  | IntLit _ as expression -> expression
+  | (IntLit _ | CurrentAddr) as expression -> expression
   | Symbol name -> mapper.symbol_ref name
   | Label name -> mapper.label_ref name
   | AddOp (left, right) -> AddOp (map_expr mapper left, map_expr mapper right)
@@ -266,7 +266,7 @@ let validate_pair_parameter (context : validation_context) (name : string) : uni
 (* Validate parameter holes contained in an integer expression. *)
 let rec validate_expression (context : validation_context) (expression : expr) : unit =
   match expression with
-  | IntLit _ | Symbol _ | Label _ -> ()
+  | IntLit _ | CurrentAddr | Symbol _ | Label _ -> ()
   | AddOp (left, right) | SubOp (left, right) ->
       validate_expression context left;
       validate_expression context right
@@ -515,7 +515,7 @@ let rec resolve_definition (resolver : definition_resolver) (stack : string list
 and resolve_definition_expression (resolver : definition_resolver) (stack : string list)
     (expression : expr) : expr =
   match expression with
-  | IntLit _ -> expression
+  | IntLit _ | CurrentAddr -> expression
   | Symbol name ->
       if Hashtbl.mem resolver.definitions name then resolve_definition resolver stack name
       else Label name

@@ -1,6 +1,7 @@
 open Cerise
 open Cerise.Ast
 module Asm_ir = Cerise_internal.Asm_ir
+module Asm_current_address_resolver = Cerise_internal.Current_address_resolver
 module Asm_expression_evaluator = Cerise_internal.Expression_evaluator
 module Asm_label_resolver = Cerise_internal.Label_resolver
 module Asm_lexer = Cerise_internal.Lexer
@@ -20,6 +21,57 @@ let test_parser_uses_symbol () =
   match Asm_parser.main Asm_lexer.token (Lexing.from_string "mov r1 VALUE") with
   | [ Asm_ir.Move (Asm_ir.Reg 1, Asm_ir.Const (Asm_ir.ConstExpr (Asm_ir.Symbol "VALUE"))) ] -> ()
   | _ -> Alcotest.fail "expected an unresolved Symbol, not a resolved Label"
+
+let test_parser_uses_current_address () =
+  match Asm_parser.main Asm_lexer.token (Lexing.from_string "mov r1 &CURRENT_ADDR") with
+  | [ Asm_ir.Move (Asm_ir.Reg 1, Asm_ir.Const (Asm_ir.ConstExpr Asm_ir.CurrentAddr)) ] -> ()
+  | _ -> Alcotest.fail "expected a CurrentAddr expression"
+
+let test_current_address_resolution_pass () =
+  let open Asm_ir in
+  let input =
+    [
+      Lbl "start";
+      Move (Reg 1, Const (ConstExpr CurrentAddr));
+      Word (I (AddOp (CurrentAddr, IntLit (Infinite_z.of_int 2))));
+      Lbl "ending";
+      Halt;
+    ]
+  in
+  let expected =
+    [
+      Lbl "start";
+      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 0))));
+      Word (I (AddOp (IntLit (Infinite_z.of_int 1), IntLit (Infinite_z.of_int 2))));
+      Lbl "ending";
+      Halt;
+    ]
+  in
+  Alcotest.(check bool)
+    "current addresses resolved" true
+    (Asm_current_address_resolver.resolve input = expected)
+
+let test_current_address_in_program () =
+  check_program "current instruction address"
+    [ Op (Move (Reg 1, const 0)); Op Halt; Word (I (Z.of_int 2)); Op (Move (Reg 2, const 4)) ]
+    {|
+mov r1 &CURRENT_ADDR
+halt
+# &CURRENT_ADDR
+after:
+mov r2 (&CURRENT_ADDR + 1)
+|}
+
+let test_current_address_in_macro () =
+  check_program "current address after macro expansion"
+    [ Op (Move (Reg 1, const 0)); Op (Move (Reg 1, const 1)) ]
+    {|
+%macro here(dst: reg)
+  mov $dst &CURRENT_ADDR
+%endmacro
+%here(r1)
+%here(r1)
+|}
 
 let test_label_resolution_pass () =
   let open Asm_ir in
@@ -194,6 +246,11 @@ let () =
       ( "integer definitions",
         [
           Alcotest.test_case "parser symbols" `Quick test_parser_uses_symbol;
+          Alcotest.test_case "parser current address" `Quick test_parser_uses_current_address;
+          Alcotest.test_case "current-address resolution pass" `Quick
+            test_current_address_resolution_pass;
+          Alcotest.test_case "current address" `Quick test_current_address_in_program;
+          Alcotest.test_case "current address in macro" `Quick test_current_address_in_macro;
           Alcotest.test_case "label resolution pass" `Quick test_label_resolution_pass;
           Alcotest.test_case "expression evaluation pass" `Quick test_expression_evaluation_pass;
           Alcotest.test_case "literal" `Quick test_literal_definition;

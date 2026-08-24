@@ -3,6 +3,7 @@
 %token <int> REG
 %token <int> INT
 %token INF
+%token CURRENTADDR
 %token <string> LABELDEF
 %token <string> LABEL
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
@@ -215,6 +216,7 @@ raw_expr:
     }
   | i = INT { ParsedExpression (IntLit (Infinite_z.of_int i)) }
   | INF { ParsedExpression (IntLit Infinite_z.Inf) }
+  | CURRENTADDR { ParsedExpression CurrentAddr }
   | symbol = LABEL { ParsedExpression (Symbol symbol) }
   | name = PARAM { BareParameter name }
 
