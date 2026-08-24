@@ -1,3 +1,32 @@
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
     ;; TODO Something that could be cool !!
     ;; is to randomly generate code for B_f and C_g,
     ;; and run the tests for all generated code,
@@ -35,74 +64,28 @@ A_main:
     geta ct0 ca0
     add ct1 ct0 1
     subseg ca0 ct0 ct1
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    load ctp ctp
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 2
-    load ct1 ct1
+    %fetch(0, ctp, ct0, ct1)
+    %fetch(2, ct1, ct0, cs0)
     jalr cra ctp
     ;; assert(c == 0)
     load ct0 cgp
     mov ct1 0
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, ct2, ct3, ct4)
     ;; b := 42; call C.g with a bounded capability to c.
     mov ca0 cgp
     mov ca1 0
     lea cgp -1
     store cgp 42
-    lea cgp 1
     geta ct0 ca0
     add ct1 ct0 1
     subseg ca0 ct0 ct1
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    load ctp ctp
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 3
-    load ct1 ct1
+    %fetch(0, ctp, ct0, ct1)
+    %fetch(3, ct1, ct0, cs0)
     jalr cra ctp
     ;; assert(b == 42)
-    lea cgp -1
     load ct0 cgp
     mov ct1 42
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, ct2, ct3, ct4)
     halt
 A_end:
 
@@ -182,6 +165,9 @@ assert_data_end:
 
 
 ;; Concatenate this file at the end of any example that require the switcher
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
+
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
@@ -338,11 +324,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

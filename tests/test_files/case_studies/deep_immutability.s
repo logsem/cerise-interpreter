@@ -1,5 +1,34 @@
 ;; Deep immutability: loading a nested writable capability through RO-DRO
 ;; yields a read-only view, so the adversary cannot mutate the protected cell.
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
 loader:
     #([X Ow LG LM], Global, A, A_end, A_main)
     #([R W LG LM], Global, A_data, A_data_end, A_data)
@@ -30,37 +59,14 @@ A_main:
     add ct1 ct2 1
     subseg ca0 ct2 ct1
     restrict ca0 ([R Ow LG DRO], Global)
-    mov ct0 PC
-    getb ct1 ct0
-    geta ct2 ct0
-    sub ct1 ct1 ct2
-    lea ct0 ct1
-    load ct0 ct0
-    mov ct1 PC
-    getb ct2 ct1
-    geta ct3 ct1
-    sub ct2 ct2 ct3
-    lea ct1 ct2
-    lea ct1 2
-    load ct1 ct1
+    %fetch(0, ct0, ct1, ct2)
+    %fetch(2, ct1, ct2, ct3)
     mov cs0 cra
     jalr cra ct0
     mov cra cs0
     load ct0 cgp
     mov ct1 42
-    ;; assert(ct0 == ct1)
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, ct2, ct3, ct4)
     mov ca0 0
     mov ca1 0
     halt
@@ -115,6 +121,9 @@ assert_end:
 assert_flag:
     #0
 assert_data_end:
+
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
 
 ;; Griotte trusted switcher.
 switcher:
@@ -273,11 +282,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

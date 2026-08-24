@@ -1,4 +1,7 @@
 ;; Generated from logsem/griotte theories/switcher/switcher.v.
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
+
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
@@ -157,11 +160,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp switcher_callee_dead_zeros
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp switcher_after_compartment_call
 switcher_end:

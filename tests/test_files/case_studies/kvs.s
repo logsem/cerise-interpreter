@@ -1,3 +1,111 @@
+%define SWITCHER_CALL_OFFSET 0
+%define ASSERT_OFFSET 1
+%define ADV_F_OFFSET 2
+%define KVS_INSERT_OFFSET 3
+%define KVS_READ_OFFSET 4
+%define KVS_ERASE_OFFSET 5
+%define SEALED_USER_KEY_OFFSET 6
+%define SIZE_MAP 16
+%define ASM_SIZEOF_KVS_ENTRY 3
+%define UNSEALING_USER_KEY_OFFSET 1
+%define UINT16_MIN 0
+%define UINT16_MAX 65536
+%define ASM_TRUE 0
+%define ASM_FALSE -1
+%define ASM_NONE 0
+%define ASM_SOME 1
+%define EMPTY_SLOT -1
+%define DEFAULT_VAL 0
+
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
+%macro kvs_check_uint16(value: reg, dst: reg)
+    lt $dst (UINT16_MIN - 1) $value
+    jnz $dst (uint16_min - &CURRENT_ADDR)
+    mov $dst ASM_FALSE
+    jmp (uint16_end - &CURRENT_ADDR)
+uint16_min:
+    lt $dst $value UINT16_MAX
+    jnz $dst (uint16_max - &CURRENT_ADDR)
+    mov $dst ASM_FALSE
+    jmp (uint16_end - &CURRENT_ADDR)
+uint16_max:
+    mov $dst ASM_TRUE
+uint16_end:
+%endmacro
+
+%macro kvs_get_full_key(dst: reg, sealed_key: reg, map_key: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst UNSEALING_USER_KEY_OFFSET
+    load $dst $dst
+    unseal $dst $dst $sealed_key
+    load $dst $dst
+    lshiftl $dst $dst 16
+    lor $dst $dst $map_key
+%endmacro
+
+%macro kvs_search(key: reg, index: reg, empty_index: reg, scratch: reg)
+    mov $index 0
+    mov $empty_index EMPTY_SLOT
+search_loop:
+    sub $scratch SIZE_MAP $index
+    jnz $scratch (search_body - &CURRENT_ADDR)
+    jmp (search_not_found - &CURRENT_ADDR)
+search_body:
+    load $scratch cgp
+    jnz $scratch (search_some - &CURRENT_ADDR)
+    mov $empty_index $index
+    lea cgp ASM_SIZEOF_KVS_ENTRY
+    add $index $index 1
+    jmp (search_loop - &CURRENT_ADDR)
+search_some:
+    lea cgp 1
+    load $scratch cgp
+    sub $scratch $key $scratch
+    jnz $scratch (search_different_key - &CURRENT_ADDR)
+    lea cgp -1
+    jmp (search_end - &CURRENT_ADDR)
+search_different_key:
+    lea cgp 2
+    add $index $index 1
+    jmp (search_loop - &CURRENT_ADDR)
+search_not_found:
+    lea cgp (-(ASM_SIZEOF_KVS_ENTRY * SIZE_MAP))
+    mov $index EMPTY_SLOT
+search_end:
+%endmacro
+
     ;; main is just a very basic loader that jumps to the main compartment A
     ;; and terminates the machine
 loader:
@@ -24,42 +132,14 @@ C:
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_erase)} ; import KVS.erase
     #{10: ([R Ow LG LM], Global, C_ssealing, C_ssealing_end, C_ssealing)} ; kvs_user_seal_key
 C_main:
-    ;; fetch_instrs SEALED_USER_KEY_OFFSET cs1 ct0 ct1 (* cs1 -> switcher entry point *)
-    mov cs1 PC
-    getb ct0 cs1
-    geta ct1 cs1
-    sub ct0 ct0 ct1
-    lea cs1 ct0
-    lea cs1 6                   ; SEALED_USER_KEY_OFFSET
-    load cs1 cs1
-    mov ct0 0
-    mov ct1 0
+    %fetch(SEALED_USER_KEY_OFFSET, cs1, ct0, ct1)
     ;; addOrUpdate(sealedUserKey, 1, 12) 
     mov ca0 cs1
     mov ca1 1
     mov ca2 12
 
-    ;; fetch_instrs SWITCHER_CALL_OFFSET ctp ct0 ct1 (* ctp -> switcher entry point *)
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    lea ctp 0 ;SWITCHER_CALL_OFFSET
-    load ctp ctp
-    mov ct0 0
-    mov ct1 0
-
-    ;; fetch_instrs KVS_INSERT_OFFSET ct1 ct0 cs0    (* ct1 -> {KVS.addOrUpdate}_(ot_switcher)  *)
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 3  ; KVS_INSERT_OFFSET
-    load ct1 ct1
-    mov ct0 0
-    mov cs0 0
+    %fetch(SWITCHER_CALL_OFFSET, ctp, ct0, ct1)
+    %fetch(KVS_INSERT_OFFSET, ct1, ct0, cs0)
     ;; jump
     jalr cra ctp
     
@@ -74,27 +154,8 @@ C_main:
     mov ca1 0
 
     ;; adv.f()
-    ;; fetch_instrs SWITCHER_CALL_OFFSET ctp ct0 ct1 (* ctp -> switcher entry point *)
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    lea ctp 0 ; SWITCHER_CALL_OFFSET
-    load ctp ctp
-    mov ct0 0
-    mov ct1 0
-
-    ;; fetch_instrs ADV_F_OFFSET ct1 ct0 cs0         (* ct1 -> {adv.f}_(ot_switcher)  *)
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 2  ; ADV_F_OFFSET
-    load ct1 ct1
-    mov ct0 0
-    mov cs0 0
+    %fetch(SWITCHER_CALL_OFFSET, ctp, ct0, ct1)
+    %fetch(ADV_F_OFFSET, ct1, ct0, cs0)
 
     ;; jump
     jalr cra ctp
@@ -103,27 +164,8 @@ C_main:
     mov ca0 cs1
     mov ca1 1
 
-    ;; fetch_instrs SWITCHER_CALL_OFFSET ctp ct0 ct1 (* ctp -> switcher entry point *)
-    mov ctp PC
-    getb ct0 ctp
-    geta ct1 ctp
-    sub ct0 ct0 ct1
-    lea ctp ct0
-    lea ctp 0 ; SWITCHER_CALL_OFFSET
-    load ctp ctp
-    mov ct0 0
-    mov ct1 0
-
-    ;; fetch_instrs KVS_READ_OFFSET ct1 ct0 cs0      (* ct1 -> {KVS.read}_(ot_switcher)  *)
-    mov ct1 PC
-    getb ct0 ct1
-    geta cs0 ct1
-    sub ct0 ct0 cs0
-    lea ct1 ct0
-    lea ct1 4                   ;  KVS_READ_OFFSET
-    load ct1 ct1
-    mov ct0 0
-    mov cs0 0
+    %fetch(SWITCHER_CALL_OFFSET, ctp, ct0, ct1)
+    %fetch(KVS_READ_OFFSET, ct1, ct0, cs0)
     ;; jump
     jalr cra ctp
 
@@ -137,19 +179,7 @@ C_main:
     ;; (* case PASS *)
     mov ct0 ca1
     mov ct1 12
-    ;; assert(ct0 == ct1), using import-table offset 1
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(ASSERT_OFFSET, ct2, ct3, ct4)
     halt
 C_main_end:
 C_end:
@@ -201,76 +231,21 @@ KVS:
     #(E-[XSR Ow LG LM], Local, switcher, switcher_end, switcher_cc) ; import switcher
     #[SU, Global, 10, 11, 10] ;; unsealing key for KVS
 KVS_insert:
-KVS_insert_kvs_key_check:
-    lt ct1 (-1) ca1
-    jnz ct1 (KVS_insert_kvs_key_check_uint16_min-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_insert_kvs_key_ret-&CURRENT_ADDR)
-KVS_insert_kvs_key_check_uint16_min:
-    lt ct1 ca1 65536
-    jnz ct1 (KVS_insert_kvs_key_check_uint16_max-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_insert_kvs_key_ret-&CURRENT_ADDR)
-KVS_insert_kvs_key_check_uint16_max:
-    mov ct1 0
-KVS_insert_kvs_key_ret:
+    %kvs_check_uint16(ca1, ct1)
 
     jnz ct1  (KVS_insert_not_uint16-&CURRENT_ADDR)
 KVS_insert_uint16:
     jmp (KVS_insert_uint16_check_pass-&CURRENT_ADDR)
 KVS_insert_not_uint16:
-    mov ca0 (-1)
+    mov ca0 ASM_FALSE
     mov ca1 0
     jalr cnull cra
 KVS_insert_uint16_check_pass:
 
-KVS_insert_get_full_key:
-    mov ctp PC
-    getb ct1 ctp
-    geta ct2 ctp
-    sub ct1 ct1 ct2
-    lea ctp ct1
-    lea ctp 1
-    load ctp ctp
-    unseal ctp ctp ca0
-    load ctp ctp
-    lshiftl ctp ctp 16
-    lor ctp ctp ca1
-KVS_insert_get_full_key_end:
+    %kvs_get_full_key(ctp, ca0, ca1, ct1, ct2)
 
     mov ca0 ctp
-KVS_insert_search:
-    mov ctp 0
-    mov ct1 (-1)
-KVS_insert_loop_start:
-    sub ct1 16 ctp
-    jnz ct1 (KVS_insert_loop_body-&CURRENT_ADDR)
-    jmp (KVS_insert_loop_end_not_found-&CURRENT_ADDR)
-KVS_insert_loop_body:
-    load ct1 cgp
-    jnz ct1 (KVS_insert_some_index-&CURRENT_ADDR)
-KVS_insert_none_index: 
-    mov ct1 ctp
-    lea cgp 3
-    add ctp ctp 1
-    jmp (KVS_insert_loop_start-&CURRENT_ADDR)
-KVS_insert_some_index:
-    lea cgp 1
-    load ct1 cgp
-    sub ct1 ca0 ct1
-    jnz ct1 (KVS_insert_not_same_key-&CURRENT_ADDR)
-KVS_insert_same_key:
-    lea cgp (-1)
-    jmp (KVS_insert_loop_end_found-&CURRENT_ADDR)
-KVS_insert_not_same_key:    
-    lea cgp 2
-    add ctp ctp 1
-    jmp (KVS_insert_loop_start-&CURRENT_ADDR)
-KVS_insert_loop_end_not_found:  
-    lea cgp (-(3*16))
-    mov ctp (-1)
-KVS_insert_loop_end_found:  
-KVS_insert_search_end:
+    %kvs_search(ca0, ctp, ct1, ct2)
 
     sub ctp ctp (-1)
     jnz ctp (KVS_insert_key_found-&CURRENT_ADDR)
@@ -280,192 +255,81 @@ KVS_insert_key_not_found:
     jnz ctp (KVS_insert_empty_slot_found-&CURRENT_ADDR)
 
 KVS_insert_empty_slot_not_found:
-    mov ca0 (-1)
+    mov ca0 ASM_FALSE
     mov ca1 0
     jalr cnull cra
 
 KVS_insert_empty_slot_found:
-    mul ct1 ct1 3
+    mul ct1 ct1 ASM_SIZEOF_KVS_ENTRY
     lea cgp ct1
-    store cgp 1
+    store cgp ASM_SOME
     lea cgp 1
     store cgp ca0
     lea cgp 1
     store cgp ca2
-    mov ca0 0
+    mov ca0 ASM_TRUE
     mov ca1 0
     jalr cnull cra
 
 KVS_insert_key_found:
     lea cgp 2
     store cgp ca2
-    mov ca0 0
+    mov ca0 ASM_TRUE
     mov ca1 0
     jalr cnull cra
 KVS_insert_end:
 
 KVS_read:
-
-KVS_read_kvs_key_check:
-    lt ct1 (-1) ca1
-    jnz ct1 (KVS_read_kvs_key_check_uint16_min-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_read_kvs_key_ret-&CURRENT_ADDR)
-KVS_read_kvs_key_check_uint16_min:
-    lt ct1 ca1 65536
-    jnz ct1 (KVS_read_kvs_key_check_uint16_max-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_read_kvs_key_ret-&CURRENT_ADDR)
-KVS_read_kvs_key_check_uint16_max:
-    mov ct1 0
-KVS_read_kvs_key_ret:
+    %kvs_check_uint16(ca1, ct1)
 
     jnz ct1 (KVS_read_not_uint16-&CURRENT_ADDR)
 KVS_read_uint16:    
     jmp (KVS_read_uint16_check_pass-&CURRENT_ADDR)
 KVS_read_not_uint16:
-    mov ca0 (-1)
+    mov ca0 ASM_FALSE
     mov ca1 0
     jalr cnull cra
 KVS_read_uint16_check_pass:
 
-KVS_read_get_full_key:
-    mov ctp PC
-    getb ct1 ctp
-    geta ct2 ctp
-    sub ct1 ct1 ct2
-    lea ctp ct1
-    lea ctp 1
-    load ctp ctp
-    unseal ctp ctp ca0
-    load ctp ctp
-    lshiftl ctp ctp 16
-    lor ctp ctp ca1
-KVS_read_get_full_key_end:
+    %kvs_get_full_key(ctp, ca0, ca1, ct1, ct2)
 
     mov ca0 ctp
-KVS_read_search:
-    mov ctp 0
-    mov ct1 (-1)
-KVS_read_loop_start:
-    sub ct1 16 ctp
-    jnz ct1 (KVS_read_loop_body-&CURRENT_ADDR)
-    jmp (KVS_read_loop_end_not_found-&CURRENT_ADDR)
-KVS_read_loop_body:
-    load ct1 cgp
-    jnz ct1 (KVS_read_some_index-&CURRENT_ADDR)
-KVS_read_none_index: 
-    mov ct1 ctp
-    lea cgp 3
-    add ctp ctp 1
-    jmp (KVS_read_loop_start-&CURRENT_ADDR)
-KVS_read_some_index:
-    lea cgp 1
-    load ct1 cgp
-    sub ct1 ca0 ct1
-    jnz ct1 (KVS_read_not_same_key-&CURRENT_ADDR)
-KVS_read_same_key:
-    lea cgp (-1)
-    jmp (KVS_read_loop_end_found-&CURRENT_ADDR)
-KVS_read_not_same_key:    
-    lea cgp 2
-    add ctp ctp 1
-    jmp (KVS_read_loop_start-&CURRENT_ADDR)
-KVS_read_loop_end_not_found:  
-    lea cgp (-(3*16))
-    mov ctp (-1)
-KVS_read_loop_end_found:  
-KVS_read_search_end:
+    %kvs_search(ca0, ctp, ct1, ct2)
 
     sub ctp ctp (-1)
     jnz ctp (KVS_read_key_found-&CURRENT_ADDR)
 KVS_read_key_not_found: 
-    mov ca0 (-1)
+    mov ca0 ASM_FALSE
     mov ca1 0
     jmp (KVS_read_key_ret-&CURRENT_ADDR)
 KVS_read_key_found: 
     lea cgp 2
     load ca1 cgp
-    mov ca0 0
+    mov ca0 ASM_TRUE
 KVS_read_key_ret:   
     jalr cnull cra
 KVS_read_end:
 
 KVS_erase:
-KVS_erase_kvs_key_check:
-    lt ct1 (-1) ca1
-    jnz ct1 (KVS_erase_kvs_key_check_uint16_min-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_erase_kvs_key_ret-&CURRENT_ADDR)
-KVS_erase_kvs_key_check_uint16_min:
-    lt ct1 ca1 65536
-    jnz ct1 (KVS_erase_kvs_key_check_uint16_max-&CURRENT_ADDR)
-    mov ct1 (-1)
-    jmp (KVS_erase_kvs_key_ret-&CURRENT_ADDR)
-KVS_erase_kvs_key_check_uint16_max:
-    mov ct1 0
-KVS_erase_kvs_key_ret:
+    %kvs_check_uint16(ca1, ct1)
     jnz ct1 (KVS_erase_not_uint16-&CURRENT_ADDR)
 KVS_erase_uint16:   
     jmp (KVS_erase_uint16_check_pass-&CURRENT_ADDR)
 KVS_erase_not_uint16:   
-    mov ca0 (-1)
+    mov ca0 ASM_FALSE
     mov ca1 0
     jalr cnull cra
 KVS_erase_uint16_check_pass:
 
-KVS_erase_get_full_key:
-    mov ctp PC
-    getb ct1 ctp
-    geta ct2 ctp
-    sub ct1 ct1 ct2
-    lea ctp ct1
-    lea ctp 1
-    load ctp ctp
-    unseal ctp ctp ca0
-    load ctp ctp
-    lshiftl ctp ctp 16
-    lor ctp ctp ca1
-KVS_erase_get_full_key_end:
+    %kvs_get_full_key(ctp, ca0, ca1, ct1, ct2)
     mov ca0 ctp
-KVS_erase_search:
-    mov ctp 0
-    mov ct1 (-1)
-KVS_erase_loop_start:
-    sub ct1 16 ctp
-    jnz ct1 (KVS_erase_loop_body-&CURRENT_ADDR)
-    jmp (KVS_erase_loop_end_not_found-&CURRENT_ADDR)
-KVS_erase_loop_body:
-    load ct1 cgp
-    jnz ct1 (KVS_erase_some_index-&CURRENT_ADDR)
-KVS_erase_none_index: 
-    mov ct1 ctp
-    lea cgp 3
-    add ctp ctp 1
-    jmp (KVS_erase_loop_start-&CURRENT_ADDR)
-KVS_erase_some_index:
-    lea cgp 1
-    load ct1 cgp
-    sub ct1 ca0 ct1
-    jnz ct1 (KVS_erase_not_same_key-&CURRENT_ADDR)
-KVS_erase_same_key:
-    lea cgp (-1)
-    jmp (KVS_erase_loop_end_found-&CURRENT_ADDR)
-KVS_erase_not_same_key:    
-    lea cgp 2
-    add ctp ctp 1
-    jmp (KVS_erase_loop_start-&CURRENT_ADDR)
-KVS_erase_loop_end_not_found:  
-    lea cgp (-(3*16))
-    mov ctp (-1)
-KVS_erase_loop_end_found:  
-KVS_erase_search_end:
+    %kvs_search(ca0, ctp, ct1, ct2)
     sub ctp ctp (-1)
     jnz ctp (KVS_erase_key_found-&CURRENT_ADDR)
 KVS_erase_key_not_found:    
     jmp (KVS_erase_return-&CURRENT_ADDR)
 KVS_erase_key_found:    
-    store cgp 0
+    store cgp ASM_NONE
 KVS_erase_return:   
     mov ca0 0
     mov ca1 0
@@ -475,54 +339,54 @@ KVS_end:
 
 
 KVS_data:
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
-    #0x0  ; ASM_NONE
-    #-0x1 ; EMPTY_SLOT
-    #0x0  ; DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
+    #ASM_NONE
+    #EMPTY_SLOT
+    #DEFAULT_VAL
 KVS_data_end:
 
 ;; export table compartment C -> exports C_g
@@ -560,6 +424,9 @@ assert_flag:
 assert_data_end:
 
 ;; Concatenate this file at the end of any example that require the switcher
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
+
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
@@ -716,11 +583,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

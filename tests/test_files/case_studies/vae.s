@@ -1,4 +1,33 @@
 ;; Very Awkward Example: nested callbacks preserve well-bracketed control flow.
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
 loader:
     #([X Ow LG LM], Global, VAE, VAE_end, VAE_init)
     #([R W LG LM], Global, VAE_data, VAE_data_end, VAE_data)
@@ -18,64 +47,31 @@ VAE:
     #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_adv)}
 VAE_init:
     store cgp 0
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 2
-    load ct1 ct1
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(2, ct1, cs0, cs1)
     jalr cra ct0
     halt
 
 VAE_awkward:
     store cgp 0
     ;; ca0 is the adversary callback g.
-    mov ct1 ca0
-    mov ct0 PC
-    getb ct2 ct0
-    geta ct3 ct0
-    sub ct2 ct2 ct3
-    lea ct0 ct2
-    load ct0 ct0
+    %fetch(0, ct0, cs0, cs1)
     mov cs0 cra
-    mov cs1 ct1
+    mov cs1 ca0
+    mov ct1 ca0
     mov ca0 0
     jalr cra ct0
     store cgp 1
     mov cra cs0
     mov ct1 cs1
-    mov ct0 PC
-    getb ct2 ct0
-    geta ct3 ct0
-    sub ct2 ct2 ct3
-    lea ct0 ct2
-    load ct0 ct0
+    %fetch(0, ct0, cs0, cs1)
     mov cs0 cra
     mov ca0 0
     mov ca1 0
     jalr cra ct0
     load ct0 cgp
     mov ct1 1
-    ;; assert(ct0 == ct1)
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, ct2, ct3, ct4)
     mov cra cs0
     mov ca0 0
     mov ca1 0
@@ -88,26 +84,9 @@ B:
     #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_g)}
 B_adv:
     ;; Call VAE.awkward and pass B.g as its callback.
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 1
-    load ct1 ct1
-    mov ca0 PC
-    getb cs0 ca0
-    geta cs1 ca0
-    sub cs0 cs0 cs1
-    lea ca0 cs0
-    lea ca0 2
-    load ca0 ca0
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(1, ct1, cs0, cs1)
+    %fetch(2, ca0, cs0, cs1)
     mov cs0 cra
     jalr cra ct0
     mov cra cs0
@@ -119,26 +98,9 @@ B_g:
     load ct0 cgp
     jnz ct0 (B_g_return - &CURRENT_ADDR)
     store cgp 1
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 1
-    load ct1 ct1
-    mov ca0 PC
-    getb cs0 ca0
-    geta cs1 ca0
-    sub cs0 cs0 cs1
-    lea ca0 cs0
-    lea ca0 2
-    load ca0 ca0
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(1, ct1, cs0, cs1)
+    %fetch(2, ca0, cs0, cs1)
     mov cs0 cra
     jalr cra ct0
     mov cra cs0
@@ -186,6 +148,9 @@ assert_end:
 assert_flag:
     #0
 assert_data_end:
+
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
 
 ;; Griotte trusted switcher.
 switcher:
@@ -344,11 +309,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

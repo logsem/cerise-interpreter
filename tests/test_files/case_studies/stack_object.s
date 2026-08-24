@@ -1,5 +1,133 @@
 ;; Stack objects: validate an incoming stack object before sharing it together
 ;; with a fresh object, while keeping the callee's secret stack slot private.
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
+%macro checkra(src: reg, scratch1: reg, scratch2: reg)
+    getwtype $scratch1 $src
+    sub $scratch2 $scratch1 Cap
+    jnz $scratch2 4
+    getp $scratch1 $src
+    sub $scratch2 $scratch1 [Orx Ow LG LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx Ow DL LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx Ow LG DRO]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx Ow DL DRO]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx W LG LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx W DL LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx W LG DRO]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx W DL DRO]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx WL LG LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx WL DL LM]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx WL LG DRO]
+    jnz $scratch2 2
+    fail
+    sub $scratch2 $scratch1 [Orx WL DL DRO]
+    jnz $scratch2 2
+    fail
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro check_no_overlap(src1: reg, src2: reg, scratch1: reg, scratch2: reg)
+    getb $scratch1 $src1
+    getb $scratch2 $src2
+    lt $scratch1 $scratch1 $scratch2
+    jnz $scratch1 (first_below_second - &CURRENT_ADDR)
+    getb $scratch1 $src1
+    gete $scratch2 $src2
+    sub $scratch2 $scratch2 1
+    lt $scratch1 $scratch2 $scratch1
+    jnz $scratch1 (second_end_below_first - &CURRENT_ADDR)
+    fail
+second_end_below_first:
+    jmp (no_overlap_end - &CURRENT_ADDR)
+first_below_second:
+    getb $scratch2 $src2
+    gete $scratch1 $src1
+    sub $scratch1 $scratch1 1
+    lt $scratch1 $scratch1 $scratch2
+    jnz $scratch1 (first_end_below_second - &CURRENT_ADDR)
+    fail
+first_end_below_second:
+    jmp (no_overlap_end - &CURRENT_ADDR)
+no_overlap_end:
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro checkints(src: reg, scratch1: reg, scratch2: reg)
+    getb $scratch1 $src
+    geta $scratch2 $src
+    sub $scratch1 $scratch1 $scratch2
+    lea $src $scratch1
+    mov $scratch1 0
+    mov $scratch2 0
+    getb $scratch1 $src
+    gete $scratch2 $src
+    lt $scratch1 $scratch1 $scratch2
+    sub $scratch1 $scratch1 1
+    jnz $scratch1 12
+    load $scratch1 $src
+    getwtype $scratch2 $scratch1
+    sub $scratch2 $scratch2 Int
+    jnz $scratch2 2
+    jmp 2
+    fail
+    lea $src 1
+    geta $scratch1 $src
+    gete $scratch2 $src
+    lt $scratch1 $scratch1 $scratch2
+    jnz $scratch1 -10
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
 loader:
     #([X Ow LG LM], Global, StackObject, StackObject_end, StackObject_run)
     #([R W LG LM], Global, StackObject_data, StackObject_data_end, StackObject_data)
@@ -18,113 +146,17 @@ StackObject:
     #(E-[X Ow LG LM], Global, assert, assert_end, assert)
     #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_adv)}
 StackObject_run:
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 2
-    load ct1 ct1
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(2, ct1, cs0, cs1)
     jalr cra ct0
     halt
 
 StackObject_f:
     ;; ca0 is the caller's stack object; ca1 is its callback g.
     mov ct1 ca1
-    ;; checkra(ca0): accept every readable memory capability and reject all
-    ;; non-capabilities and non-readable permission combinations.
-    getwtype cs0 ca0
-    sub cs1 cs0 Cap
-    jnz cs1 4
-    getp cs0 ca0
-    sub cs1 cs0 [Orx Ow LG LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx Ow DL LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx Ow LG DRO]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx Ow DL DRO]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx W LG LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx W DL LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx W LG DRO]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx W DL DRO]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx WL LG LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx WL DL LM]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx WL LG DRO]
-    jnz cs1 2
-    fail
-    sub cs1 cs0 [Orx WL DL DRO]
-    jnz cs1 2
-    fail
-    mov cs0 0
-    mov cs1 0
-    ;; Reject overlap with this frame.
-    getb cs0 ca0
-    getb cs1 csp
-    lt cs0 cs0 cs1
-    jnz cs0 (StackObject_input_below - &CURRENT_ADDR)
-    getb cs0 ca0
-    gete cs1 csp
-    sub cs1 cs1 1
-    lt cs0 cs1 cs0
-    jnz cs0 (StackObject_bad_argument - &CURRENT_ADDR)
-    jmp (StackObject_no_overlap - &CURRENT_ADDR)
-StackObject_input_below:
-    getb cs1 ca0
-    gete cs0 csp
-    sub cs0 cs0 1
-    lt cs0 cs0 cs1
-    jnz cs0 (StackObject_bad_argument - &CURRENT_ADDR)
-StackObject_no_overlap:
-    ;; checkints(ca0): move to the base and validate every word in the object.
-    getb cs0 ca0
-    geta cs1 ca0
-    sub cs0 cs0 cs1
-    lea ca0 cs0
-    mov cs0 0
-    mov cs1 0
-    getb cs0 ca0
-    gete cs1 ca0
-    lt cs0 cs0 cs1
-    sub cs0 cs0 1
-    jnz cs0 12
-StackObject_checkints_loop:
-    load cs0 ca0
-    getwtype cs1 cs0
-    sub cs1 cs1 Int
-    jnz cs1 2
-    jmp 2
-    fail
-    lea ca0 1
-    geta cs0 ca0
-    gete cs1 ca0
-    lt cs0 cs0 cs1
-    jnz cs0 -10
-    mov cs0 0
-    mov cs1 0
+    %checkra(ca0, cs0, cs1)
+    %check_no_overlap(ca0, csp, cs0, cs1)
+    %checkints(ca0, cs0, cs1)
     ;; Allocate the hidden secret followed by a one-word public object.
     store csp 42
     lea csp 1
@@ -134,37 +166,18 @@ StackObject_checkints_loop:
     subseg ca1 cs0 cs1
     store ca1 0
     lea csp 1
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
+    %fetch(0, ct0, cs0, cs1)
     mov cs0 cra
     mov cs1 ct1
     jalr cra ct0
     lea csp -2
     load ct0 csp
     mov ct1 42
-    ;; assert(ct0 == ct1)
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, ct2, ct3, ct4)
     mov cra cs0
     mov ca0 0
     mov ca1 0
     jalr cnull cra
-StackObject_bad_argument:
-    fail
 StackObject_end:
 
 B:
@@ -179,26 +192,9 @@ B_adv:
     add cs1 cs0 1
     subseg ca0 cs0 cs1
     lea csp 1
-    mov ca1 PC
-    getb cs0 ca1
-    geta cs1 ca1
-    sub cs0 cs0 cs1
-    lea ca1 cs0
-    lea ca1 2
-    load ca1 ca1
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 1
-    load ct1 ct1
+    %fetch(2, ca1, cs0, cs1)
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(1, ct1, cs0, cs1)
     mov cs0 cra
     jalr cra ct0
     mov cra cs0
@@ -251,6 +247,9 @@ assert_end:
 assert_flag:
     #0
 assert_data_end:
+
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
 
 ;; Griotte trusted switcher.
 switcher:
@@ -409,11 +408,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

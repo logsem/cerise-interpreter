@@ -1,4 +1,16 @@
 ;; Counter: increment private state, call an untrusted compartment, then return.
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
 loader:
     #([X Ow LG LM], Global, Counter, Counter_end, Counter_main)
     #([R W LG LM], Global, Counter_data, Counter_data_end, Counter_data)
@@ -19,22 +31,8 @@ Counter_main:
     load cs0 cgp
     add cs0 cs0 1
     store cgp cs0
-    ;; fetch switcher and C.f
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov cs0 0
-    mov cs1 0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 1
-    load ct1 ct1
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(1, ct1, cs0, cs1)
     mov cs0 cra
     jalr cra ct0
     mov cra cs0
@@ -69,6 +67,9 @@ C_ext:
     #([R W LG LM], Global, C_data, C_data_end, C_data)
 C_ext_f: #(((C_f - C) << 3) || 0)
 C_ext_end:
+
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
 
 ;; Griotte trusted switcher.
 switcher:
@@ -227,11 +228,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:

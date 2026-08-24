@@ -1,5 +1,34 @@
 ;; LSE downward: a callee's stack frame is cleared before its caller resumes,
 ;; preventing dangling stack pointers from exposing the callee's global cap.
+%macro fetch(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+%endmacro
+
+%macro assert_eq(offset: expr, dst: reg, scratch1: reg, scratch2: reg)
+    mov $dst PC
+    getb $scratch1 $dst
+    geta $scratch2 $dst
+    sub $scratch1 $scratch1 $scratch2
+    lea $dst $scratch1
+    lea $dst $offset
+    load $dst $dst
+    mov $scratch1 0
+    mov $scratch2 0
+    mov $scratch1 cra
+    jalr cra $dst
+    mov cra $scratch1
+    mov $scratch1 0
+    mov $dst 0
+%endmacro
+
 loader:
     #([X Ow LG LM], Global, LSE, LSE_end, LSE_run)
     #([R W LG LM], Global, LSE_data, LSE_data_end, LSE_data)
@@ -19,19 +48,8 @@ LSE:
     #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_adv)}
 LSE_run:
     store cgp 2
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 2
-    load ct1 ct1
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(2, ct1, cs0, cs1)
     jalr cra ct0
     halt
 
@@ -42,19 +60,7 @@ LSE_f:
     store csp cgp
     load ct0 cgp
     mov ct1 2
-    ;; assert(ct0 == ct1)
-    mov ct2 PC
-    getb ct3 ct2
-    geta ct4 ct2
-    sub ct3 ct3 ct4
-    lea ct2 ct3
-    lea ct2 1
-    load ct2 ct2
-    mov ct3 cra
-    jalr cra ct2
-    mov cra ct3
-    mov ct3 0
-    mov ct2 0
+    %assert_eq(1, cgp, cs0, cs1)
     mov ca0 0
     mov ca1 0
     jalr cnull cra
@@ -65,35 +71,13 @@ B:
     #{9: ([R Ow LG LM], Global, LSE_ext, LSE_ext_end, LSE_ext_f)}
 B_adv:
     ;; Call LSE.f twice. Each invocation receives a fresh, cleared frame.
-    mov ct0 PC
-    getb cs0 ct0
-    geta cs1 ct0
-    sub cs0 cs0 cs1
-    lea ct0 cs0
-    load ct0 ct0
-    mov ct1 PC
-    getb cs0 ct1
-    geta cs1 ct1
-    sub cs0 cs0 cs1
-    lea ct1 cs0
-    lea ct1 1
-    load ct1 ct1
+    %fetch(0, ct0, cs0, cs1)
+    %fetch(1, ct1, cs0, cs1)
     mov cs0 cra
     jalr cra ct0
     ;; Re-fetch both imports; only cs0/cs1 survive a switcher call.
-    mov ct0 PC
-    getb ct2 ct0
-    geta ct3 ct0
-    sub ct2 ct2 ct3
-    lea ct0 ct2
-    load ct0 ct0
-    mov ct1 PC
-    getb ct2 ct1
-    geta ct3 ct1
-    sub ct2 ct2 ct3
-    lea ct1 ct2
-    lea ct1 1
-    load ct1 ct1
+    %fetch(0, ct0, ct2, ct3)
+    %fetch(1, ct1, ct2, ct3)
     jalr cra ct0
     mov cra cs0
     jalr cnull cra
@@ -138,6 +122,9 @@ assert_end:
 assert_flag:
     #0
 assert_data_end:
+
+%define ECOMPARTMENTFAIL -1
+%define ENOTENOUGHTRUSTEDSTACK -141
 
 ;; Griotte trusted switcher.
 switcher:
@@ -296,11 +283,11 @@ switcher_trusted_stack_exhausted:
     load cs1 csp
     lea csp -1
     load cs0 csp
-    mov ca0 -141
+    mov ca0 ENOTENOUGHTRUSTEDSTACK
     mov ca1 0
     jmp (switcher_callee_dead_zeros - &CURRENT_ADDR)
 switcher_force_unwind:
-    mov ca0 -1
+    mov ca0 ECOMPARTMENTFAIL
     mov ca1 0
     jmp (switcher_after_compartment_call - &CURRENT_ADDR)
 switcher_end:
