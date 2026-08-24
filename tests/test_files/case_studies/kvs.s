@@ -5,6 +5,9 @@
 %define KVS_READ_OFFSET 4
 %define KVS_ERASE_OFFSET 5
 %define SEALED_USER_KEY_OFFSET 6
+%define ADV_KVS_INSERT_OFFSET 1
+%define ADV_KVS_ERASE_OFFSET 3
+%define ADV_SEALED_USER_KEY_OFFSET 4
 %define SIZE_MAP 16
 %define ASM_SIZEOF_KVS_ENTRY 3
 %define UNSEALING_USER_KEY_OFFSET 1
@@ -206,8 +209,27 @@ A:
     #{10: ([R Ow LG LM], Global, A_ssealing, A_ssealing_end, A_ssealing)} ; kvs_user_seal_key
     ;; no import
 A_adv:
-    ;; could be any code here
-    jalr cra cra
+    ;; Insert and then erase key 1 in the adversary's own KVS namespace.
+    %fetch(ADV_SEALED_USER_KEY_OFFSET, cs1, ct0, ct1)
+    mov cs0 cra
+    mov ca0 cs1
+    mov ca1 1
+    mov ca2 42
+    %fetch(SWITCHER_CALL_OFFSET, ctp, ct0, ct1)
+    %fetch(ADV_KVS_INSERT_OFFSET, ct1, ct0, ct2)
+    jalr cra ctp
+
+    mov ca0 cs1
+    mov ca1 1
+    %fetch(SWITCHER_CALL_OFFSET, ctp, ct0, ct1)
+    %fetch(ADV_KVS_ERASE_OFFSET, ct1, ct0, ct2)
+    jalr cra ctp
+
+    mov cra cs0
+    mov ca0 0
+    mov ca1 0
+    mov ca2 0
+    jalr cnull cra
 A_end:
 
 A_ssealing:
