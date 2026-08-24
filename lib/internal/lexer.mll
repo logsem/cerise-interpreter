@@ -32,6 +32,13 @@ rule token = parse
                                      ^ "'; use a value that fits in a machine integer")}
 | ("Inf" | "inf" | "∞") { INF }
 
+(* assembler directives and macro references *)
+| "%macro" { MACRO }
+| "%endmacro" { ENDMACRO }
+| "%define" { DEFINE }
+| '%' (label as name) { MACROCALL name }
+| '$' (label as name) { PARAM name }
+
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }

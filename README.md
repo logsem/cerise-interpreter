@@ -19,6 +19,9 @@ Finally, the command `make install` creates a symbolic link to the interpreter i
 Executable: `./interpreter <file>`
 Assembly examples in `./tests/test_files` (for the syntax)
 
+See [assembler.md](assembler.md) for the complete assembly language, register-file, integer
+definition, and sequence-macro reference.
+
 The default version of the interpreter uses a version of Cerise with seals, uninitialized and directed capabilities. 
 For a version of Cerise without those features, use `./interpreter --version vanilla`.
 

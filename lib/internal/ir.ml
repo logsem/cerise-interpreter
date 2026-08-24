@@ -2,17 +2,52 @@
 
 exception UnknownLabelException of string
 exception ExprException of string
+exception UnexpandedMacroException of string
 
-type regname = PC | Reg of int
+type location = { filename : string; line : int; column : int }
+
+type parameter_kind =
+  | RegKind
+  | ValueKind
+  | ExprKind
+  | PermKind
+  | SealPermKind
+  | LocalityKind
+  | WtypeKind
+  | UnknownKind of string
+
+type parameter = { name : string; kind : parameter_kind }
+type regname = PC | Reg of int | RegParam of string
 
 let ddc = Reg 0
 let stk = Reg 31
 
-type expr = IntLit of Infinite_z.t | Label of string | AddOp of expr * expr | SubOp of expr * expr
-type perm = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX
-type locality = Global | Local | Directed
-type seal_perm = bool * bool
-type wtype = W_I | W_Cap | W_SealRange | W_Sealed
+type expr =
+  | IntLit of Infinite_z.t
+  | Symbol of string
+  | Label of string
+  | AddOp of expr * expr
+  | SubOp of expr * expr
+  | ExprParam of string
+
+type perm =
+  | O
+  | E
+  | RO
+  | RX
+  | RW
+  | RWX
+  | RWL
+  | RWLX
+  | URW
+  | URWL
+  | URWX
+  | URWLX
+  | PermParam of string
+
+type locality = Global | Local | Directed | LocalityParam of string
+type seal_perm = SealPermLit of bool * bool | SealPermParam of string
+type wtype = W_I | W_Cap | W_SealRange | W_Sealed | WtypeParam of string
 
 type const_encoded =
   | ConstExpr of expr
@@ -22,8 +57,9 @@ type const_encoded =
   | Wtype of wtype
   | PermLoc of perm * locality
   | SealPermLoc of seal_perm * locality
+  | PairParam of string * locality
 
-type reg_or_const = Register of regname | Const of const_encoded
+type reg_or_const = Register of regname | Const of const_encoded | ValueParam of string
 
 type sealable =
   | Cap of perm * locality * expr * expr * expr
@@ -32,6 +68,8 @@ type sealable =
 type word = I of expr | Sealable of sealable | Sealed of expr * sealable
 
 exception WordException of word
+
+type macro_call = { name : string; arguments : reg_or_const list; location : location }
 
 type machine_op =
   | Jmp of regname
@@ -65,6 +103,16 @@ type machine_op =
   | Halt
   | Lbl of string
   | Word of word
+  | Define of string * expr * location
+  | MacroDef of macro_definition
+  | MacroCall of macro_call
+
+and macro_definition = {
+  name : string;
+  parameters : parameter list;
+  body : machine_op list;
+  location : location;
+}
 
 type statement = machine_op (* TODO: PseudoOp and LabelDefs *)
 type t = statement list
@@ -79,12 +127,14 @@ let rec compute_env (i : int) (prog : t) (envr : env) : env =
 let rec eval_expr (envr : env) (e : expr) : Infinite_z.t =
   match e with
   | IntLit i -> i
+  | Symbol name -> raise (UnexpandedMacroException ("unresolved symbol " ^ name))
   | Label s -> (
       match List.find_opt (fun p -> fst p = s) envr with
       | Some (_, i) -> Int (Z.of_int i)
       | None -> raise (UnknownLabelException s))
   | AddOp (e1, e2) -> Infinite_z.(eval_expr envr e1 + eval_expr envr e2)
   | SubOp (e1, e2) -> Infinite_z.(eval_expr envr e1 - eval_expr envr e2)
+  | ExprParam name -> raise (UnexpandedMacroException ("expression parameter $" ^ name))
 
 let translate_perm (p : perm) : Ast.perm =
   match p with
@@ -100,9 +150,14 @@ let translate_perm (p : perm) : Ast.perm =
   | URWL -> Ast.URWL
   | URWX -> Ast.URWX
   | URWLX -> Ast.URWLX
+  | PermParam name -> raise (UnexpandedMacroException ("permission parameter $" ^ name))
 
 let translate_locality (g : locality) : Ast.locality =
-  match g with Local -> Ast.Local | Global -> Ast.Global | Directed -> Ast.Directed
+  match g with
+  | Local -> Ast.Local
+  | Global -> Ast.Global
+  | Directed -> Ast.Directed
+  | LocalityParam name -> raise (UnexpandedMacroException ("locality parameter $" ^ name))
 
 let translate_wt (wt : wtype) : Ast.wtype =
   match wt with
@@ -110,8 +165,17 @@ let translate_wt (wt : wtype) : Ast.wtype =
   | W_Cap -> Ast.W_Cap
   | W_SealRange -> Ast.W_SealRange
   | W_Sealed -> Ast.W_Sealed
+  | WtypeParam name -> raise (UnexpandedMacroException ("word-type parameter $" ^ name))
 
-let translate_regname (r : regname) : Ast.regname = match r with PC -> Ast.PC | Reg i -> Ast.Reg i
+let translate_regname (r : regname) : Ast.regname =
+  match r with
+  | PC -> Ast.PC
+  | Reg i -> Ast.Reg i
+  | RegParam name -> raise (UnexpandedMacroException ("register parameter $" ^ name))
+
+let translate_seal_perm = function
+  | SealPermLit (seal, unseal) -> (seal, unseal)
+  | SealPermParam name -> raise (UnexpandedMacroException ("sealing-permission parameter $" ^ name))
 
 (* Check whether the encoded constant is supported *)
 let check_ir_const (c : const_encoded) =
@@ -137,6 +201,7 @@ let check_ir_const (c : const_encoded) =
       if !flags.locality = Global then not_supported "Parsing: Locality is not supported."
       else if not !flags.sealing then
         not_supported "Parsing: Sealing permissions are not supported."
+  | PairParam (name, _) -> raise (UnexpandedMacroException ("permission-pair parameter $" ^ name))
   | Wtype _ | ConstExpr _ -> ()
 
 let eval_to_z (envr : env) (e : expr) (except_str : string) =
@@ -145,6 +210,7 @@ let eval_to_z (envr : env) (e : expr) (except_str : string) =
 let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
   | Register r -> Ast.Register (translate_regname r)
+  | ValueParam name -> raise (UnexpandedMacroException ("value parameter $" ^ name))
   | Const c ->
       check_ir_const c;
       Ast.Const
@@ -152,10 +218,13 @@ let translate_reg_or_const (envr : env) (roc : reg_or_const) : Ast.reg_or_const 
         | ConstExpr e -> eval_to_z envr e "Constants expressions cannot be ∞"
         | Locality l -> Encode.encode_locality (translate_locality l)
         | Perm p -> Encode.encode_perm (translate_perm p)
-        | SealPerm sp -> Encode.encode_seal_perm sp
+        | SealPerm sp -> Encode.encode_seal_perm (translate_seal_perm sp)
         | Wtype wt -> Encode.encode_wtype (translate_wt wt)
         | PermLoc (p, l) -> Encode.encode_perm_loc_pair (translate_perm p) (translate_locality l)
-        | SealPermLoc (p, l) -> Encode.encode_seal_perm_loc_pair p (translate_locality l))
+        | SealPermLoc (p, l) ->
+            Encode.encode_seal_perm_loc_pair (translate_seal_perm p) (translate_locality l)
+        | PairParam (name, _) ->
+            raise (UnexpandedMacroException ("permission-pair parameter $" ^ name)))
 
 let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
   match s with
@@ -167,7 +236,7 @@ let translate_sealable (envr : env) (s : sealable) : Ast.sealable =
       let b' = eval_to_z envr b "Lower otype bound cannot be ∞" in
       let e' = eval_to_z envr e "Upper otype bound cannot be ∞" in
       let a' = eval_to_z envr a "Current sealing otype cannot be ∞" in
-      Ast.SealRange (p, translate_locality l, b', e', a')
+      Ast.SealRange (translate_seal_perm p, translate_locality l, b', e', a')
 
 let translate_word (envr : env) (w : word) : Ast.statement =
   match w with
@@ -224,6 +293,12 @@ let translate_instr (envr : env) (instr : machine_op) : Ast.machine_op =
   | Halt -> Ast.Halt
   | Word w -> raise (WordException w)
   | Lbl s -> raise (UnknownLabelException s)
+  | Define (_, _, location) ->
+      raise
+        (UnexpandedMacroException
+           (Printf.sprintf "%s:%d: integer definition" location.filename location.line))
+  | MacroDef definition -> raise (UnexpandedMacroException ("macro definition " ^ definition.name))
+  | MacroCall call -> raise (UnexpandedMacroException ("macro call " ^ call.name))
 
 let rec translate_prog_aux (envr : env) (prog : t) : Ast.t =
   match prog with

@@ -74,6 +74,11 @@ let program_candidates =
     ("a word type such as `Int` or `Cap`", Parser.Int);
     ("a label definition ending in `:`", Parser.LABELDEF "label");
     ("a word declaration beginning with `#`", Parser.SHARP);
+    ("an integer definition beginning with `%define`", Parser.DEFINE);
+    ("a macro declaration beginning with `%macro`", Parser.MACRO);
+    ("a macro call such as `%name(...)`", Parser.MACROCALL "name");
+    ("a macro parameter such as `$name`", Parser.PARAM "name");
+    ("`%endmacro`", Parser.ENDMACRO);
     ("`(`", Parser.LPAREN);
     ("`)`", Parser.RPAREN);
     ("`[`", Parser.LSBRK);

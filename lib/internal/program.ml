@@ -6,10 +6,13 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
   try
     match Parser_driver.parse_program filebuf with
     | Error _ as error -> error
-    | Ok parsed ->
-        let program = Ir.translate_prog parsed in
-        Parameters.check_program program;
-        Result.Ok program
+    | Ok parsed -> (
+        match Macro_expander.expand parsed with
+        | Error _ as error -> error
+        | Ok expanded ->
+            let program = Ir.translate_prog expanded in
+            Parameters.check_program program;
+            Result.Ok program)
   with
   | Ir.UnknownLabelException label ->
       Result.Error
@@ -21,6 +24,8 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
       Result.Error
         "A word was used where an instruction was expected. Prefix literal data with `#`, or use a \
          machine instruction."
+  | Ir.UnexpandedMacroException construct ->
+      Result.Error ("Internal assembler error: unexpanded " ^ construct ^ ".")
   | Parameters.NotSupported message ->
       Result.Error
         (message ^ ". Choose a compatible architecture or remove the unsupported construct.")

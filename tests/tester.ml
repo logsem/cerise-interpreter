@@ -1,9 +1,6 @@
 open Cerise
 open Cerise.Machine
 open Cerise.Ast
-module Ir = Cerise_internal.Ir
-module Lexer = Cerise_internal.Lexer
-module Parser = Cerise_internal.Parser
 
 let make_test_list (dir : string) : string array =
   try Sys.readdir dir with Failure _ -> raise Sys.Break
@@ -22,10 +19,11 @@ let perm_tst =
 (* TODO I should add a try/catch in case of parsing failure *)
 (* TODO also test multiple flags configurations *)
 let run_prog (filename : string) : Machine.t =
-  let input = open_in filename in
-  let filebuf = Lexing.from_channel input in
-  let parse_res = Ir.translate_prog @@ Parser.main Lexer.token filebuf in
-  let _ = close_in input in
+  let parse_res =
+    match Program.parse_prog_from_file filename with
+    | Ok program -> program
+    | Error message -> failwith message
+  in
 
   let _ = Parameters.flags := Parameters.full_cerise in
 
@@ -88,6 +86,16 @@ let test_jmper =
       (test_const_word Z.(~$12) (get_reg_int_word (Ast.Reg 2) m Z.zero));
     test_case "jmper.s should contain E permission in r1" `Quick
       (test_perm E (get_reg_cap_perm (Reg 1) m O));
+  ]
+
+let test_macros =
+  let open Alcotest in
+  let m = run_prog (test_path "pos/macros.s") in
+  [
+    test_case "macros.s should end in halted state" `Quick
+      (test_state Halted (Machine.get_exec_state m));
+    test_case "macros.s should leave 7 in r2" `Quick
+      (test_const_word Z.(~$7) (get_reg_int_word (Reg 2) m Z.zero));
   ]
 
 let test_promote =
@@ -191,7 +199,7 @@ let () =
   run "Run"
     [
       ( "Pos",
-        test_mov_test @ test_jmper @ test_promote @ test_ucaps @ test_locality_flow
+        test_mov_test @ test_jmper @ test_macros @ test_promote @ test_ucaps @ test_locality_flow
         @ test_directed_store @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
       );
       ("Neg", test_negatives);
