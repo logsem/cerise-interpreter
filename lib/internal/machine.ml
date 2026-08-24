@@ -252,30 +252,40 @@ let get_locality_word (w : word) =
   | Sentry (_, l, _, _, _) -> Some l
   | I _ -> None
 
-let load_deep_local_sealable (w : sealable) : sealable =
-  match w with
-  | Cap ((rx, w, _, dro), g, b, e, a) -> Cap ((rx, w, DL, dro), g, b, e, a)
-  | SealRange (p, g, b, e, a) -> SealRange (p, g, b, e, a)
+let deeplocal_perm ((rx, w, _, dro) : perm) : perm = (rx, w, DL, dro)
 
-let load_deep_local (w : word) : word =
+let deeplocal_sb (w : sealable) : sealable =
   match w with
-  | Sealable s -> Sealable (load_deep_local_sealable s)
-  | Sealed (ot, s) -> Sealed (ot, s)
+  | Cap (p, g, b, e, a) -> Cap (deeplocal_perm p, g, b, e, a)
+  | SealRange _ -> w
+
+let deeplocal (w : word) : word =
+  match w with Sealable sb -> Sealable (deeplocal_sb sb) | _ -> w
+
+let borrow_sb (w : sealable) : sealable =
+  match w with
+  | Cap (p, _, b, e, a) -> Cap (p, Local, b, e, a)
+  | SealRange (p, _, b, e, a) -> SealRange (p, Local, b, e, a)
+
+let borrow (w : word) : word =
+  match w with
+  | Sealable sb -> Sealable (borrow_sb sb)
+  | Sentry (p, _, b, e, a) -> Sentry (p, Local, b, e, a)
+  | Sealed (ot, sb) -> Sealed (ot, borrow_sb sb)
   | _ -> w
 
-let load_deep_immutable_sealable (w : sealable) : sealable =
-  match w with Cap ((rx, _, dl, _), g, b, e, a) -> Cap ((rx, Ow, dl, DRO), g, b, e, a) | _ -> w
+let readonly_perm ((rx, _, dl, _) : perm) : perm = (rx, Ow, dl, DRO)
 
-let load_deep_immutable (w : word) : word =
-  match w with
-  | Sealable s -> Sealable (load_deep_immutable_sealable s)
-  | Sealed (ot, s) -> Sealed (ot, load_deep_immutable_sealable s)
-  | _ -> w
+let readonly_sb (w : sealable) : sealable =
+  match w with Cap (p, g, b, e, a) -> Cap (readonly_perm p, g, b, e, a) | _ -> w
+
+let readonly (w : word) : word =
+  match w with Sealable sb -> Sealable (readonly_sb sb) | _ -> w
 
 let load_word (p : perm) (w : word) : word =
-  let w = if is_DL p then load_deep_local w else w in
-  let w = if is_DRO p then load_deep_immutable w else w in
-  w
+  let borrow_w = if is_DL p then deeplocal (borrow w) else w in
+  let borrow_dro_w = if is_DRO p then readonly borrow_w else borrow_w in
+  borrow_dro_w
 
 let authorised_access_system_register (conf : exec_conf) : bool =
   match PC @! conf with Sealable (Cap ((XSR, _, _, _), _, _, _, _)) -> true | _ -> false
