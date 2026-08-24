@@ -534,30 +534,38 @@ KVS_ext_end:
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
-    store csp cs0
-    lea csp -1
-    store csp cs1
-    lea csp -1
-    store csp cra
-    lea csp -1
-    store csp cgp
     getp ct2 csp
     mov ctp [R WL LG LM]
     sub ct2 ct2 ctp
-    jnz ct2 2
-    jmp 2
-    fail
+    jnz ct2 switcher_force_unwind
+    getl ct2 csp
+    mov ctp Local
+    sub ct2 ct2 ctp
+    jnz ct2 switcher_force_unwind
+    store csp cs0
+    lea csp 1
+    store csp cs1
+    lea csp 1
+    store csp cra
+    lea csp 1
+    store csp cgp
+    lea csp 1
     readsr ct2 mtdc
-    lea ct2 -1
+    geta cs0 ct2
+    add cs0 cs0 1
+    gete ctp ct2
+    lt ctp cs0 ctp
+    jnz ctp 2
+    jmp switcher_trusted_stack_exhausted
+    lea ct2 1
     store ct2 csp
     writesr mtdc ct2
-    geta cs0 csp
-    getb cs1 csp
+    gete cs0 csp
+    geta cs1 csp
     subseg csp cs1 cs0
 switcher_zero_stk_init_pre:
     sub cs0 cs1 cs0
     mov cs1 csp
-    lea cs1 cs0
 switcher_zero_stk_loop_pre:
     jnz cs0 2
     jmp (switcher_zero_stk_end_pre - switcher_zero_stk_loop_pre - 1)
@@ -567,7 +575,6 @@ switcher_zero_stk_loop_pre:
 switcher_zero_stk_loop_end_pre:
     jmp (switcher_zero_stk_loop_pre - switcher_zero_stk_loop_end_pre)
 switcher_zero_stk_end_pre:
-    lea csp -1
     getb cs1 PC
     geta cs0 PC
     sub cs1 cs1 cs0
@@ -618,23 +625,24 @@ switcher_zero_stk_end_pre:
     mov r29 0
     mov r30 0
     jalr cra cra
+switcher_after_compartment_call:
     readsr ctp mtdc
     load csp ctp
-    lea ctp 1
+    lea ctp -1
     writesr mtdc ctp
+    lea csp -1
     load cgp csp
-    lea csp 1
-    load ca2 csp
-    lea csp 1
+    lea csp -1
+    load cra csp
+    lea csp -1
     load cs1 csp
-    lea csp 1
+    lea csp -1
     load cs0 csp
 switcher_zero_stk_init_post:
-    geta ct0 csp
-    getb ct1 csp
+    gete ct0 csp
+    geta ct1 csp
     sub ct0 ct1 ct0
     mov ct1 csp
-    lea ct1 ct0
 switcher_zero_stk_loop_post:
     jnz ct0 2
     jmp (switcher_zero_stk_end_post - switcher_zero_stk_loop_post - 1)  ;
@@ -644,7 +652,7 @@ switcher_zero_stk_loop_post:
 switcher_zero_stk_loop_end_post:
     jmp (switcher_zero_stk_loop_post - switcher_zero_stk_loop_end_post)
 switcher_zero_stk_end_post:
-    mov cra ca2
+switcher_callee_dead_zeros:
     mov r0 0
     mov r4 0
     mov r5 0
@@ -669,5 +677,21 @@ switcher_zero_stk_end_post:
     mov r28 0
     mov r29 0
     mov r30 0
-    jalr cra cra
+    jalr cnull cra
+switcher_trusted_stack_exhausted:
+    lea csp -1
+    load cgp csp
+    lea csp -1
+    load cra csp
+    lea csp -1
+    load cs1 csp
+    lea csp -1
+    load cs0 csp
+    mov ca0 -141
+    mov ca1 0
+    jmp switcher_callee_dead_zeros
+switcher_force_unwind:
+    mov ca0 -1
+    mov ca1 0
+    jmp switcher_after_compartment_call
 switcher_end:

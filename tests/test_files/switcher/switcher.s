@@ -1,8 +1,15 @@
-;; This file is the non commented version of switcher_commented.s
-;; Concatenate this file at the end of any example that require the switcher
+;; Generated from logsem/griotte theories/switcher/switcher.v.
 switcher:
     #[SU, Global, 9, 10, 9]
 switcher_cc:
+    getp ct2 csp
+    mov ctp [R WL LG LM]
+    sub ct2 ct2 ctp
+    jnz ct2 switcher_force_unwind
+    getl ct2 csp
+    mov ctp Local
+    sub ct2 ct2 ctp
+    jnz ct2 switcher_force_unwind
     store csp cs0
     lea csp 1
     store csp cs1
@@ -11,13 +18,13 @@ switcher_cc:
     lea csp 1
     store csp cgp
     lea csp 1
-    getp ct2 csp
-    mov ctp [R WL LG LM]
-    sub ct2 ct2 ctp
-    jnz ct2 2
-    jmp 2
-    fail
     readsr ct2 mtdc
+    geta cs0 ct2
+    add cs0 cs0 1
+    gete ctp ct2
+    lt ctp cs0 ctp
+    jnz ctp 2
+    jmp switcher_trusted_stack_exhausted
     lea ct2 1
     store ct2 csp
     writesr mtdc ct2
@@ -57,42 +64,45 @@ switcher_zero_stk_end_pre:
     lea cra cs0
     add ct2 ct2 1
     jmp ct2
-    mov r10 0
-    mov r11 0
-    mov r12 0
-    mov r13 0
-    mov r14 0
-    mov r15 0
-    mov r5 0
-    mov r0 0
-    mov r4 0
-    mov r6 0
-    mov r7 0
-    mov r8 0
-    mov r9 0
-    mov r16 0
-    mov r17 0
-    mov r18 0
-    mov r19 0
-    mov r20 0
-    mov r21 0
-    mov r22 0
-    mov r23 0
-    mov r24 0
-    mov r25 0
-    mov r26 0
-    mov r27 0
-    mov r28 0
-    mov r29 0
-    mov r30 0
+    mov ca0 0
+    mov ca1 0
+    mov ca2 0
+    mov ca3 0
+    mov ca4 0
+    mov ca5 0
+    mov ct0 0
+    mov cnull 0
+    mov ctp 0
+    mov ct1 0
+    mov ct2 0
+    mov cs0 0
+    mov cs1 0
+    mov ca6 0
+    mov ca7 0
+    mov cs2 0
+    mov cs3 0
+    mov cs4 0
+    mov cs5 0
+    mov cs6 0
+    mov cs7 0
+    mov cs8 0
+    mov cs9 0
+    mov cs10 0
+    mov cs11 0
+    mov ct3 0
+    mov ct4 0
+    mov ct5 0
+    mov ct6 0
     jalr cra cra
+switcher_after_compartment_call:
     readsr ctp mtdc
     load csp ctp
     lea ctp -1
     writesr mtdc ctp
+    lea csp -1
     load cgp csp
     lea csp -1
-    load ca2 csp
+    load cra csp
     lea csp -1
     load cs1 csp
     lea csp -1
@@ -111,30 +121,47 @@ switcher_zero_stk_loop_post:
 switcher_zero_stk_loop_end_post:
     jmp (switcher_zero_stk_loop_post - switcher_zero_stk_loop_end_post)
 switcher_zero_stk_end_post:
-    mov cra ca2
-    mov r0 0
-    mov r4 0
-    mov r5 0
-    mov r6 0
-    mov r7 0
-    mov r12 0
-    mov r13 0
-    mov r14 0
-    mov r15 0
-    mov r16 0
-    mov r17 0
-    mov r18 0
-    mov r19 0
-    mov r20 0
-    mov r21 0
-    mov r22 0
-    mov r23 0
-    mov r24 0
-    mov r25 0
-    mov r26 0
-    mov r27 0
-    mov r28 0
-    mov r29 0
-    mov r30 0
-    jalr cra cra
+switcher_callee_dead_zeros:
+    mov ct0 0
+    mov cnull 0
+    mov ctp 0
+    mov ct1 0
+    mov ct2 0
+    mov ct3 0
+    mov ct4 0
+    mov ct5 0
+    mov ct6 0
+    mov ca2 0
+    mov ca3 0
+    mov ca4 0
+    mov ca5 0
+    mov ca6 0
+    mov ca7 0
+    mov cs2 0
+    mov cs3 0
+    mov cs4 0
+    mov cs5 0
+    mov cs6 0
+    mov cs7 0
+    mov cs8 0
+    mov cs9 0
+    mov cs10 0
+    mov cs11 0
+    jalr cnull cra
+switcher_trusted_stack_exhausted:
+    lea csp -1
+    load cgp csp
+    lea csp -1
+    load cra csp
+    lea csp -1
+    load cs1 csp
+    lea csp -1
+    load cs0 csp
+    mov ca0 -141
+    mov ca1 0
+    jmp switcher_callee_dead_zeros
+switcher_force_unwind:
+    mov ca0 -1
+    mov ca1 0
+    jmp switcher_after_compartment_call
 switcher_end:

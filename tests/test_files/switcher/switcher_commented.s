@@ -14,6 +14,15 @@ switcher:
     ;; ca1           -> return value 1
     ;; ca2           -> return value 2
 switcher_cc:
+    ;; Check permissions and locality of the stack.
+    getp ct2 csp
+    mov ctp [R WL LG LM]
+    sub ct2 ct2 ctp
+    jnz ct2 switcher_force_unwind
+    getl ct2 csp
+    mov ctp Local
+    sub ct2 ct2 ctp
+    jnz ct2 switcher_force_unwind
     ;; STEP 1: store content in compartment's stack
     store csp cs0
     lea csp 1
@@ -25,26 +34,14 @@ switcher_cc:
 
     ;; STEP 2: verify csp contains a valid stack pointer
     ;; verify permissions
-    getp ct2 csp
-    mov ctp [R WL LG LM]
-    sub ct2 ct2 ctp
-    jnz ct2 2
-    jmp 2
-    fail                        ; ct2 :=/= 0, ie. not the right permissions
-    ;; SKIP verify alignments
-
-    ;; STEP 3: verify valid trusted stack
-    ;; TODO SKIP
-    ;; movsr r21 mtdc
-    ;; geta r20 r21
-    ;; gete r21 r21
-    ;; add r20 r20 1
-    ;; lt r20 r20 r21              ; r20 contains 0 if a >= e
-    ;; jnz r20 2
-    ;; fail                        ; r20 := 0, i.e, the stack does not have enough space
-
-    ;; STEP 4: prepare the tstack frame
+    ;; Check that the trusted stack has room for this frame.
     readsr ct2 mtdc
+    geta cs0 ct2
+    add cs0 cs0 1
+    gete ctp ct2
+    lt ctp cs0 ctp
+    jnz ctp 2
+    jmp switcher_trusted_stack_exhausted
     lea ct2 1
     store ct2 csp
     writesr mtdc ct2              ; NOTE: in the actual implementation,
@@ -152,6 +149,7 @@ switcher_zero_stk_end_pre:
     jalr cra cra
 
     ;; STEP 10: pop topmost trusted stack frame
+switcher_after_compartment_call:
     readsr ctp mtdc
     ;; TODO make sure that there is a frame left in the trusted stack
     ;; restore stack pointer and update trusted stack
@@ -159,9 +157,10 @@ switcher_zero_stk_end_pre:
     lea ctp -1
     writesr mtdc ctp
     ;; spill the saved registers out
+    lea csp -1
     load cgp csp
     lea csp -1
-    load ca2 csp
+    load cra csp
     lea csp -1
     load cs1 csp
     lea csp -1
@@ -186,8 +185,7 @@ switcher_zero_stk_loop_post:
 switcher_zero_stk_loop_end_post:
     jmp (switcher_zero_stk_loop_post - switcher_zero_stk_loop_end_post)
 switcher_zero_stk_end_post:
-
-    mov cra ca2
+switcher_callee_dead_zeros:
 
     ;; STEP 11: zero unused registers
     mov r0 0
@@ -222,6 +220,26 @@ switcher_zero_stk_end_post:
     mov r29 0
     mov r30 0
     ;; r31 / mtdc ---> trusted stack
-    jalr cra cra
+    jalr cnull cra
+
+switcher_trusted_stack_exhausted:
+    ;; Undo the entry spills and report ENOTENOUGHTRUSTEDSTACK.
+    lea csp -1
+    load cgp csp
+    lea csp -1
+    load cra csp
+    lea csp -1
+    load cs1 csp
+    lea csp -1
+    load cs0 csp
+    mov ca0 -141
+    mov ca1 0
+    jmp switcher_callee_dead_zeros
+
+switcher_force_unwind:
+    ;; Report ECOMPARTMENTFAIL and unwind through the callback path.
+    mov ca0 -1
+    mov ca1 0
+    jmp switcher_after_compartment_call
 
 switcher_end:
