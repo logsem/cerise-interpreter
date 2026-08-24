@@ -33,7 +33,7 @@ let test_current_address_resolution_pass () =
     [
       Lbl "start";
       Move (Reg 1, Const (ConstExpr CurrentAddr));
-      Word (I (AddOp (CurrentAddr, IntLit (Infinite_z.of_int 2))));
+      Word (I (AddOp (CurrentAddr, IntLit (Z.of_int 2))));
       Lbl "ending";
       Halt;
     ]
@@ -41,8 +41,8 @@ let test_current_address_resolution_pass () =
   let expected =
     [
       Lbl "start";
-      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 0))));
-      Word (I (AddOp (IntLit (Infinite_z.of_int 1), IntLit (Infinite_z.of_int 2))));
+      Move (Reg 1, Const (ConstExpr (IntLit (Z.of_int 0))));
+      Word (I (AddOp (IntLit (Z.of_int 1), IntLit (Z.of_int 2))));
       Lbl "ending";
       Halt;
     ]
@@ -78,7 +78,7 @@ let test_label_resolution_pass () =
   let input =
     [
       Lbl "start";
-      Move (Reg 1, Const (ConstExpr (AddOp (Label "ending", IntLit (Infinite_z.of_int 1)))));
+      Move (Reg 1, Const (ConstExpr (AddOp (Label "ending", IntLit (Z.of_int 1)))));
       Word (I (SubOp (Label "ending", Label "start")));
       Lbl "ending";
       Halt;
@@ -86,10 +86,8 @@ let test_label_resolution_pass () =
   in
   let expected =
     [
-      Move
-        ( Reg 1,
-          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
-      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 0))));
+      Move (Reg 1, Const (ConstExpr (AddOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1)))));
+      Word (I (SubOp (IntLit (Z.of_int 2), IntLit (Z.of_int 0))));
       Halt;
     ]
   in
@@ -99,17 +97,12 @@ let test_expression_evaluation_pass () =
   let open Asm_ir in
   let input =
     [
-      Move
-        ( Reg 1,
-          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
-      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1))));
+      Move (Reg 1, Const (ConstExpr (AddOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1)))));
+      Word (I (SubOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1))));
     ]
   in
   let expected =
-    [
-      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 3))));
-      Word (I (IntLit (Infinite_z.of_int 1)));
-    ]
+    [ Move (Reg 1, Const (ConstExpr (IntLit (Z.of_int 3)))); Word (I (IntLit (Z.of_int 1))) ]
   in
   Alcotest.(check bool) "evaluated IR" true (Asm_expression_evaluator.evaluate input = expected)
 
@@ -120,6 +113,11 @@ let test_chained_definitions () =
   check_program "chained definitions"
     [ Op (Move (Reg 1, const 5)); Op (Move (Reg 2, const (-3))) ]
     "%define RESULT BASE + 3\n%define BASE 0x2\n%define NEGATIVE -3\nmov r1 RESULT\nmov r2 NEGATIVE"
+
+let test_griotte_expression_operators () =
+  check_program "Griotte expression operators"
+    [ Op (Move (Reg 1, const 9)) ]
+    "%define VALUE ((((6 * 3) && 15) || (1 << 4)) >> 1)\nmov r1 VALUE"
 
 let test_label_definition () =
   check_program "label-valued definition" [ Op Halt; Word (I Z.one) ]
@@ -142,9 +140,9 @@ after:
 let test_definition_in_capability () =
   match program {|
 %define LIMIT 5
-# (RW, GLOBAL, 0, LIMIT, 0)
+# ([R W DL DRO], GLOBAL, 0, LIMIT, 0)
 |} with
-  | [ Word (Sealable (Cap (RW, Global, base, Infinite_z.Int ending, address))) ] ->
+  | [ Word (Sealable (Cap ((R, W, DL, DRO), Global, base, ending, address))) ] ->
       Alcotest.(check bool)
         "capability expression fields" true
         (Z.equal base Z.zero && Z.equal ending (Z.of_int 5) && Z.equal address Z.zero)
@@ -218,7 +216,7 @@ let test_all_parameter_types () =
   restrict r4 ($sp, $l)
   mov r5 $w
 %endmacro
-%typed(r1, r2, 3, RW, S, GLOBAL, Int)
+%typed(r1, r2, 3, [R W DL DRO], S, GLOBAL, Int)
 |}
   in
   Alcotest.(check int) "expanded statement count" 5 (List.length (program source))
@@ -231,14 +229,69 @@ let test_whitespace_oriented_macros () =
 let test_parameters_in_capability_word () =
   match
     program
-      "%macro cap(p: perm, l: locality, e: expr) # ($p, $l, 0, $e, 0) %endmacro %cap(RW, GLOBAL, \
-       Inf)"
+      "%macro cap(p: perm, l: locality, e: expr) # ($p, $l, 0, $e, 0) %endmacro %cap([R W DL DRO], \
+       GLOBAL, 7)"
   with
-  | [ Word (Sealable (Cap (RW, Global, base, Infinite_z.Inf, address))) ] ->
+  | [ Word (Sealable (Cap ((R, W, DL, DRO), Global, base, ending, address))) ] ->
       Alcotest.(check bool)
         "parameterized capability" true
-        (Z.equal base Z.zero && Z.equal address Z.zero)
+        (Z.equal base Z.zero && Z.equal ending (Z.of_int 7) && Z.equal address Z.zero)
   | _ -> Alcotest.fail "expected one parameterized capability word"
+
+let test_griotte_operations_in_macro () =
+  let source =
+    {|
+%macro operations(dst: reg, target: value, amount: expr)
+  jalr $dst r2
+  jmp $target
+  jnz $dst $target
+  readsr $dst mtdc
+  writesr mtdc $dst
+  land $dst $target $amount
+  lor $dst $target $amount
+  lshiftl $dst $target $amount
+  lshiftr $dst $target $amount
+%endmacro
+%operations(r1, 2, 1)
+|}
+  in
+  Alcotest.(check int) "expanded Griotte operation count" 9 (List.length (program source))
+
+let test_sentry_macro () =
+  match
+    program
+      "%macro sentry(p: perm, l: locality, e: expr) # (E-$p, $l, &CURRENT_ADDR, $e, &CURRENT_ADDR) \
+       %endmacro %sentry([X Ow DL DRO], GLOBAL, 7)"
+  with
+  | [ Word (Sentry ((X, Ow, DL, DRO), Global, base, ending, address)) ] ->
+      Alcotest.(check bool)
+        "parameterized sentry" true
+        (Z.equal base Z.zero && Z.equal ending (Z.of_int 7) && Z.equal address Z.zero)
+  | _ -> Alcotest.fail "expected one parameterized sentry word"
+
+let test_griotte_programs_parse () =
+  let files =
+    [
+      "case_studies/counter.s";
+      "case_studies/deep_immutability.s";
+      "case_studies/deep_locality.s";
+      "case_studies/kvs.s";
+      "case_studies/lse.s";
+      "case_studies/mutually_distrustful.s";
+      "case_studies/stack_object.s";
+      "case_studies/vae.s";
+      "switcher/switcher.s";
+      "switcher/switcher_commented.s";
+      "switcher/switcher_example.s";
+    ]
+  in
+  List.iter
+    (fun file ->
+      let path = "../../../tests/test_files/" ^ file in
+      match Program.parse_prog_from_file path with
+      | Ok _ -> ()
+      | Error message -> Alcotest.failf "%s: %s" file message)
+    files
 
 let () =
   Alcotest.run "Assembler macros"
@@ -255,6 +308,7 @@ let () =
           Alcotest.test_case "expression evaluation pass" `Quick test_expression_evaluation_pass;
           Alcotest.test_case "literal" `Quick test_literal_definition;
           Alcotest.test_case "chained and forward" `Quick test_chained_definitions;
+          Alcotest.test_case "Griotte expression operators" `Quick test_griotte_expression_operators;
           Alcotest.test_case "labels" `Quick test_label_definition;
           Alcotest.test_case "expanded addresses" `Quick test_definition_after_macro_expansion;
           Alcotest.test_case "capability field" `Quick test_definition_in_capability;
@@ -269,5 +323,9 @@ let () =
           Alcotest.test_case "parameter types" `Quick test_all_parameter_types;
           Alcotest.test_case "whitespace-oriented syntax" `Quick test_whitespace_oriented_macros;
           Alcotest.test_case "capability parameters" `Quick test_parameters_in_capability_word;
+          Alcotest.test_case "Griotte operations" `Quick test_griotte_operations_in_macro;
+          Alcotest.test_case "sentry word" `Quick test_sentry_macro;
         ] );
+      ( "Griotte sources",
+        [ Alcotest.test_case "case studies and switcher" `Quick test_griotte_programs_parse ] );
     ]

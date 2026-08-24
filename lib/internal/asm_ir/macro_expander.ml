@@ -49,20 +49,18 @@ let kind_fits_slot (kind : parameter_kind) (slot : slot_kind) : bool =
       true
   | _ -> false
 
-(* Report whether an expression contains the infinite literal. *)
-let rec expression_contains_inf (expression : expr) : bool =
-  match expression with
-  | IntLit Infinite_z.Inf -> true
-  | IntLit (Infinite_z.Int _) | CurrentAddr | Symbol _ | Label _ | ExprParam _ -> false
-  | AddOp (left, right) | SubOp (left, right) ->
-      expression_contains_inf left || expression_contains_inf right
-
 (* Report whether an expression still contains a macro parameter hole. *)
 let rec expression_contains_parameter (expression : expr) : bool =
   match expression with
   | ExprParam _ -> true
   | IntLit _ | CurrentAddr | Symbol _ | Label _ -> false
-  | AddOp (left, right) | SubOp (left, right) ->
+  | AddOp (left, right)
+  | SubOp (left, right)
+  | MultOp (left, right)
+  | LandOp (left, right)
+  | LorOp (left, right)
+  | LslOp (left, right)
+  | LsrOp (left, right) ->
       expression_contains_parameter left || expression_contains_parameter right
 
 type mapper = {
@@ -103,6 +101,11 @@ let rec map_expr (mapper : mapper) (expression : expr) : expr =
   | Label name -> mapper.label_ref name
   | AddOp (left, right) -> AddOp (map_expr mapper left, map_expr mapper right)
   | SubOp (left, right) -> SubOp (map_expr mapper left, map_expr mapper right)
+  | MultOp (left, right) -> MultOp (map_expr mapper left, map_expr mapper right)
+  | LandOp (left, right) -> LandOp (map_expr mapper left, map_expr mapper right)
+  | LorOp (left, right) -> LorOp (map_expr mapper left, map_expr mapper right)
+  | LslOp (left, right) -> LslOp (map_expr mapper left, map_expr mapper right)
+  | LsrOp (left, right) -> LsrOp (map_expr mapper left, map_expr mapper right)
   | ExprParam name -> mapper.expr_param name
 
 (* Structurally rewrite an encoded constant. *)
@@ -148,13 +151,23 @@ let map_word (mapper : mapper) (word : word) : word =
   match word with
   | I expression -> I (map_expr mapper expression)
   | Sealable sealable -> Sealable (map_sealable mapper sealable)
+  | Sentry (permission, locality, base, ending, address) ->
+      Sentry
+        ( mapper.perm permission,
+          mapper.locality locality,
+          map_expr mapper base,
+          map_expr mapper ending,
+          map_expr mapper address )
   | Sealed (otype, sealable) -> Sealed (map_expr mapper otype, map_sealable mapper sealable)
 
 (* Structurally rewrite every operand of one assembler operation. *)
 let map_op (mapper : mapper) (operation : machine_op) : machine_op =
   match operation with
-  | Jmp register -> Jmp (mapper.reg register)
-  | Jnz (left, right) -> Jnz (mapper.reg left, mapper.reg right)
+  | Jalr (left, right) -> Jalr (mapper.reg left, mapper.reg right)
+  | Jmp value -> Jmp (map_value mapper value)
+  | Jnz (register, value) -> Jnz (mapper.reg register, map_value mapper value)
+  | ReadSR (register, system_register) -> ReadSR (mapper.reg register, system_register)
+  | WriteSR (system_register, register) -> WriteSR (system_register, mapper.reg register)
   | Move (register, value) -> Move (mapper.reg register, map_value mapper value)
   | Load (left, right) -> Load (mapper.reg left, mapper.reg right)
   | Store (register, value) -> Store (mapper.reg register, map_value mapper value)
@@ -168,6 +181,14 @@ let map_op (mapper : mapper) (operation : machine_op) : machine_op =
       Rem (mapper.reg register, map_value mapper left, map_value mapper right)
   | Div (register, left, right) ->
       Div (mapper.reg register, map_value mapper left, map_value mapper right)
+  | LAnd (register, left, right) ->
+      LAnd (mapper.reg register, map_value mapper left, map_value mapper right)
+  | LOr (register, left, right) ->
+      LOr (mapper.reg register, map_value mapper left, map_value mapper right)
+  | LShiftL (register, left, right) ->
+      LShiftL (mapper.reg register, map_value mapper left, map_value mapper right)
+  | LShiftR (register, left, right) ->
+      LShiftR (mapper.reg register, map_value mapper left, map_value mapper right)
   | Lt (register, left, right) ->
       Lt (mapper.reg register, map_value mapper left, map_value mapper right)
   | Lea (register, value) -> Lea (mapper.reg register, map_value mapper value)
@@ -183,12 +204,6 @@ let map_op (mapper : mapper) (operation : machine_op) : machine_op =
   | GetWType (left, right) -> GetWType (mapper.reg left, mapper.reg right)
   | Seal (first, second, third) -> Seal (mapper.reg first, mapper.reg second, mapper.reg third)
   | UnSeal (first, second, third) -> UnSeal (mapper.reg first, mapper.reg second, mapper.reg third)
-  | Invoke (left, right) -> Invoke (mapper.reg left, mapper.reg right)
-  | LoadU (first, second, value) ->
-      LoadU (mapper.reg first, mapper.reg second, map_value mapper value)
-  | StoreU (register, first, second) ->
-      StoreU (mapper.reg register, map_value mapper first, map_value mapper second)
-  | PromoteU register -> PromoteU (mapper.reg register)
   | Fail -> Fail
   | Halt -> Halt
   | Lbl name -> Lbl (mapper.label_def name)
@@ -267,7 +282,13 @@ let validate_pair_parameter (context : validation_context) (name : string) : uni
 let rec validate_expression (context : validation_context) (expression : expr) : unit =
   match expression with
   | IntLit _ | CurrentAddr | Symbol _ | Label _ -> ()
-  | AddOp (left, right) | SubOp (left, right) ->
+  | AddOp (left, right)
+  | SubOp (left, right)
+  | MultOp (left, right)
+  | LandOp (left, right)
+  | LorOp (left, right)
+  | LslOp (left, right)
+  | LsrOp (left, right) ->
       validate_expression context left;
       validate_expression context right
   | ExprParam name -> validate_parameter_use context name ExprSlot
@@ -344,6 +365,12 @@ let validate_word (context : validation_context) (word : word) : unit =
   match word with
   | I expression -> validate_expression context expression
   | Sealable sealable -> validate_sealable context sealable
+  | Sentry (permission, locality, base, ending, address) ->
+      validate_permission context permission;
+      validate_locality context locality;
+      validate_expression context base;
+      validate_expression context ending;
+      validate_expression context address
   | Sealed (otype, sealable) ->
       validate_expression context otype;
       validate_sealable context sealable
@@ -385,8 +412,7 @@ let validate_two_registers_value (context : validation_context) (first : regname
 let validate_operation (context : validation_context) (operation : machine_op) : unit =
   let definition = context.definition in
   match operation with
-  | Jmp register | PromoteU register -> validate_register context register
-  | Jnz (left, right)
+  | Jalr (left, right)
   | Load (left, right)
   | GetL (left, right)
   | GetB (left, right)
@@ -394,9 +420,11 @@ let validate_operation (context : validation_context) (operation : machine_op) :
   | GetA (left, right)
   | GetP (left, right)
   | GetOType (left, right)
-  | GetWType (left, right)
-  | Invoke (left, right) ->
+  | GetWType (left, right) ->
       validate_two_registers context left right
+  | Jmp value -> validate_value context value
+  | Jnz (register, value) -> validate_register_value context register value
+  | ReadSR (register, _) | WriteSR (_, register) -> validate_register context register
   | Move (register, source)
   | Store (register, source)
   | Lea (register, source)
@@ -407,13 +435,15 @@ let validate_operation (context : validation_context) (operation : machine_op) :
   | Mul (register, left, right)
   | Rem (register, left, right)
   | Div (register, left, right)
+  | LAnd (register, left, right)
+  | LOr (register, left, right)
+  | LShiftL (register, left, right)
+  | LShiftR (register, left, right)
   | Lt (register, left, right)
-  | SubSeg (register, left, right)
-  | StoreU (register, left, right) ->
+  | SubSeg (register, left, right) ->
       validate_register_two_values context register left right
   | Seal (first, second, third) | UnSeal (first, second, third) ->
       validate_three_registers context first second third
-  | LoadU (first, second, source) -> validate_two_registers_value context first second source
   | Word contents -> validate_word context contents
   | Lbl _ | Fail | Halt -> ()
   | Define (_, _, location) ->
@@ -438,11 +468,10 @@ let argument_kind (argument : reg_or_const) : parameter_kind option =
   | Register (PC | Reg _) -> Some RegKind
   | Const (ConstExpr expression) when not (expression_contains_parameter expression) ->
       Some ExprKind
-  | Const (Perm (O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWL | URWX | URWLX)) ->
-      Some PermKind
-  | Const (SealPerm (SealPermLit _)) -> Some SealPermKind
-  | Const (Locality (Global | Local | Directed)) -> Some LocalityKind
-  | Const (Wtype (W_I | W_Cap | W_SealRange | W_Sealed)) -> Some WtypeKind
+  | Const (Perm (PermLit _)) -> Some PermKind
+  | Const (SealPerm (SealPermLit (_, _))) -> Some SealPermKind
+  | Const (Locality (Global | Local)) -> Some LocalityKind
+  | Const (Wtype (W_I | W_Cap | W_SealRange | W_Sealed | W_Sentry)) -> Some WtypeKind
   | Const (PermLoc _) | Const (SealPermLoc _) -> Some ValueKind
   | Const (PairParam _) -> None
   | Register (RegParam _)
@@ -473,9 +502,6 @@ let add_integer_definition (definitions : definition_table) (name : string) (exp
     (location : location) : unit =
   if Hashtbl.mem definitions name then
     fail location "integer definition error: duplicate definition %S" name;
-  if expression_contains_inf expression then
-    fail location
-      "integer definition error: %S must evaluate to a finite integer; `Inf` is not allowed" name;
   if expression_contains_parameter expression then
     fail location "integer definition error: %S cannot contain a macro parameter" name;
   Hashtbl.add definitions name (expression, location)
@@ -526,6 +552,26 @@ and resolve_definition_expression (resolver : definition_resolver) (stack : stri
           resolve_definition_expression resolver stack right )
   | SubOp (left, right) ->
       SubOp
+        ( resolve_definition_expression resolver stack left,
+          resolve_definition_expression resolver stack right )
+  | MultOp (left, right) ->
+      MultOp
+        ( resolve_definition_expression resolver stack left,
+          resolve_definition_expression resolver stack right )
+  | LandOp (left, right) ->
+      LandOp
+        ( resolve_definition_expression resolver stack left,
+          resolve_definition_expression resolver stack right )
+  | LorOp (left, right) ->
+      LorOp
+        ( resolve_definition_expression resolver stack left,
+          resolve_definition_expression resolver stack right )
+  | LslOp (left, right) ->
+      LslOp
+        ( resolve_definition_expression resolver stack left,
+          resolve_definition_expression resolver stack right )
+  | LsrOp (left, right) ->
+      LsrOp
         ( resolve_definition_expression resolver stack left,
           resolve_definition_expression resolver stack right )
   | ExprParam name -> raise (Expansion_error ("integer definition contains parameter $" ^ name))

@@ -4,9 +4,16 @@ open Asm_ir
 (* Replace [&CURRENT_ADDR] recursively with the address of its containing emitted operation. *)
 let rec resolve_expression (address : int) (expression : expr) : expr =
   match expression with
-  | CurrentAddr -> IntLit (Infinite_z.of_int address)
+  | CurrentAddr -> IntLit (Z.of_int address)
   | AddOp (left, right) -> AddOp (resolve_expression address left, resolve_expression address right)
   | SubOp (left, right) -> SubOp (resolve_expression address left, resolve_expression address right)
+  | MultOp (left, right) ->
+      MultOp (resolve_expression address left, resolve_expression address right)
+  | LandOp (left, right) ->
+      LandOp (resolve_expression address left, resolve_expression address right)
+  | LorOp (left, right) -> LorOp (resolve_expression address left, resolve_expression address right)
+  | LslOp (left, right) -> LslOp (resolve_expression address left, resolve_expression address right)
+  | LsrOp (left, right) -> LsrOp (resolve_expression address left, resolve_expression address right)
   | IntLit _ | Symbol _ | Label _ | ExprParam _ -> expression
 
 (* Replace current-address expressions throughout the program. Labels do not occupy an address;

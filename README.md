@@ -19,6 +19,9 @@ Finally, the command `make install` creates a symbolic link to the interpreter i
 Executable: `./interpreter <file>`
 Assembly examples in `./tests/test_files` (for the syntax)
 
+See [assembler.md](assembler.md) for the complete Griotte assembly language, register-file, integer
+definition, and sequence-macro reference.
+
 The interpreter uses the Griotte capability-machine configuration.
 
 Example:

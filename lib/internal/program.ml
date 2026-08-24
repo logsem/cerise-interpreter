@@ -6,9 +6,14 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
   try
     match Parser_driver.parse_program filebuf with
     | Error _ as error -> error
-    | Ok parsed ->
-        let program = Ir.translate_prog parsed in
-        Result.Ok program
+    | Ok parsed -> (
+        match Macro_expander.expand parsed with
+        | Error _ as error -> error
+        | Ok expanded ->
+            let current_addresses_resolved = Current_address_resolver.resolve expanded in
+            let labels_resolved = Label_resolver.resolve current_addresses_resolved in
+            let expressions_evaluated = Expression_evaluator.evaluate labels_resolved in
+            Result.Ok (Asm_ir.translate_prog expressions_evaluated))
   with
   | Label_resolver.Unknown_label label ->
       Result.Error
@@ -20,6 +25,12 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
       Result.Error
         "A word was used where an instruction was expected. Prefix literal data with `#`, or use a \
          machine instruction."
+  | Asm_ir.UnexpandedMacroException construct ->
+      Result.Error ("Internal assembler error: unexpanded " ^ construct ^ ".")
+  | Asm_ir.UnresolvedExpressionException _ ->
+      Result.Error "Internal assembler error: unresolved expression reached IR translation."
+  | Asm_ir.UnresolvedIrException construct ->
+      Result.Error ("Internal assembler error: unresolved " ^ construct ^ " reached IR translation.")
   | Failure message -> Result.Error (failure_message message)
 
 let parse_prog_from_file (filename : string) : (Ast.t, string) Result.t =

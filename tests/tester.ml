@@ -1,6 +1,5 @@
 open Cerise
 open Cerise.Machine
-module Ir = Cerise_internal.Ir
 module Lexer = Cerise_internal.Lexer
 module Parser = Cerise_internal.Parser
 

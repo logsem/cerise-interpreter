@@ -1,91 +1,86 @@
-# Cerise assembler reference
+# Griotte assembler reference
 
-This document describes the assembly and register-file syntax accepted by the Cerise interpreter.
-Assembly examples are available under `tests/test_files`.
+This document describes the assembly and register-file syntax accepted by the interpreter. Complete
+programs are available under `tests/test_files`.
 
 ## Source text
 
-Whitespace separates tokens but is otherwise insignificant to ordinary assembly. A semicolon starts
-a comment that continues to the end of the line.
+Whitespace separates tokens but is otherwise insignificant. A semicolon starts a comment that
+continues to the end of the line. Integer literals may be decimal or hexadecimal and must fit in an
+OCaml machine integer when read. Identifiers and labels are case-sensitive.
 
 ```asm
-mov r1 42       ; decimal integer
-mov r2 0x2a     ; hexadecimal integer
+mov r1 42
+mov r2 0x2a ; hexadecimal
+loop:
 ```
 
-Integer literals must fit in an OCaml machine integer when read. Negative integers use unary `-`.
-Identifiers start with a letter or underscore and continue with letters, digits, or underscores.
-Labels are case-sensitive. Instruction names are lowercase; `loadU`, `storeU`, and `promoteU` also
-accept a lowercase `u`. Registers are case-insensitive. Permissions and word types are case-sensitive.
-Localities accept uppercase or title-case spellings, such as `GLOBAL` and `Global`.
+Griotte only supports finite integers. `Inf`, `inf`, and `∞` are rejected by the lexer.
 
 ## Registers and values
 
-Registers are `r0` through `r31`, plus these aliases:
+General registers are `r0` through `r31`, plus `pc` and the case-insensitive CHERIoT aliases:
 
-| Name | Register |
-|---|---:|
-| `pc` | program counter |
-| `ddc` | `r0` |
-| `stk` | `r31` |
-
-An instruction `value` operand accepts a register, an integer expression, or one of the encoded
-architectural constants below.
-
-| Category | Accepted syntax |
+| Aliases | Registers |
 |---|---|
-| Capability permission | `O`, `E`, `RO`, `RX`, `RW`, `RWX`, `RWL`, `RWLX`, `URW`, `URWX`, `URWL`, `URWLX` |
-| Sealing permission | `SO`, `S`, `U`, `SU` |
-| Locality | `GLOBAL`, `LOCAL`, `DIRECTED` (or title case) |
-| Word type | `Int`, `Cap`, `SealRange`, `Sealed` |
-| Permission/locality pair | `(RW, GLOBAL)` |
-| Sealing-permission/locality pair | `(S, LOCAL)` |
+| `cnull`, `cra`, `csp`, `cgp`, `ctp` | `r0`, `r1`, `r2`, `r3`, `r4` |
+| `ct0`–`ct2`, `ct3`–`ct6` | `r5`–`r7`, `r28`–`r31` |
+| `cs0`–`cs1`, `cs2`–`cs11` | `r8`–`r9`, `r18`–`r27` |
+| `ca0`–`ca7` | `r10`–`r17` |
 
-Some values or instructions are rejected when they are unavailable in the selected machine profile;
-see [Machine profiles](#machine-profiles).
+The system register is `mtdc`. An instruction value accepts a general register, an expression, or an
+encoded architectural value:
+
+| Category | Syntax |
+|---|---|
+| Capability permission | `O` or `[rx w dl dro]` |
+| `rx` component | `Orx`, `R`, `X`, `XSR` |
+| `w` component | `Ow`, `W`, `WL` |
+| `dl` component | `DL`, `LG` |
+| `dro` component | `DRO`, `LM` |
+| Sealing permission | `SO`, `S`, `U`, `SU` |
+| Locality | `GLOBAL`, `LOCAL` (or title case) |
+| Word type | `Int`, `Cap`, `SealRange`, `Sealed`, `Sentry` |
+| Permission/locality pair | `([R W DL DRO], GLOBAL)` |
+| Sealing-permission/locality pair | `(S, LOCAL)` |
 
 ## Instructions
 
-The metavariables in this table are `r` for a register and `v` for a value.
+Here `r` is a general register, `sr` a system register, and `v` a value. Operands are separated by
+whitespace rather than commas.
 
-| Form | Operands |
+| Form | Meaning |
 |---|---|
-| `jmp r` | jump through a register |
-| `jnz r r` | conditional jump |
+| `jalr r r` | jump and link |
+| `jmp v` | jump through a register or to an immediate target |
+| `jnz r v` | conditional jump |
+| `readsr r sr` | read a system register |
+| `writesr sr r` | write a system register |
 | `mov r v` | move a register or constant |
 | `load r r` | load through a capability |
 | `store r v` | store through a capability |
-| `add r v v` | addition |
-| `sub r v v` | subtraction |
-| `mul r v v` | multiplication |
-| `rem r v v` | remainder |
-| `div r v v` | division |
+| `add r v v`, `sub r v v`, `mul r v v` | arithmetic |
+| `rem r v v`, `div r v v` | remainder and division |
+| `land r v v`, `lor r v v` | bitwise operations |
+| `lshiftl r v v`, `lshiftr r v v` | shifts |
 | `lt r v v` | less-than comparison |
 | `lea r v` | modify a capability address |
 | `restrict r v` | restrict permission/locality |
 | `subseg r v v` | restrict capability bounds |
-| `getl r r` | read locality |
-| `getb r r` | read lower bound |
-| `gete r r` | read upper bound |
-| `geta r r` | read current address |
-| `getp r r` | read permission |
-| `getotype r r` | read object type |
-| `getwtype r r` | read word type |
-| `seal r r r` | seal a word |
-| `unseal r r r` | unseal a word |
-| `invoke r r` | invoke sealed capabilities |
-| `loadU r r v` | uninitialized-capability load |
-| `storeU r v v` | uninitialized-capability store |
-| `promoteU r` | promote an uninitialized capability |
-| `fail` | enter the failed state |
-| `halt` | enter the halted state |
-
-Operands are separated by whitespace rather than commas.
+| `getl r r`, `getb r r`, `gete r r`, `geta r r` | inspect capability fields |
+| `getp r r`, `getotype r r`, `getwtype r r` | inspect permission/type fields |
+| `seal r r r`, `unseal r r r` | seal and unseal |
+| `fail`, `halt` | enter the failed or halted state |
 
 ## Expressions and labels
 
-Expressions contain integer literals, labels, `Inf`, parentheses, binary `+` and `-`, and unary `-`.
-Use parentheses around compound expressions when they occur as an instruction operand:
+Expressions contain finite integers, labels, parentheses, unary `-`, and these binary operators:
+
+```text
++  -  *  &&  ||  <<  >>
+```
+
+Use parentheses around a compound instruction operand:
 
 ```asm
 start:
@@ -94,10 +89,8 @@ halt
 end:
 ```
 
-A label marks the address of the next emitted instruction or word. Labels may be referenced before
-their definitions. Labels themselves emit no word. `Inf` is accepted only in positions whose
-architectural representation permits an infinite value; ordinary instruction constants and integer
-words must be finite.
+A label denotes the address of the next emitted instruction or word. Labels may be referenced before
+their declarations and do not themselves emit a word.
 
 ## Literal words
 
@@ -105,9 +98,10 @@ Prefix literal program data with `#`:
 
 ```asm
 # 42
-# (RWX, GLOBAL, 0, Inf, 0)
+# ([R W DL DRO], GLOBAL, 0, 20, 0)
 # [SU, LOCAL, 0, 10, 0]
-# {7: (RO, GLOBAL, 0, 10, 0)}
+# (E-[X Ow DL DRO], GLOBAL, 0, 10, 0)
+# {7: ([R Ow DL DRO], GLOBAL, 0, 10, 0)}
 ```
 
 The forms are:
@@ -115,10 +109,10 @@ The forms are:
 - `# expression` for an integer word.
 - `# (permission, locality, base, end, address)` for a capability.
 - `# [sealing-permission, locality, base, end, address]` for a sealing range.
+- `# (E-permission, locality, base, end, address)` for a sentry.
 - `# {otype: sealable}` for a sealed capability or sealing range.
 
-Bounds, addresses, and object types are expressions. Only a capability's upper bound may evaluate to
-`Inf`.
+All bounds, addresses, and object types are finite expressions.
 
 ## Current address
 
@@ -130,10 +124,8 @@ mov r1 &CURRENT_ADDR
 # (&CURRENT_ADDR + 1)
 ```
 
-Labels and assembler declarations do not occupy addresses. Current-address expressions are resolved
-after sequence macros expand, so each expanded macro instruction receives its actual address. The
-expression may be combined with integers, labels, and definitions using `+` and `-` anywhere an
-ordinary integer expression is accepted.
+Labels and declarations occupy no address. Current addresses are resolved after sequence macros
+expand, so every expanded instruction receives its actual address.
 
 ## Integer definitions
 
@@ -147,16 +139,12 @@ mov r1 VALUE
 mov r2 (VALUE + 1)
 ```
 
-The directive has the form `%define NAME expression`. Its expression may use
-finite decimal or hexadecimal integers, parentheses, `+`, `-`, other integer definitions, and labels.
-Definitions and labels may be referenced before declaration. A definition emits no word, and its
-label-based value is computed using addresses after sequence macros have expanded.
+The form is `%define NAME expression`. Definitions may reference other definitions and labels before
+their declarations. A definition emits no word, and labels are computed after sequence macros have
+expanded. Definitions may appear anywhere an integer expression is accepted.
 
-Definitions may appear anywhere an integer expression is accepted, including instruction values,
-literal words, bounds, addresses, object types, and `expr` macro arguments. `Inf`, registers,
-permissions, localities, word types, duplicate definitions, recursive definition cycles, and names
-reserved by the assembler are rejected. Integer definitions and labels share a namespace, so a file
-may not define both with the same name.
+Registers, permissions, localities, word types, duplicates, recursive cycles, and names also used by
+labels are rejected as integer definitions.
 
 ## Sequence macros
 
@@ -170,63 +158,38 @@ A sequence macro expands a typed body of instructions, labels, and literal words
 %increment(r1, 4)
 ```
 
-Newlines are ordinary whitespace, so the `%macro` header, body, `%endmacro`, and calls do not
-technically need separate lines; the layout above is recommended for readability. Declarations are
-file-wide, so a call may precede its declaration. Zero-argument declarations and calls use `()`.
-Macro declarations emit no words.
+Whitespace is insignificant, but the line-oriented layout above is recommended. Declarations are
+file-wide, so calls may precede declarations. Zero-argument declarations and calls use `()`.
 
-Parameters use `$name` in the body and must declare one of these types:
+Parameters use `$name` in the body and declare one of these types:
 
 | Type | Accepted argument and use |
 |---|---|
 | `reg` | a register; usable in register or value positions |
 | `value` | any instruction value; usable only in value positions |
 | `expr` | an integer expression; usable in expression or value positions |
-| `perm` | a capability permission |
+| `perm` | a Griotte capability permission |
 | `sealperm` | a sealing permission |
 | `locality` | a locality |
 | `wtype` | a word type |
 
-Arguments are comma-separated. Parentheses, brackets, or braces inside an argument keep their commas
-within that argument, allowing values such as `(RW, GLOBAL)`.
+Arguments are comma-separated. Delimiters inside an argument keep their commas within that argument.
+For example, `([R W DL DRO], GLOBAL)` is one argument.
 
-Labels declared in a macro body are private and are renamed uniquely for each call. References in the
-same body resolve to that private label; references to labels not declared by the body resolve at file
-scope. A private label name may not collide with an integer definition.
-
-Macros are deliberately flat in this version: a macro body cannot contain another macro call,
-`%define`, or `%macro`. Macros cannot replace instruction names or complete statements through a
-parameter. Duplicate names or parameters, unknown calls or parameters, wrong arity, wrong argument
-types, and duplicate private labels are errors.
+Labels declared inside a macro are private and renamed uniquely for every call. External label
+references remain file-scoped. Macros are deliberately flat: a macro body cannot contain another
+macro call, `%define`, or `%macro` declaration.
 
 ## Register files
 
-A register file is supplied with `--regfile` and uses assignments of complete words:
+A register file initializes general and system registers with complete words:
 
 ```asm
-pc := (RX, GLOBAL, 0, MAX_ADDR, 0)
-r1 := 42
-r2 := [SU, LOCAL, 0, 10, 0]
-r3 := {7: (RO, GLOBAL, 0, 10, 0)}
-stk := (RWLX, LOCAL, 0, STK_ADDR, STK_ADDR)
+pc := ([X Ow DL DRO], GLOBAL, 0, MAX_ADDR, 0)
+csp := 42
+mtdc := [SU, LOCAL, 0, 10, 0]
 ```
 
-Register-file expressions support integers, `Inf`, parentheses, `+`, `-`, and the predefined
-`MAX_ADDR` and `STK_ADDR` values. They do not support labels, `%define`, or sequence macros.
-
-## Machine profiles
-
-The default profile enables sealing, a stack, directed locality, uninitialized capabilities, and an
-unbounded configured address limit. The command-line `--version` option also provides:
-
-| Version | Main restrictions |
-|---|---|
-| `vanilla` | no sealing, stack, local/directed locality, or uninitialized permissions |
-| `ucerise` | stack and local capabilities, but no sealing or directed locality |
-| `mcerise` | stack, directed locality, and uninitialized permissions, but no sealing |
-| `seal_cerise` | sealing, but no stack, local/directed locality, or uninitialized permissions |
-| `custom` | configured further through command-line feature flags |
-
-Parsing is followed by profile validation. Consequently, syntax can be structurally valid but still
-be rejected because an instruction, permission, locality, or word is unsupported by the selected
-profile.
+Register-file expressions support finite integers, `MAX_ADDR`, parentheses, and the same arithmetic,
+bitwise, and shift operators as program expressions. They do not support labels, `%define`, sequence
+macros, or `&CURRENT_ADDR`.

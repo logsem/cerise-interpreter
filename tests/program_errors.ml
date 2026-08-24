@@ -104,10 +104,10 @@ let () =
                [ "cyclic definition"; "FIRST" ]);
           Alcotest.test_case "infinite definition" `Quick
             (program "%define VALUE Inf\nmov r1 VALUE"
-               [ "must evaluate to a finite integer"; "`Inf` is not allowed" ]);
+               [ "infinite values are not supported by Griotte"; "use a finite integer" ]);
           Alcotest.test_case "non-integer definition" `Quick
-            (program "%define VALUE RW\nmov r1 VALUE"
-               [ "unexpected token \"RW\""; "Expected an integer" ]);
+            (program "%define VALUE [R W DL DRO]\nmov r1 VALUE"
+               [ "unexpected token \"[\""; "Expected an integer" ]);
           Alcotest.test_case "definition label collision" `Quick
             (program "%define value 1\nvalue:\nhalt" [ "conflicts with a label"; "\"value\"" ]);
           Alcotest.test_case "unknown macro" `Quick

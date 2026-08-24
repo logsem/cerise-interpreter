@@ -168,8 +168,6 @@ rule token = parse
 | "Sentry" { SENTRY }
 | 'E' { E }
 
-| "&CURRENT_ADDR" { CURRENTADDR }
-
 (* labels *)
 | label as lbl ':' { LABELDEF (lbl) }
 | label as lbl { LABEL (lbl) }

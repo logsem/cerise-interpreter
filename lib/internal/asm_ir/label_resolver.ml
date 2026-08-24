@@ -24,9 +24,9 @@ let compute_environment (program : t) : environment =
   environment
 
 (* Return the numeric address assigned to a label or report an unknown reference. *)
-let label_address (environment : environment) (name : string) : Infinite_z.t =
+let label_address (environment : environment) (name : string) : Z.t =
   match Hashtbl.find_opt environment name with
-  | Some address -> Infinite_z.of_int address
+  | Some address -> Z.of_int address
   | None -> raise (Unknown_label name)
 
 (* Replace labels recursively while preserving arithmetic expression constructors. *)
@@ -37,6 +37,16 @@ let rec resolve_expression (environment : environment) (expression : expr) : exp
       AddOp (resolve_expression environment left, resolve_expression environment right)
   | SubOp (left, right) ->
       SubOp (resolve_expression environment left, resolve_expression environment right)
+  | MultOp (left, right) ->
+      MultOp (resolve_expression environment left, resolve_expression environment right)
+  | LandOp (left, right) ->
+      LandOp (resolve_expression environment left, resolve_expression environment right)
+  | LorOp (left, right) ->
+      LorOp (resolve_expression environment left, resolve_expression environment right)
+  | LslOp (left, right) ->
+      LslOp (resolve_expression environment left, resolve_expression environment right)
+  | LsrOp (left, right) ->
+      LsrOp (resolve_expression environment left, resolve_expression environment right)
   | IntLit _ | CurrentAddr | Symbol _ | ExprParam _ -> expression
 
 (* Remove a label declaration while preserving every emitted operation. *)
