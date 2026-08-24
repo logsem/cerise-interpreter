@@ -184,7 +184,8 @@ let upd_mem (addr : Z.t) (w : word) ({ reg; sreg; mem } : exec_conf) : exec_conf
 
 let init (initial_regs : word RegMap.t) (initial_sregs : word SRegMap.t)
     (initial_mems : word MemMap.t) =
-  (Running, { reg = RegMap.add cnull (I Z.zero) initial_regs; sreg = initial_sregs; mem = initial_mems })
+  ( Running,
+    { reg = RegMap.add cnull (I Z.zero) initial_regs; sreg = initial_sregs; mem = initial_mems } )
 
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with Register r -> get_reg r conf | Const i -> I i
@@ -251,12 +252,9 @@ let get_locality_word (w : word) =
 let deeplocal_perm ((rx, w, _, dro) : perm) : perm = (rx, w, DL, dro)
 
 let deeplocal_sb (w : sealable) : sealable =
-  match w with
-  | Cap (p, g, b, e, a) -> Cap (deeplocal_perm p, g, b, e, a)
-  | SealRange _ -> w
+  match w with Cap (p, g, b, e, a) -> Cap (deeplocal_perm p, g, b, e, a) | SealRange _ -> w
 
-let deeplocal (w : word) : word =
-  match w with Sealable sb -> Sealable (deeplocal_sb sb) | _ -> w
+let deeplocal (w : word) : word = match w with Sealable sb -> Sealable (deeplocal_sb sb) | _ -> w
 
 let borrow_sb (w : sealable) : sealable =
   match w with
@@ -275,8 +273,7 @@ let readonly_perm ((rx, _, dl, _) : perm) : perm = (rx, Ow, dl, DRO)
 let readonly_sb (w : sealable) : sealable =
   match w with Cap (p, g, b, e, a) -> Cap (readonly_perm p, g, b, e, a) | _ -> w
 
-let readonly (w : word) : word =
-  match w with Sealable sb -> Sealable (readonly_sb sb) | _ -> w
+let readonly (w : word) : word = match w with Sealable sb -> Sealable (readonly_sb sb) | _ -> w
 
 let load_word (p : perm) (w : word) : word =
   let borrow_w = if is_DL p then deeplocal (borrow w) else w in
