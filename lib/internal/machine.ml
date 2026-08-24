@@ -97,11 +97,8 @@ let init_reg_state_zeros : reg_state =
   in
   let pc_init = [ (PC, I Z.zero) ] in
   let cgp_init = [ (cgp, I Z.zero) ] in
-  let sealing_init =
-    let sealing_reg = Reg 0 in
-    [ (sealing_reg, I Z.zero) ]
-  in
-  let seq = List.to_seq (pc_init @ l @ sealing_init @ cgp_init) in
+  let cnull_init = [ (cnull, I Z.zero) ] in
+  let seq = List.to_seq (pc_init @ l @ cnull_init @ cgp_init) in
   RegMap.of_seq seq
 
 let init_sreg_state_zeros : sreg_state =
@@ -112,8 +109,6 @@ let init_sreg_state_zeros : sreg_state =
 let init_reg_state : reg_state =
   let start_heap_addr = ~$0 in
   let max_heap_addr = Parameters.get_max_addr () in
-  let start_otype = ~$0 in
-  let max_otype = Parameters.get_max_otype () in
 
   let l =
     let n = 31 in
@@ -128,28 +123,29 @@ let init_reg_state : reg_state =
     Sealable (Cap (arch_root_memory_perm, Global, start_heap_addr, max_heap_addr, start_heap_addr))
   in
   let root_sealing =
-    Sealable (SealRange ((true, true), Global, start_otype, max_otype, start_otype))
+    Sealable (SealRange ((true, true), Global, Z.zero, Parameters.get_max_otype (), Z.zero))
   in
-
   (* The PC register starts with full exec permission over the entire "heap" segment *)
   let pc_init = [ (PC, root_exec) ] in
   (* The CGP register starts with full mem permission over the entire "heap" segment *)
   let cgp_init = [ (cgp, root_mem) ] in
-  (* The R0 register starts with full sealing permission over the entire otypes region *)
-  let sealing_init =
-    let sealing_reg = Reg 0 in
-    [ (sealing_reg, root_sealing) ]
-  in
+  (* The loader's sealing root is held in ca3. *)
+  let sealing_init = [ (ca3, root_sealing) ] in
+  let cnull_init = [ (cnull, I Z.zero) ] in
 
   (* The stk register starts with full permission over the entire "stack" segment *)
-  let seq = List.to_seq (pc_init @ l @ sealing_init @ cgp_init) in
+  let seq = List.to_seq (pc_init @ l @ sealing_init @ cnull_init @ cgp_init) in
   RegMap.of_seq seq
 
-let get_reg (r : regname) ({ reg; _ } : exec_conf) : word = RegMap.find r reg
+let get_reg (r : regname) ({ reg; _ } : exec_conf) : word =
+  match r with Reg 0 -> I Z.zero | _ -> RegMap.find r reg
+
 let ( @! ) x y = get_reg x y
 
-let upd_reg (r : regname) (w : word) ({ reg; sreg; mem } : exec_conf) : exec_conf =
-  { reg = RegMap.add r w reg; sreg; mem }
+let upd_reg (r : regname) (_w : word) ({ reg; sreg; mem } : exec_conf) : exec_conf =
+  match r with
+  | Reg 0 -> { reg = RegMap.add cnull (I Z.zero) reg; sreg; mem }
+  | _ -> { reg = RegMap.add r _w reg; sreg; mem }
 
 let get_sreg (sr : sregname) ({ reg = _; sreg; _ } : exec_conf) : word = SRegMap.find sr sreg
 let ( @!! ) x y = get_sreg x y
@@ -188,7 +184,7 @@ let upd_mem (addr : Z.t) (w : word) ({ reg; sreg; mem } : exec_conf) : exec_conf
 
 let init (initial_regs : word RegMap.t) (initial_sregs : word SRegMap.t)
     (initial_mems : word MemMap.t) =
-  (Running, { reg = initial_regs; sreg = initial_sregs; mem = initial_mems })
+  (Running, { reg = RegMap.add cnull (I Z.zero) initial_regs; sreg = initial_sregs; mem = initial_mems })
 
 let get_word (conf : exec_conf) (roc : reg_or_const) : word =
   match roc with Register r -> get_reg r conf | Const i -> I i
