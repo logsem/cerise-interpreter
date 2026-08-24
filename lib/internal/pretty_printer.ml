@@ -62,13 +62,18 @@ let string_of_perm (p : perm) : string =
   let w_str = string_of_wperm w in
   let dl_str = string_of_dlperm dl in
   let dro_str = string_of_droperm dro in
-  "[" ^ rx_str ^ " " ^ w_str ^ " " ^ dl_str ^ " " ^ dro_str ^ ")"
+  "[" ^ rx_str ^ " " ^ w_str ^ " " ^ dl_str ^ " " ^ dro_str ^ "]"
 
 let string_of_locality (g : locality) : string =
   match g with Local -> "Local" | Global -> "Global"
 
 let string_of_wtype (w : wtype) : string =
-  match w with W_I -> "Int" | W_Cap -> "Cap" | W_SealRange -> "SealRange" | W_Sealed -> "Sealed"
+  match w with
+  | W_I -> "Int"
+  | W_Cap -> "Cap"
+  | W_SealRange -> "SealRange"
+  | W_Sealed -> "Sealed"
+  | W_Sentry -> "Sentry"
 
 let string_of_reg_or_const (c : reg_or_const) : string =
   match c with Register r -> string_of_regname r | Const c -> Z.to_string c
@@ -154,6 +159,9 @@ let string_of_word (w : word) : string =
   match w with
   | I z -> Z.to_string z
   | Sealable sb -> string_of_sealable sb
+  | Sentry (p, g, b, e, a) ->
+      Printf.sprintf "(E-%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
 
 let string_of_ast_sealable (sb : Ast.sealable) : string =
@@ -169,6 +177,9 @@ let string_of_ast_word (w : Ast.word) : string =
   match w with
   | Ast.I z -> Z.to_string z
   | Ast.Sealable sb -> string_of_sealable sb
+  | Ast.Sentry (p, g, b, e, a) ->
+      Printf.sprintf "(E-%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.Sealed (o, sb) -> Printf.sprintf "{%s, %s}" (Z.to_string o) (string_of_sealable sb)
 
 let string_of_statement (s : statement) : string =

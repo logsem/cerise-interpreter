@@ -22,7 +22,12 @@ type sealable =
   | WCap of perm * locality * expr * expr * expr
   | WSealRange of seal_perm * locality * expr * expr * expr
 
-type word = WI of expr | WSealable of sealable | WSealed of expr * sealable
+type word =
+  | WI of expr
+  | WSealable of sealable
+  | WSentry of perm * locality * expr * expr * expr
+  | WSealed of expr * sealable
+
 type regfile_t = (Ast.regname * word) list
 type sregfile_t = (Ast.sregname * word) list
 type t = regfile_t * sregfile_t
@@ -76,6 +81,13 @@ let translate_word (w : word) (max_addr : Z.t) : Ast.word =
       let z = eval_expr e max_addr in
       Ast.I z
   | WSealable sb -> Ast.Sealable (translate_sealable sb max_addr)
+  | WSentry (p, g, b, e, a) ->
+      Ast.Sentry
+        ( translate_perm p,
+          translate_locality g,
+          eval_expr b max_addr,
+          eval_expr e max_addr,
+          eval_expr a max_addr )
   | WSealed (o, sb) ->
       let ot = eval_expr o max_addr in
       Ast.Sealed (ot, translate_sealable sb max_addr)

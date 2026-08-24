@@ -31,12 +31,11 @@ let arch_root_memory_perm = (R, WL, LG, LM)
 
 (* - executable root, EX_LD_LG_LM_MC_SR --> R_X_SR *)
 let arch_root_executable_perm = (XSR, Ow, LG, LM)
-let otype_sentry : Z.t = Z.zero
 
 let get_perm (w : Ast.word) : Ast.perm =
   match w with
   | I _ -> null_perm
-  | Sealable (Cap (p, _, _, _, _)) | Sealed (_, Cap (p, _, _, _, _)) -> p
+  | Sealable (Cap (p, _, _, _, _)) | Sentry (p, _, _, _, _) | Sealed (_, Cap (p, _, _, _, _)) -> p
   | _ -> null_perm
 
 let rx_flowsto (rx : rxperm) (rx' : rxperm) =
@@ -68,13 +67,8 @@ let perm_flowsto (p : perm) (p' : perm) =
   let rx', w', dl', dro' = p' in
   rx_flowsto rx rx' && w_flowsto w w' && dl_flowsto dl dl' && dro_flowsto dro dro'
 
-let is_sentry (w : Ast.word) : bool =
-  match w with Sealed (ot, Cap (_, _, _, _, _)) -> ot = otype_sentry | _ -> false
-
 let check_word_derived (w : Ast.word) : unit =
-  if is_sentry w then
-    if perm_flowsto (get_perm w) arch_root_executable_perm then () else raise (CheckInitFailed w)
-  else if perm_flowsto (get_perm w) arch_root_executable_perm then ()
+  if perm_flowsto (get_perm w) arch_root_executable_perm then ()
   else if perm_flowsto (get_perm w) arch_root_memory_perm then ()
   else raise (CheckInitFailed w)
 
@@ -176,6 +170,7 @@ let init_mem_state (addr_start : Z.t) (prog : t) : mem_state =
              | Word (Ast.Sealable (Ast.Cap (p, l, b, e, a))) -> Sealable (Cap (p, l, b, e, a))
              | Word (Ast.Sealable (Ast.SealRange (p, l, b, e, a))) ->
                  Sealable (SealRange (p, l, b, e, a))
+             | Word (Ast.Sentry (p, l, b, e, a)) -> Sentry (p, l, b, e, a)
              | Word (Ast.Sealed (o, sb)) -> Sealed (o, sb) ))
          prog
   in
@@ -207,9 +202,7 @@ let upd_pc (conf : exec_conf) : mchn =
 let ( !> ) conf = upd_pc conf
 
 let upd_pc_perm (w : word) =
-  match w with
-  | Sealed (ot, Cap (p, g, b, e, a)) when ot = otype_sentry -> Sealable (Cap (p, g, b, e, a))
-  | _ -> w
+  match w with Sentry (p, g, b, e, a) -> Sealable (Cap (p, g, b, e, a)) | _ -> w
 
 let fetch_decode (conf : exec_conf) : machine_op option =
   match PC @! conf with
@@ -247,10 +240,17 @@ let get_wtype (w : word) : wtype =
   | I _ -> W_I
   | Sealable (Cap _) -> W_Cap
   | Sealable (SealRange _) -> W_SealRange
+  | Sentry _ -> W_Sentry
   | Sealed (_, _) -> W_Sealed
 
 let get_locality_sealable (s : sealable) =
   match s with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
+
+let get_locality_word (w : word) =
+  match w with
+  | Sealable s | Sealed (_, s) -> Some (get_locality_sealable s)
+  | Sentry (_, l, _, _, _) -> Some l
+  | I _ -> None
 
 let load_deep_local_sealable (w : sealable) : sealable =
   match w with
@@ -299,7 +299,7 @@ let exec_single (conf : exec_conf) : mchn =
             match PC @! conf with
             | Sealable (Cap (p, g, b, e, a)) ->
                 let new_pc = upd_pc_perm (r_src @! conf) in
-                let link_cap = Sealed (otype_sentry, Cap (p, g, b, e, Z.(a + Z.one))) in
+                let link_cap = Sentry (p, g, b, e, Z.(a + Z.one)) in
                 (Running, upd_reg PC new_pc (upd_reg r_dst link_cap conf))
             | _ -> fail_state)
         | Jmp c -> (
@@ -346,10 +346,8 @@ let exec_single (conf : exec_conf) : mchn =
             match r @! conf with
             | Sealable (Cap (p, _, b, e, a)) when b <= a && a < e ->
                 if can_write p then
-                  match w with
-                  (* We consider that a Directed sealing capability is similar to Local *)
-                  | (Sealed (_, sb) | Sealable sb) when get_locality_sealable sb = Local ->
-                      if is_WLperm p then !>(upd_mem a w conf) else fail_state
+                  match get_locality_word w with
+                  | Some Local when not (is_WLperm p) -> fail_state
                   | _ -> !>(upd_mem a w conf)
                 else fail_state
             | _ -> fail_state)
@@ -477,28 +475,34 @@ let exec_single (conf : exec_conf) : mchn =
             | _ -> fail_state)
         | GetL (r1, r2) -> (
             match r2 @! conf with
-            | Sealable sb | Sealed (_, sb) ->
-                let g = get_locality_sealable sb in
-                !>(upd_reg r1 (I (Encode.encode_locality g)) conf)
+            | (Sealable _ | Sealed (_, _) | Sentry _) as w -> (
+                match get_locality_word w with
+                | Some g -> !>(upd_reg r1 (I (Encode.encode_locality g)) conf)
+                | None -> fail_state)
             | _ -> fail_state)
         | GetB (r1, r2) -> (
             match r2 @! conf with
-            | Sealable (SealRange (_, _, b, _, _)) | Sealable (Cap (_, _, b, _, _)) ->
+            | Sealable (SealRange (_, _, b, _, _))
+            | Sealable (Cap (_, _, b, _, _))
+            | Sentry (_, _, b, _, _) ->
                 !>(upd_reg r1 (I b) conf)
             | _ -> fail_state)
         | GetE (r1, r2) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
             | Sealable (Cap (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
+            | Sentry (_, _, _, e, _) -> !>(upd_reg r1 (I e) conf)
             | _ -> fail_state)
         | GetA (r1, r2) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, _, a)) | Sealable (Cap (_, _, _, _, a)) ->
                 !>(upd_reg r1 (I a) conf)
+            | Sentry (_, _, _, _, a) -> !>(upd_reg r1 (I a) conf)
             | _ -> fail_state)
         | GetP (r1, r2) -> (
             match r2 @! conf with
             | Sealable (Cap (p, _, _, _, _)) -> !>(upd_reg r1 (I (Encode.encode_perm p)) conf)
+            | Sentry (p, _, _, _, _) -> !>(upd_reg r1 (I (Encode.encode_perm p)) conf)
             | Sealable (SealRange (p, _, _, _, _)) ->
                 !>(upd_reg r1 (I (Encode.encode_seal_perm p)) conf)
             | _ -> fail_state)
@@ -512,16 +516,11 @@ let exec_single (conf : exec_conf) : mchn =
         | Seal (dst, r1, r2) -> (
             match (r1 @! conf, r2 @! conf) with
             | Sealable (SealRange ((true, _), _, b, e, a)), Sealable sb when b <= a && a < e ->
-                if a = otype_sentry then
-                  match sb with
-                  | Cap (p, _, _, _, _) when is_exec p -> !>(upd_reg dst (Sealed (a, sb)) conf)
-                  | _ -> fail_state
-                else !>(upd_reg dst (Sealed (a, sb)) conf)
+                !>(upd_reg dst (Sealed (a, sb)) conf)
             | _ -> fail_state)
         | UnSeal (dst, r1, r2) -> (
             match (r1 @! conf, r2 @! conf) with
-            | Sealable (SealRange ((_, true), _, b, e, a)), Sealed (a', sb)
-              when not (a = otype_sentry) ->
+            | Sealable (SealRange ((_, true), _, b, e, a)), Sealed (a', sb) ->
                 if b <= a && a < e && a = a' then !>(upd_reg dst (Sealable sb) conf) else fail_state
             | _ -> fail_state))
   else fail_state

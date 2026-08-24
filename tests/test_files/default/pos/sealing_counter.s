@@ -51,8 +51,8 @@ data:
 linking_table:
 	;; #(E, Global, get, incr, get+1) 		; get
 	;; #(E, Global, incr, end, incr+2)		; incr
-	#{0: ([X Ow LG LM], Global, get, incr, get+1)}		; get
-	#{0: ([X Ow LG LM], Global, incr, end, incr+2)}	; incr
+	#(E-[X Ow LG LM], Global, get, incr, get+1)		; get
+	#(E-[X Ow LG LM], Global, incr, end, incr+2)	; incr
 counter:
 	#1
 get: 							; check whether the otype matches with the actual value

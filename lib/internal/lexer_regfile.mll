@@ -104,6 +104,7 @@ rule token = parse
 | "GLOBAL"   | "Global"  { GLOBAL }
 
 (* permissions *)
+| 'E' { E }
 | 'O' { O }
 | "Orx" { Orx }
 | 'R' { R }

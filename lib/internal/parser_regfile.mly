@@ -8,7 +8,7 @@
 %token MAX_ADDR
 %token LPAREN RPAREN LSBRK RSBRK LCBRK RCBRK
 %token PLUS MINUS MULT AFFECT COMMA COLON LANDOP LOROP LSL LSR
-%token O Orx R X XSR Ow W WL DL LG DRO LM
+%token O Orx R X XSR Ow W WL DL LG DRO LM E
 %token SO S U SU
 %token LOCAL GLOBAL
 %left PLUS MINUS MULT EXPR LANDOP LOROP LSL LSR
@@ -71,6 +71,8 @@ reg:
 word:
   | e = expr %prec EXPR { WI (e) }
   | sb = sealable_def {WSealable sb}
+  | LPAREN; E; MINUS; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
+    { WSentry (p, g, b, e, a) }
   | s = sealed_def {s}
 
 sealable_def:

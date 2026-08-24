@@ -8,6 +8,7 @@ module Label_resolver = Cerise_internal.Label_resolver
 module Parser = Cerise_internal.Parser
 module Machine = Cerise.Machine
 module Parameters = Cerise.Parameters
+module Program = Cerise.Program
 
 let statement_eq (a : statement) (b : statement) = a = b
 let pprint_statement = Fmt.of_to_string string_of_statement
@@ -70,6 +71,7 @@ let instr_tests =
     ("mov r13 SealRange", Op (Move (Reg 13, encode_wtype W_SealRange)));
     ("mov r23 Cap", Op (Move (Reg 23, encode_wtype W_Cap)));
     ("mov r30 Int", Op (Move (Reg 30, encode_wtype W_I)));
+    ("mov r30 Sentry", Op (Move (Reg 30, encode_wtype W_Sentry)));
     ("readsr r31 mtdc", Op (ReadSR (Reg 31, MTDC)));
     ("writesr mtdc r30", Op (WriteSR (MTDC, Reg 30)));
     ("load r4 r5", Op (Load (Reg 4, Reg 5)));

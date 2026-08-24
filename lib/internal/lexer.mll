@@ -165,6 +165,8 @@ rule token = parse
 | "Cap" { Cap }
 | "SealRange" { SealRange }
 | "Sealed" { Sealed }
+| "Sentry" { SENTRY }
+| 'E' { E }
 
 | "&CURRENT_ADDR" { CURRENTADDR }
 

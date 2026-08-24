@@ -17,7 +17,7 @@
 %token LOCAL GLOBAL
 %token O Orx R X XSR Ow W WL DL LG DRO LM
 %token SO S U SU
-%token Int Cap SealRange Sealed
+%token Int Cap SealRange Sealed SENTRY E
 %left PLUS MINUS MULT EXPR LANDOP LOROP LSL LSR
 %left UMINUS
 
@@ -73,6 +73,8 @@ main:
 
 word_def:
   | sb = sealable_def; { Sealable sb }
+  | LPAREN; E; MINUS; p = perm; COMMA; g = locality; COMMA; b = expr; COMMA; e = expr; COMMA; a = expr; RPAREN;
+    { Sentry (p, g, b, e, a) }
   | sealed = sealed_def; { sealed }
   | z = expr; { I z }
 
@@ -160,6 +162,7 @@ concrete_wtype:
   | Cap ; { W_Cap }
   | SealRange ; { W_SealRange }
   | Sealed ; { Ast.W_Sealed }
+  | SENTRY ; { Ast.W_Sentry }
 
 locality:
   | l = concrete_locality; { l }

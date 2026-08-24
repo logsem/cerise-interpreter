@@ -16,7 +16,7 @@ loader_end:
 
 ;; Client
 C:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     #0xFF                                                               ; placeholder for assert
     #{9: ([R Ow LG LM], Global, A_ext, A_ext_end, A_ext_adv)} ; import A.adv
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_insert)} ; import KVS.insert
@@ -161,7 +161,7 @@ C_ext_end:
 
 ;; Adversary
 A:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_insert)} ; import KVS.insert
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_read)} ; import KVS.read
     #{9: ([R Ow LG LM], Global, KVS_ext, KVS_ext_end, KVS_ext_erase)} ; import KVS.erase
@@ -190,7 +190,7 @@ A_ext_end:
 
 ;; KVS
 KVS:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     #[SU, Global, 10, 11, 10] ;; unsealing key for KVS
 KVS_insert:
     ;; 

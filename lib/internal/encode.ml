@@ -37,21 +37,26 @@ let decode_const (i : Z.t) : Z.t * Z.t =
 (** WType *)
 
 let wtype_encoding (w : wtype) : Z.t =
-  Z.of_int @@ match w with W_I -> 0b00 | W_Cap -> 0b01 | W_SealRange -> 0b10 | W_Sealed -> 0b11
+  Z.of_int
+  @@
+  match w with
+  | W_I -> 0b000
+  | W_Cap -> 0b001
+  | W_SealRange -> 0b010
+  | W_Sealed -> 0b011
+  | W_Sentry -> 0b100
 
 let wtype_decoding (z : Z.t) : wtype =
   let decode_wt_exception _ =
     raise @@ DecodeException "Error decoding wtype: unexpected encoding"
   in
-  let b0 = Z.testbit z 0 in
-  let b1 = Z.testbit z 1 in
-  if Z.(z > of_int 0b11) then decode_wt_exception ()
-  else
-    match (b1, b0) with
-    | false, false -> W_I
-    | false, true -> W_Cap
-    | true, false -> W_SealRange
-    | true, true -> W_Sealed
+  match Z.to_int z with
+  | 0b000 -> W_I
+  | 0b001 -> W_Cap
+  | 0b010 -> W_SealRange
+  | 0b011 -> W_Sealed
+  | 0b100 -> W_Sentry
+  | _ -> decode_wt_exception ()
 
 let encode_wtype (w : wtype) : Z.t = encode_const _WTYPE_ENC (wtype_encoding w)
 

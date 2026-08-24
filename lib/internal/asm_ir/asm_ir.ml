@@ -39,7 +39,11 @@ type sealable =
   | Cap of perm * locality * expr * expr * expr
   | SealRange of seal_perm * locality * expr * expr * expr
 
-type word = I of expr | Sealable of sealable | Sealed of expr * sealable
+type word =
+  | I of expr
+  | Sealable of sealable
+  | Sentry of perm * locality * expr * expr * expr
+  | Sealed of expr * sealable
 
 exception WordException of word
 
@@ -174,6 +178,11 @@ let pre_eval_word (w : word) : word * string list =
   | Sealable s ->
       let s, l = pre_eval_sealable s in
       (Sealable s, l)
+  | Sentry (p, l, b, e, a) ->
+      let b, lb = pre_eval_expr b in
+      let e, le = pre_eval_expr e in
+      let a, la = pre_eval_expr a in
+      (Sentry (p, l, b, e, a), List.concat [ lb; le; la ])
   | Sealed (e, s) ->
       let e, le = pre_eval_expr e in
       let s, ls = pre_eval_sealable s in
@@ -338,7 +347,15 @@ let translate_word (w : word) : Ast.statement =
   | I e ->
       let z' = eval_expr envr e in
       Ast.Word (Ast.I z')
-  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable sb))
+  | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable envr sb))
+  | Sentry (p, l, b, e, a) ->
+      Ast.Word
+        (Ast.Sentry
+           ( translate_perm p,
+             translate_locality l,
+             eval_expr envr b,
+             eval_expr envr e,
+             eval_expr envr a ))
   | Sealed (o, sb) ->
       let ot = eval_expr envr o in
       Ast.Word (Ast.Sealed (ot, translate_sealable envr sb))

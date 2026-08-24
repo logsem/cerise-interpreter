@@ -132,6 +132,25 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           </> I.hsnap ~align:s_right width (Addr.ui ~attr a)
   end
 
+  module Sentry = struct
+    let width =
+      2 (* E- *) + Perm.width
+      + 1 (* space *) + Locality.width
+      + 1 (* space *) + Addr_range.width
+      + 1 (* space *) + Addr.width
+
+    let ui ?(attr = A.empty) ((p, g, b, e, a) : Ast.perm * Ast.locality * Z.t * Z.t * Z.t)
+        (s : side) =
+      let s_left = match s with Left -> `Left | Right -> `Right in
+      let s_right = match s with Left -> `Right | Right -> `Left in
+      let attr = if attr = sealed_style then sealed_cap_style else cap_style in
+      I.hsnap ~align:s_left width
+        (I.string attr "E-" <|> Perm.ui ~attr p <|> I.string A.empty " " <|> Locality.ui ~attr g
+       <|> I.string A.empty " "
+        <|> Addr_range.ui ~attr (b, e))
+      </> I.hsnap ~align:s_right width (Addr.ui ~attr a)
+  end
+
   module Word = struct
     (* a word is printed as:
        - <sealable> if it's a sealable
@@ -148,6 +167,8 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
       match w with
       | I z -> I.hsnap ~align:s_right width (I.string attr (Int.ui width z))
       | Sealable sb -> I.hsnap ~align:s_right width (Sealable.ui ~attr sb s <|> I.string A.empty " ")
+      | Sentry (p, g, b, e, a) ->
+          I.hsnap ~align:s_right width (Sentry.ui ~attr (p, g, b, e, a) s <|> I.string A.empty " ")
       | Sealed (o, sb) ->
           let attr = sealed_style in
           I.hsnap ~align:s_right width

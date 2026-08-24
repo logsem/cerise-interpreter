@@ -1,5 +1,5 @@
 main:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     #{9: ([R Ow LG LM], Global, ext_adv, ext_adv_end, ext_adv+2)}       ; import ext
 
 main_f:

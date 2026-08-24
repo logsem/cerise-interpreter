@@ -22,7 +22,7 @@ loader_main:
 loader_end:
 
 A:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     ;; imports B_f and C_g
     #{9: ([R Ow LG LM], Global, B_ext, B_ext_end, B_ext_f)} ; import switcher
     #{9: ([R Ow LG LM], Global, C_ext, C_ext_end, C_ext_g)} ; import switcher
@@ -69,7 +69,7 @@ A_main_end:
 A_end:
 
 B:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     ;; no import
 B_h:
     #0x00
@@ -83,7 +83,7 @@ B_f:
 B_end:
 
 C:
-    #{0: ([XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc)} ; import switcher
+    #(E-[XSR Ow LG LM], Global, switcher, switcher_end, switcher_cc) ; import switcher
     ;; no import
 C_h:
     #0x0
