@@ -202,6 +202,9 @@ let test_verified_case_studies =
       ("encapsulated_counter.s", 2);
       ("interval_object.s", 1);
       ("local_state_encapsulation.s", 2);
+      ("buffer_sharing.s", 2);
+      ("read_only_sharing.s", 2);
+      ("dynamic_sealing.s", 4);
       ("awkward_revocation.s", 0);
       ("downward_lse.s", 0);
       ("stack_object.s", 0);
@@ -220,6 +223,9 @@ let test_verified_case_studies =
               | "encapsulated_counter.s" -> Z.one
               | "interval_object.s" -> Z.of_int 42
               | "local_state_encapsulation.s" -> Z.of_int 42
+              | "buffer_sharing.s" -> Z.of_int 105
+              | "read_only_sharing.s" -> Z.one
+              | "dynamic_sealing.s" -> Z.zero
               | "awkward_revocation.s" -> Z.of_int 42
               | "downward_lse.s" -> Z.of_int 12
               | "stack_object.s" -> Z.of_int 22
