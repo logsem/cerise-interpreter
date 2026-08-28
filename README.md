@@ -32,6 +32,23 @@ Example:
 
 For more information about the options, `./interpreter --help`.
 
+## Machine backends
+
+The default backend is handwritten. The `extracted` backend uses Griotte's
+Rocq-extracted step function:
+
+```sh
+./interpreter --backend extracted program.s
+```
+
+Griotte is included as a submodule. Initialize it after cloning with:
+
+```sh
+git submodule update --init --recursive
+```
+
+Run `make regenerate-extracted` to refresh the generated OCaml files.
+
 ## Interactive interpreter
 For an interactive version of the interpreter: `./interpreter -I <file>`
 

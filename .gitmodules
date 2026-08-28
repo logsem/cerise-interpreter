@@ -1,0 +1,4 @@
+[submodule "griotte"]
+	path = griotte
+	url = https://github.com/logsem/griotte.git
+	branch = interpreter-extraction

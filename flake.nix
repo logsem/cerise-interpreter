@@ -3,13 +3,15 @@
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nix-filter.url = "github:numtide/nix-filter";
+    griotte.url = "git+file:./griotte";
   };
 
-  outputs = { self, flake-utils, nixpkgs, nix-filter }:
+  outputs = { self, flake-utils, nixpkgs, nix-filter, griotte }:
     flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
       let
         pkgs = import nixpkgs { inherit system; };
         ocamlPackages = pkgs.ocaml-ng.ocamlPackages_5_4;
+        extractedGriotte = griotte.packages.${system}.extraction;
       in with ocamlPackages; rec {
         defaultPackage = buildDunePackage {
           pname = "cerise-interpreter";
@@ -30,6 +32,11 @@
           nativeBuildInputs = [ menhir ];
           buildInputs = [ containers menhirLib notty-community zarith ];
           checkInputs = [ alcotest ];
+
+          preBuild = ''
+            cp ${extractedGriotte}/griotte_extracted.ml lib/internal/extracted/
+            cp ${extractedGriotte}/griotte_extracted.mli lib/internal/extracted/
+          '';
 
           doCheck = true;
 

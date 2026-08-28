@@ -28,6 +28,8 @@ module type S = sig
   exception CheckInitFailed of Ast.word
 end
 
-type choice = Default
+type choice = Default | Extracted
 
-let select Default = (module Machine : S)
+let select = function
+  | Default -> (module Machine : S)
+  | Extracted -> (module Machine_extracted : S)

@@ -7,7 +7,7 @@ type cli_mode = Interactive_mode | Interpreter_mode
     program filename, and optional register filename. *)
 let parse_arguments () : cli_mode * Machine_backend.choice * string * string =
   let usage_msg =
-    "interpreter [-I] [--interactive] [--backend default] [--version version] [--mem-size size] <file>"
+    "interpreter [-I] [--interactive] [--backend default|extracted] [--version version] [--mem-size size] <file>"
   in
   let interactive_option = ref false in
   let backend_option = ref "default" in
@@ -21,7 +21,7 @@ let parse_arguments () : cli_mode * Machine_backend.choice * string * string =
     [
       ("--interactive", Arg.Set interactive_option, "Interactive mode of the interpreter");
       ("-I", Arg.Set interactive_option, "Interactive mode of the interpreter");
-      ("--backend", Arg.Set_string backend_option, "Machine backend (currently: default)");
+      ("--backend", Arg.Set_string backend_option, "Machine backend: default or extracted");
       ("--version", Arg.Set_string version_option, "Version Cerise: default");
       ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory, integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
@@ -60,8 +60,9 @@ let parse_arguments () : cli_mode * Machine_backend.choice * string * string =
   let backend =
     match !backend_option with
     | "default" -> Machine_backend.Default
+    | "extracted" -> Machine_backend.Extracted
     | backend ->
-        Printf.eprintf "Unknown backend %S (currently supported: default)\n" backend;
+        Printf.eprintf "Unknown backend %S (supported: default, extracted)\n" backend;
         exit 1
   in
   (mode, backend, filename_prog, !regfile_name_option)
