@@ -1,0 +1,2 @@
+PC := (RX, Global, 0, 215, 1)
+r0 := (RWX, Global, 215, 244, 215)

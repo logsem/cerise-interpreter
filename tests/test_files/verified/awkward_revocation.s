@@ -34,20 +34,8 @@
 	mov r30 0
 %endmacro
 start:
-;;; Source-level initial state: r30 is the private environment, r28 is the
-;;; adversary entry and r0 is the outer return capability.
-	mov r30 pc
-	lea r30 (environment - &CURRENT_ADDR + 1)
-	subseg r30 environment environment_end
-	restrict r30 (RW, Global)
-	mov r28 pc
-	lea r28 (example_adversary - &CURRENT_ADDR + 1)
-	subseg r28 example_adversary example_adversary_end
-	restrict r28 (E, Global)
-	mov r0 pc
-	lea r0 (outer_return - &CURRENT_ADDR + 1)
-	subseg r0 outer_return outer_return_end
-	restrict r0 (E, Global)
+;;; The initial register file supplies the source-level initial state: r30 is
+;;; the private environment, r28 the adversary entry, and r0 the outer return.
 ;;; reqglob_instrs r28
 	getl r1 r28
 	sub r1 r1 18

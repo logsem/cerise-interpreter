@@ -6,26 +6,14 @@
 ;;; This runnable instance retains the complete preamble, link table, malloc
 ;;; and assertion routines, dynamic argument checks, directed-stack scallU
 ;;; convention, private-state assertion, register clearing, and return.
-start:
-;;; Install the adequacy layout's linking-table pointer at offset zero of the
-;;; PC region. This overwrites the already-executed first instruction only.
-	mov r10 pc
-	subseg r10 0 1
-	restrict r10 (RW, Global)
-	mov r11 pc
-	lea r11 (link_table - &CURRENT_ADDR + 1)
-	subseg r11 link_table link_table_end
-	restrict r11 (RO, Global)
-	store r10 r11
-;;; Initial r_t0 is the arbitrary caller/adversary entry capability.
-	mov r0 pc
-	lea r0 (example_caller - &CURRENT_ADDR + 1)
-	subseg r0 example_caller example_caller_end
-	restrict r0 (E, Global)
+;;; The adequacy layout places this linking-table pointer at PC offset zero.
+linking_pointer:
+	# (RO, Global, link_table, link_table_end, link_table)
 
+start:
 stack_object_preamble:
 ;;; Exact stack_object_preamble_instrs: create the exported object entry in
-;;; r_t1 and hand control to the caller in r_t0.
+;;; r_t1 and hand control to the caller supplied in r_t0 by the register file.
 	mov r1 pc
 	lea r1 (stack_object_body - &CURRENT_ADDR + 1)
 	restrict r1 (E, Global)
@@ -251,6 +239,7 @@ stack_object_body:
 	mov r30 0
 	mov stk 0
 	jmp r1
+stack_object_region_end:
 
 example_caller:
 ;;; EXAMPLE ADVERSARY/CALLER. This is one concrete inhabitant of the paper's

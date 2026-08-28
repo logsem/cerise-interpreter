@@ -19,12 +19,6 @@ let perm_tst =
 (* TODO I should add a try/catch in case of parsing failure *)
 (* TODO also test multiple flags configurations *)
 let run_prog (filename : string) : Machine.t =
-  let parse_res =
-    match Program.parse_prog_from_file filename with
-    | Ok program -> program
-    | Error message -> failwith message
-  in
-
   let _ =
     Parameters.flags :=
       if Filename.basename filename = "awkward_revocation.s" then Parameters.stack_cerise
@@ -33,8 +27,22 @@ let run_prog (filename : string) : Machine.t =
       else Parameters.full_cerise
   in
 
+  let parse_res =
+    match Program.parse_prog_from_file filename with
+    | Ok program -> program
+    | Error message -> failwith message
+  in
   let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
-  let init_regs = Machine.init_reg_state stk_addr in
+  let defaults = Machine.init_reg_state stk_addr in
+  let regfile = Filename.remove_extension filename ^ ".reg" in
+  let init_regs =
+    if Sys.file_exists regfile then
+      match Program.parse_regfile_from_file regfile stk_addr with
+      | Error message -> failwith message
+      | Ok imported ->
+          Machine.RegMap.fold (fun register word regs -> Machine.RegMap.add register word regs) imported defaults
+    else defaults
+  in
   let init_mems = Machine.init_mem_state Z.(~$0) parse_res in
   let m = Machine.init init_regs init_mems in
 

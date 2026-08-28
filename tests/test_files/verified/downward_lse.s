@@ -3,17 +3,9 @@
 ;;; The body is the source sequence: prepstackU, retrieve the stack return,
 ;;; push and dereference r_env, assert 2, clear registers, and return.
 start:
-;;; Client-level setup supplies the source's private one-word environment and
-;;; return capability as the parameter expected by prepstackU.
-	mov r30 pc
-	lea r30 (private_state - &CURRENT_ADDR + 1)
-	subseg r30 private_state private_state_end
-	restrict r30 (RW, Global)
-	store r30 2
-	mov r0 pc
-	lea r0 (outer_return - &CURRENT_ADDR + 1)
-	subseg r0 outer_return outer_return_end
-	restrict r0 (E, Global)
+;;; The initial register file supplies the private environment in r30 and the
+;;; outer return in r0. The one remaining setup instruction passes that return
+;;; as prepstackU's stack parameter.
 	storeU stk 0 r0
 ;;; prepstackU_instrs stk 1 1 (permission and size checks, then frame setup).
 	getp r1 stk
@@ -92,5 +84,5 @@ outer_return:
 	halt
 outer_return_end:
 private_state:
-# 0
+# 2
 private_state_end:

@@ -3,19 +3,8 @@
 ;;; This companion consumes a fresh singleton sealing range before transferring
 ;;; the sealed value to the example adversary; it transfers no unsealer.
 start:
-	;;; Derive the private payload capability while the initial PC still spans it.
-	mov r6 pc
-	lea r6 (private_value - &CURRENT_ADDR + 1)
-	subseg r6 private_value private_value_end
-	restrict r6 (RW, Global)
-	mov r0 pc
-	lea r0 (after_make_seal - &CURRENT_ADDR + 1)
-	subseg r0 after_make_seal after_make_seal_end
-	restrict r0 (E, Global)
-	mov r30 pc
-	lea r30 (make_seal - &CURRENT_ADDR + 1)
-	subseg r30 make_seal dynamic_sealing_end
-	restrict r30 (E, Global)
+	;;; The initial register file supplies r6 (private payload), r0 (return),
+	;;; and r30 (the fresh-seal allocator entry).
 	jmp r30
 after_make_seal:
 	seal r1 r2 r6

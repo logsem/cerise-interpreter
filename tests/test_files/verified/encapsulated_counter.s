@@ -4,15 +4,8 @@
 ;;; dynamically allocates a private cell and returns three heap closures for
 ;;; incr, read, and reset. The closures use crtcls_instrs activation records.
 start:
-	mov r1 1
-	mov r0 pc
-	lea r0 (after_state - &CURRENT_ADDR + 1)
-	subseg r0 after_state after_state_end
-	restrict r0 (E, Global)
-	mov r30 pc
-	lea r30 (malloc - &CURRENT_ADDR + 1)
-	subseg r30 malloc counter_library_end
-	restrict r30 (E, Global)
+	;;; The initial register file supplies malloc's size in r1, its protected
+	;;; return in r0, and the malloc entry capability in r30.
 	jmp r30
 after_state:
 	store r1 0

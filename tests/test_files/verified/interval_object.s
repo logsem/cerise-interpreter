@@ -4,15 +4,8 @@
 ;;; allocated environment contains the fresh sealing capability they share.
 start:
 ;;; Allocate the two-word library environment and obtain a fresh sealing range.
-	mov r1 2
-	mov r0 pc
-	lea r0 (after_env - &CURRENT_ADDR + 1)
-	subseg r0 after_env after_env_end
-	restrict r0 (E, Global)
-	mov r30 pc
-	lea r30 (malloc - &CURRENT_ADDR + 1)
-	subseg r30 malloc interval_library_end
-	restrict r30 (E, Global)
+	;;; The initial register file supplies size 2 in r1, the continuation in r0,
+	;;; and the malloc entry capability in r30.
 	jmp r30
 after_env:
 	mov r15 r1

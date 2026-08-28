@@ -1,0 +1,4 @@
+PC := (RX, Global, 0, 22, 0)
+r0 := (E, Global, 1, 9, 1)
+r6 := (RW, Global, 9, 10, 9)
+r30 := (E, Global, 12, 22, 12)

@@ -4,11 +4,7 @@
 ;;; Runnable execution of buffer_code from the verified case study. The source
 ;;; performs a one-way jump to arbitrary code after placing the sub-buffer in r1.
 start:
-;;; r0 plays the paper's arbitrary adversary entry capability.
-mov r0 pc
-lea r0 (example_adversary - &CURRENT_ADDR + 1)
-subseg r0 example_adversary example_adversary_end
-restrict r0 (RX, Global)
+;;; The initial register file supplies the arbitrary adversary entry in r0.
 ;;; This is buffer_code: derive a capability for exactly the public three words
 ;;; and then transfer control to the adversary in r0.
 mov r1 pc

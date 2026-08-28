@@ -4,15 +4,8 @@
 ;;; arbitrary adversary, and uses call_instrs to save/restore the local env.
 start:
 ;;; malloc_instrs f_m 1: allocate the private component cell.
-	mov r1 1
-	mov r0 pc
-	lea r0 (after_malloc - &CURRENT_ADDR + 1)
-	subseg r0 after_malloc after_malloc_end
-	restrict r0 (E, Global)
-	mov r30 pc
-	lea r30 (malloc - &CURRENT_ADDR + 1)
-	subseg r30 malloc lse_library_end
-	restrict r30 (E, Global)
+	;;; The initial register file supplies size 1 in r1, the continuation in r0,
+	;;; and the malloc entry capability in r30.
 	jmp r30
 after_malloc:
 	;;; move r_env r_t1; move r_t7 r_t1; store r_env 1; restrict r_t7 RO.

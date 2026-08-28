@@ -6,15 +6,7 @@
 start:
 ;;; Call the bump-pointer malloc subroutine. r1 is the requested size and r0
 ;;; is its entry return capability; malloc returns the RW capability in r1.
-mov r1 1
-mov r0 pc
-lea r0 (after_malloc - &CURRENT_ADDR + 1)
-subseg r0 after_malloc after_malloc_end
-restrict r0 (E, Global)
-mov r30 pc
-lea r30 (malloc - &CURRENT_ADDR + 1)
-subseg r30 malloc malloc_library_end
-restrict r30 (E, Global)
+;;; The initial register file supplies r1, r0, and the malloc entry in r30.
 jmp r30
 
 after_malloc:
