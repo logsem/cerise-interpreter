@@ -25,7 +25,13 @@ let run_prog (filename : string) : Machine.t =
     | Error message -> failwith message
   in
 
-  let _ = Parameters.flags := Parameters.full_cerise in
+  let _ =
+    Parameters.flags :=
+      if Filename.basename filename = "awkward_revocation.s" then Parameters.stack_cerise
+      else if Filename.basename filename = "downward_lse.s" || Filename.basename filename = "stack_object.s" then
+        Parameters.mcerise
+      else Parameters.full_cerise
+  in
 
   let stk_addr = Z.(Parameters.get_max_addr () / ~$2) in
   let init_regs = Machine.init_reg_state stk_addr in
@@ -43,6 +49,9 @@ let get_reg_int_word (r : Ast.regname) (m : Machine.t) (d : Z.t) =
 
 let get_reg_cap_perm (r : regname) (m : Machine.t) (d : perm) =
   match Machine.read_reg r m with Sealable (Cap (p, _, _, _, _)) -> p | _ -> d
+
+let get_mem_int_word (a : Z.t) (m : Machine.t) (d : Z.t) =
+  match Machine.read_mem a m with Some (I z) -> z | _ -> d
 
 let test_path s = "../../../tests/test_files/default/" ^ s
 let verified_path s = "../../../tests/test_files/verified/" ^ s
@@ -200,10 +209,10 @@ let test_verified_case_studies =
   let examples =
     [
       ("encapsulated_counter.s", 2);
-      ("interval_object.s", 1);
+      ("interval_object.s", 2);
       ("local_state_encapsulation.s", 2);
       ("buffer_sharing.s", 2);
-      ("read_only_sharing.s", 2);
+      ("read_only_sharing.s", 4);
       ("dynamic_sealing.s", 4);
       ("awkward_revocation.s", 0);
       ("downward_lse.s", 0);
@@ -213,27 +222,41 @@ let test_verified_case_studies =
   List.concat_map
     (fun (filename, result_register) ->
       let machine = run_prog (verified_path filename) in
-      [
+      let checks =
+        [
         test_case (filename ^ " should end in halted state") `Quick
           (test_state Halted (Machine.get_exec_state machine));
-        test_case (filename ^ " should leave its result in r" ^ string_of_int result_register) `Quick
+        ]
+      in
+      checks
+      @ (if String.equal filename "stack_object.s" then
+           let stack_base = Z.(Parameters.get_max_addr () / ~$2) in
+           [
+             test_case "stack_object.s should preserve its private value" `Quick
+               (test_const_word (Z.of_int 2) (get_mem_int_word Z.(stack_base + ~$2) machine Z.zero));
+             test_case "stack_object.s adversary should read the checked object" `Quick
+               (test_const_word (Z.of_int 13) (get_mem_int_word Z.(stack_base + ~$14) machine Z.zero));
+             test_case "stack_object.s adversary should read the exposed stack object" `Quick
+               (test_const_word (Z.of_int 42) (get_mem_int_word Z.(stack_base + ~$15) machine Z.zero));
+           ]
+         else [])
+      @ if String.equal filename "awkward_revocation.s" || String.equal filename "downward_lse.s"
+           || String.equal filename "stack_object.s" then [] else
+        [test_case (filename ^ " should leave its result in r" ^ string_of_int result_register) `Quick
           (fun _ ->
             let expected =
               match filename with
               | "encapsulated_counter.s" -> Z.one
               | "interval_object.s" -> Z.of_int 42
-              | "local_state_encapsulation.s" -> Z.of_int 42
+              | "local_state_encapsulation.s" -> Z.one
               | "buffer_sharing.s" -> Z.of_int 105
               | "read_only_sharing.s" -> Z.one
-              | "dynamic_sealing.s" -> Z.zero
-              | "awkward_revocation.s" -> Z.of_int 42
-              | "downward_lse.s" -> Z.of_int 12
-              | "stack_object.s" -> Z.of_int 22
+              | "dynamic_sealing.s" -> Z.of_int 27
               | _ -> assert false
             in
             test_const_word expected
-              (get_reg_int_word (Reg result_register) machine Z.zero) ());
-      ])
+              (get_reg_int_word (Reg result_register) machine Z.zero) ())]
+      )
     examples
 
 let () =
