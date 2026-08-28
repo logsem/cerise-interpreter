@@ -45,6 +45,7 @@ let get_reg_cap_perm (r : regname) (m : Machine.t) (d : perm) =
   match Machine.read_reg r m with Sealable (Cap (p, _, _, _, _)) -> p | _ -> d
 
 let test_path s = "../../../tests/test_files/default/" ^ s
+let verified_path s = "../../../tests/test_files/verified/" ^ s
 
 let test_negatives =
   let open Alcotest in
@@ -194,6 +195,41 @@ let test_sealing_counter =
       (test_const_word Z.(~$3) (get_reg_int_word (Ast.Reg 2) m Z.zero));
   ]
 
+let test_verified_case_studies =
+  let open Alcotest in
+  let examples =
+    [
+      ("encapsulated_counter.s", 2);
+      ("interval_object.s", 1);
+      ("local_state_encapsulation.s", 2);
+      ("awkward_revocation.s", 0);
+      ("downward_lse.s", 0);
+      ("stack_object.s", 0);
+    ]
+  in
+  List.concat_map
+    (fun (filename, result_register) ->
+      let machine = run_prog (verified_path filename) in
+      [
+        test_case (filename ^ " should end in halted state") `Quick
+          (test_state Halted (Machine.get_exec_state machine));
+        test_case (filename ^ " should leave its result in r" ^ string_of_int result_register) `Quick
+          (fun _ ->
+            let expected =
+              match filename with
+              | "encapsulated_counter.s" -> Z.one
+              | "interval_object.s" -> Z.of_int 42
+              | "local_state_encapsulation.s" -> Z.of_int 42
+              | "awkward_revocation.s" -> Z.of_int 42
+              | "downward_lse.s" -> Z.of_int 12
+              | "stack_object.s" -> Z.of_int 22
+              | _ -> assert false
+            in
+            test_const_word expected
+              (get_reg_int_word (Reg result_register) machine Z.zero) ());
+      ])
+    examples
+
 let () =
   let open Alcotest in
   run "Run"
@@ -201,6 +237,7 @@ let () =
       ( "Pos",
         test_mov_test @ test_jmper @ test_macros @ test_promote @ test_ucaps @ test_locality_flow
         @ test_directed_store @ test_getotype @ test_getwtype @ test_sealing @ test_sealing_counter
+        @ test_verified_case_studies
       );
       ("Neg", test_negatives);
     ]
