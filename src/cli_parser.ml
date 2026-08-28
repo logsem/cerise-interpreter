@@ -3,11 +3,14 @@ open Cerise
 
 type cli_mode = Interactive_mode | Interpreter_mode
 
-(** Initialize the Cerise version and returns (mode, program_filename, register_filename, size_mem)
-*)
-let parse_arguments () : cli_mode * string * string =
-  let usage_msg = "interpreter [-I] [--interactive] [--version version] [--mem-size size] <file>" in
+(** Initialize the Cerise version and return the selected mode, backend,
+    program filename, and optional register filename. *)
+let parse_arguments () : cli_mode * Machine_backend.choice * string * string =
+  let usage_msg =
+    "interpreter [-I] [--interactive] [--backend default] [--version version] [--mem-size size] <file>"
+  in
   let interactive_option = ref false in
+  let backend_option = ref "default" in
   let version_option = ref "default" in
   let mem_size_option = ref "" in
   let regfile_name_option = ref "" in
@@ -18,6 +21,7 @@ let parse_arguments () : cli_mode * string * string =
     [
       ("--interactive", Arg.Set interactive_option, "Interactive mode of the interpreter");
       ("-I", Arg.Set interactive_option, "Interactive mode of the interpreter");
+      ("--backend", Arg.Set_string backend_option, "Machine backend (currently: default)");
       ("--version", Arg.Set_string version_option, "Version Cerise: default");
       ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory, integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
@@ -53,4 +57,11 @@ let parse_arguments () : cli_mode * string * string =
         exit 1
   in
 
-  (mode, filename_prog, !regfile_name_option)
+  let backend =
+    match !backend_option with
+    | "default" -> Machine_backend.Default
+    | backend ->
+        Printf.eprintf "Unknown backend %S (currently supported: default)\n" backend;
+        exit 1
+  in
+  (mode, backend, filename_prog, !regfile_name_option)

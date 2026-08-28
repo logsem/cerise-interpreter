@@ -1,9 +1,9 @@
 open Cerise
 
 let () =
-  let mode, filename_prog, regfile_name = Cli_parser.parse_arguments () in
+  let mode, backend, filename_prog, regfile_name = Cli_parser.parse_arguments () in
+  let module M = (val Machine_backend.select backend) in
 
-  (* Parse initial memory (program) *)
   let prog =
     match Program.parse_prog_from_file filename_prog with
     | Ok prog -> prog
@@ -13,22 +13,17 @@ let () =
   in
 
   let stk_addr = Z.(!Parameters.flags.max_addr / ~$2) in
-
-  (* Parse initial register file *)
   let regfile, sregfile =
-    let init_regfile = Machine.init_reg_state in
-    let init_sregfile = Machine.init_sreg_state_zeros in
-    if regfile_name = "" then (init_regfile, init_sregfile)
+    if regfile_name = "" then (M.init_reg_state, M.init_sreg_state_zeros)
     else
       match Program.parse_regfile_from_file regfile_name with
       | Ok (regs, sregs) ->
           let regfile =
-            (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs)
-              Machine.init_reg_state_zeros
+            M.RegMap.fold (fun r w rf -> M.RegMap.add r w rf) regs M.init_reg_state_zeros
           in
           let sregfile =
-            (Machine.SRegMap.fold (fun sr w srf -> Machine.SRegMap.add sr w srf) sregs)
-              Machine.init_sreg_state_zeros
+            M.SRegMap.fold (fun sr w srf -> M.SRegMap.add sr w srf) sregs
+              M.init_sreg_state_zeros
           in
           (regfile, sregfile)
       | Error msg ->
@@ -36,8 +31,12 @@ let () =
           exit 1
   in
   let m_init =
-    try Program.init_machine prog regfile sregfile
-    with Machine.CheckInitFailed w ->
+    try
+      let memory = M.init_mem_state Z.zero prog in
+      let machine = M.init regfile sregfile memory in
+      M.check_init_config machine;
+      machine
+    with M.CheckInitFailed w ->
       failwith
         ("The word "
         ^ Pretty_printer.string_of_ast_word w
@@ -49,10 +48,23 @@ let () =
       let module Cfg = struct
         let addr_max : Z.t = Parameters.get_max_addr ()
       end in
-      let module Ui = Interactive_ui.MkUi (Cfg) in
-      (* let show_stack = false in *)
+      let module Ui = Interactive_ui.MkUi (M) (Cfg) in
       let show_stack = true in
       let prog_panel_start = ref Z.zero in
       let stk_panel_start = ref stk_addr in
       Ui.render_loop ~show_stack prog_panel_start stk_panel_start m_init
-  | Cli_parser.Interpreter_mode -> Interpreter_ui.interpreter m_init
+  | Cli_parser.Interpreter_mode ->
+      let m_final = M.run m_init in
+      let regs = M.get_regfile m_final in
+      print_endline "+-----------------------";
+      M.RegMap.iter
+        (fun r w -> print_endline @@ Pretty_printer.string_of_reg_word r w)
+        regs;
+      print_endline "+-----------------------";
+      let state =
+        match M.get_exec_state m_final with
+        | M.Running -> "Running"
+        | M.Halted -> "Halted"
+        | M.Failed -> "Failed"
+      in
+      Printf.printf "Final execution state: %s\n" state
