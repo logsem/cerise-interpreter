@@ -1,202 +1,163 @@
-# Backend-Owned AST and Parser Refactor
+# Backend Refactor — Second Pass
 
 ## Summary
 
-Replace the provisional `Surface_ast` architecture with backend-owned ASTs, parsers, encodings,
-and machines. Share only genuine assembly construction blocks: locations, expressions, labels,
-definitions, typed macros, token infrastructure, and instruction-codec combinators.
+Rebuild the accepted work as a clean, linear history rooted at the current `origin/main`,
+preserving `c7f9009` exactly as its first child. Then reorganize every backend into a namespaced
+directory, separate concrete machine ASTs from assembly IRs, replace handwritten parsing with
+ocamllex/Menhir, restore the rich Notty terminal UI, and remove all web-UI compatibility code.
 
-There are seven canonical implementations and eight accepted registry names:
+No merge commits, compatibility aliases, pushes, or web-facing fixtures remain.
 
-1. `vanilla` — default; global capabilities and sealing, with no locality type.
-2. `cerise` — permanent listed alias of `vanilla`.
-3. `locality-cerise` — vanilla plus `Global | Local`.
-4. `ucerise` — historical paper machine.
-5. `mcerise` — historical paper machine.
-6. `cerisier` — historical enclave machine.
-7. `griotte` — handwritten.
-8. `griotte-extracted` — Rocq-extracted.
+## History and Integration
 
-`sealing-cerise`, `vanilla-cerise`, `stack-cerise`, `custom`, and other legacy profile names are
-rejected.
+- Freeze the currently fetched `origin/main` at
+  `c7a9ad037527c1f0ba54d3c7bf044d89c972ee52`; verify that its exact child is
+  `c7f900962382694b352c64ce3797fac7573a0af6`.
+- Preserve the accepted first-pass tip
+  `bba78ebcf121ef63c2b79ed797dea4116d02311f` on a local safety branch.
+- Build a new integration branch beginning with the unchanged `c7f9009`, followed by these
+  buildable, ordinary commits:
 
-The accepted main baseline is `33f9fd228c8c0fc5d61f63e8b7b76d382375f64d`. T0 and T1 remain
-accepted, but T1's `Surface_ast` is provisional and will be removed. The old unaccepted T2 commit
-`27bf3ee` and its dirty worktree must not be integrated.
+  1. Establish backend sessions and characterization tests.
+  2. Replace surface lowering with backend-owned parsing.
+  3. Add vanilla and locality Cerise backends.
+  4. Add historical uCerise and mCerise backends.
+  5. Migrate the terminal application to backend sessions.
+  6. Add the handwritten Griotte backend.
+  7. Add the Rocq-extracted Griotte backend.
+  8. Add the historical Cerisier backend.
+  9. Complete backend cleanup and correctness hardening.
 
-## Architecture and Interfaces
+- Recreate the Griotte and Cerisier merge diffs as normal commits. Do not retain their branch
+  ancestry or any subject beginning with `Merge`.
+- Before second-pass changes, require the curated tree to equal the accepted first-pass tree and
+  pass the full suite. Commit this revised plan afterward.
+- Move local `main` to the accepted linear branch only after verification. Keep the safety branch
+  through final acceptance.
+- Nothing is pushed. This leaves `c7f9009` independently pushable without exposing later commits.
 
-### Backend contract and shared frontend
+## Architecture and Public Interfaces
 
-`Machine_backend.S` keeps backend-owned `program`, `regfile`, `word`, and `state` types. Replace
-`lower_program` and `lower_regfile` with:
+### Backend layout
 
-```ocaml
-val parse_program :
-  ?filename:string ->
-  string ->
-  (program, Diagnostic.t list) result
-
-val parse_regfile :
-  ?filename:string ->
-  string ->
-  (regfile, Diagnostic.t list) result
-
-val parse_word :
-  ?filename:string ->
-  string ->
-  (word, Diagnostic.t list) result
-```
-
-`Machine_session` invokes the selected backend parser directly. There is no backend-independent
-instruction, capability, permission, locality, or word AST, and no lowering phase.
-
-Introduce `Assembly_frontend.Make (Syntax)`:
-
-- The common layer owns tokens, source locations, arithmetic/runtime expressions, labels,
-  definitions, typed macro declarations and calls, hygienic expansion, and raw-word placement.
-- `Syntax` supplies backend-specific statement, raw-word, register-file, and macro-argument parsers.
-- `Syntax` supplies expression traversal/substitution hooks so common label and macro passes can
-  transform backend AST nodes without knowing their constructors.
-- The common driver remains whitespace-compatible with existing assembly and does not make
-  newlines semantically significant.
-- Backend parsers construct their backend AST directly. Unsupported instructions or value shapes
-  fail during parsing with source locations.
-- Typed macros remain supported, but each backend declares the parameter kinds it accepts. A
-  backend without locality or sealing has no corresponding macro parameter kind.
-
-`Runtime_config.max_addr`, `Runtime_config.stack_addr`, `Machine_view.address_limit`, and capability
-bounds remain finite `Z.t`. Cerisier's `Infinite_z` is removed; `inf` is not accepted syntax.
-
-### Active backends
-
-`vanilla` has no locality type, locality AST field, locality parser production, locality encoding,
-or locality text in editable/displayed words.
-
-Its capability syntax contains four fields:
+Use private wrapped implementation libraries in:
 
 ```text
-(permission, base, limit, cursor)
+lib/vanilla/
+lib/locality_cerise/
+lib/ucerise/
+lib/mcerise/
+lib/cerisier/
+lib/griotte/
+lib/griotte_extracted/
 ```
 
-Seal ranges likewise omit locality. A five-field capability such as `(RW, GLOBAL, 0, 10, 0)` is a
-parse error.
+`cerise` remains a registry alias for vanilla and therefore has no implementation directory.
 
-Its exact instruction set, in codec-table order, is:
+The public library provides sealed façade modules:
 
 ```text
-Jmp Jnz Move Load Store Add Sub Mul Rem Div Lt Lea Restrict SubSeg
-GetB GetE GetA GetP GetOType GetWType Seal UnSeal Invoke Fail Halt
+Cerise.Vanilla
+Cerise.Locality_cerise
+Cerise.Ucerise
+Cerise.Mcerise
+Cerise.Cerisier
+Cerise.Griotte
+Cerise.Griotte_extracted
 ```
 
-Its permissions are:
+Each exposes its own `Ast`, `Asm_ir`, `Parser`, `Printer`, `Codec`, `Machine`, and
+`Backend` modules as applicable. Private library module names must not escape installed
+interfaces.
 
-```text
-O E RO RX RW RWX
-```
+Remove flat names such as `Cerise.Vanilla_ast`; there are no compatibility aliases.
+`Cerise.Machine` remains an alias for `Cerise.Vanilla.Machine`.
 
-`locality-cerise` has its own AST and parser. It supports sealing and the same instructions as
-vanilla, with `GetL` inserted after `SubSeg`. Its localities are exactly `Global | Local`, and it
-additionally supports `RWL | RWLX`. It has no `Directed`, uninitialized permissions, `LoadU`,
-`StoreU`, or `PromoteU`.
+### AST and assembly IR
 
-The two active implementations may share mechanical helpers and equivalence tests, but not a
-capability/instruction superset AST.
+- Each backend's `Ast` contains only concrete machine syntax: registers, permissions,
+  capabilities, words, instructions, and other concrete backend values.
+- `Ast` must not contain expressions, labels, definitions, macro declarations, macro
+  parameters/arguments, unresolved operands, or assembly placement nodes.
+- Each backend's `Asm_ir` owns its exact unresolved instruction, word, register-file, and
+  macro-argument forms.
+- The common assembly layer owns only source locations, expressions, labels, definitions, macro
+  containers, token infrastructure, hygienic expansion, and generic traversal machinery. It has no
+  cross-backend instruction, capability, locality, permission, or word union.
+- Rename `Machine_backend.S`'s parsed types to `asm_program`, `asm_regfile`, and `asm_word`.
+  Parsing returns backend `Asm_ir`; resolution produces concrete `Ast` values before
+  initialization or editing.
 
-### Historical uCerise and mCerise
+### Generated parsing
 
-`ucerise` implements [Efficient and Provable Local Capability Revocation using Uninitialized
-Capabilities](https://doi.org/10.1145/3434287). `mcerise` implements [Le Temps des Cerises:
-Efficient Temporal Stack Safety on Capability Machines using Directed
-Capabilities](https://doi.org/10.1145/3527318).
+- Add `(using menhir 3.0)`, Menhir build dependencies, and any required `menhirLib` runtime
+  dependency to Dune/Nix configuration.
+- Define one shared token specification and one `lexer.mll`. A lexical token universe may include
+  all backend keywords; tokenization alone does not imply acceptance.
+- Define one shared partial `common_parser.mly` for expressions, labels, definitions, macros,
+  calls, placement, regfiles, comments, and whitespace-insensitive construction syntax.
+- Each backend supplies its own `parser.mly` fragment for exact instructions, values,
+  permissions, localities, and macro-argument kinds. Dune feeds the shared fragment into each
+  backend's Menhir `merge_into` build.
+- Each generated parser has separate program, regfile, and word entry points and reports
+  source-located diagnostics.
+- Preserve every assembly form currently accepted by the correct backend. In particular, vanilla's
+  grammar rejects a locality-bearing capability during parsing, even though the shared lexer can
+  recognize locality tokens.
+- Menhir conflicts and warnings are gate failures.
 
-Both have exactly this instruction set, in codec-table order:
+### Frozen backend semantics
+
+The second pass changes organization and parsing, not machine behavior or encodings.
+
+- Vanilla remains global-only with sealing and no locality type or field.
+- Locality Cerise adds exactly `Global | Local`, `RWL`, `RWLX`, and `GetL`; it has no
+  `Directed` or uninitialized capabilities.
+- uCerise and mCerise retain exactly:
 
 ```text
 Jmp Jnz Move Load Store Add Sub Lt Lea Restrict SubSeg IsPtr
 GetP GetL GetB GetE GetA Fail Halt LoadU StoreU PromoteU
 ```
 
-Relative to the current shared AST, remove exactly these eight instructions from both backend ASTs,
-parsers, encoders, decoders, printers, and evaluators:
+- The following instructions remain absent from both uCerise and mCerise:
 
 ```text
-Mul
-Rem
-Div
-Invoke
-GetOType
-GetWType
-Seal
-UnSeal
+Mul Rem Div Invoke GetOType GetWType Seal UnSeal
 ```
 
-Add `IsPtr`, which is present in both paper machines but absent from the current shared AST.
+- uCerise has `Global | Local`; mCerise additionally has `Directed`. Their duplicated ASTs and
+  semantics remain intentionally independent.
+- Cerisier remains a finite-`Z.t` historical implementation.
+- Handwritten and extracted Griotte remain independent sibling backends; both reject `Rem` and
+  `Div`, preserve their opcode gaps, and remain differentially equivalent.
+- Existing automatic/fixed instruction-codec tables and golden encodings remain unchanged.
 
-Both backends retain `GetL`, `LoadU`, `StoreU`, and `PromoteU`. Their words are only integers or
-capabilities. Remove sealing permissions, seal ranges, sealed words, and sealing word-type constants.
+### Terminal application
 
-`ucerise` has only `Global | Local`. `mcerise` additionally has `Directed`. Their AST and machine
-implementations remain independent historical snapshots; semantic duplication is intentional.
-Shared plumbing and codec combinators may evolve, but their instruction/value shapes may not grow
-with active backends.
+- Create a non-public terminal application library entirely under `src/`, containing CLI
+  options/parsing, application state, noninteractive output, event handling, and Notty rendering.
+- Remove `lib/cli_options*`, the dead `lib/cli_parser.ml`, and `lib/application_model*`. The
+  public Cerise library has no CLI/TUI dependency.
+- Delete `website_fixture.ml/.mli`, its exports, and its tests. Add no replacement web abstraction.
+- Restore the old rich Notty UI through backend-neutral `Machine_view` data:
 
-### Instruction codec
+  - styled, aligned multi-column registers;
+  - capability/sealing/locality-aware word rendering;
+  - primary heap/PC and secondary stack-or-selected-capability panels;
+  - decoded instruction display;
+  - bounds and cursor indicators;
+  - styled machine status.
 
-Add a shared internal `Instruction_codec` combinator library. A backend declares a table of cases
-containing:
-
-- Constructor and projector.
-- Operand shape.
-- `Auto` or fixed opcode allocation.
-- Backend-specific register, scalar, permission, and system-register codecs.
-
-Compiling the table creates symmetric `encode` and `decode` functions. Shape combinators cover
-registers, constants, register-or-constant operands, tuples, signed Zarith values, and backend enums.
-
-The compiler must:
-
-- Allocate contiguous opcode spans automatically; each register-or-constant operand doubles the
-  required span.
-- Preserve the existing low-eight-bit opcode/high-bit payload convention where that convention
-  applies.
-- Reuse the existing signed integer-pair interleaving behavior.
-- Reject duplicate or overlapping opcode ranges and ranges exceeding the opcode field.
-- Return structured errors for malformed or unknown encodings.
-
-`vanilla`, `locality-cerise`, `ucerise`, and `mcerise` use automatic sequential allocation starting
-at opcode zero in the instruction orders listed above. Their numeric instruction encodings may
-change and are frozen by new golden tests.
-
-Cerisier uses fixed descriptors preserving its historical encoding. Handwritten Griotte uses fixed
-descriptors equivalent to extracted Griotte. The extracted implementation remains independent of
-this codec.
-
-### Registry, views, and compatibility
-
-`Backend_registry.names ()` returns, in deterministic order:
-
-```text
-vanilla
-cerise
-locality-cerise
-ucerise
-mcerise
-cerisier
-griotte
-griotte-extracted
-```
-
-`find "cerise"` returns the vanilla implementation. `Machine_session` stores the selected registry
-name separately from the canonical backend module name, so both `Machine_session.backend_name` and
-`Machine_view.backend_name` report `cerise` when that alias was selected.
-
-`Cerise.Machine` aliases vanilla. Vanilla reports `None` in the backend-neutral optional locality
-view field and never includes locality in editable text.
-
-Machine states and sessions remain immutable. Snapshot support remains excluded. The website
-repository is not modified; only the interpreter-side session/view compatibility fixture is
-maintained.
+- Extend `Machine_view.word` with optional decoded-instruction text rather than introducing Notty
+  or backend-specific callbacks into `lib`.
+- Preserve old controls: quit/Escape, single step, ten steps, undo, row/page navigation, follow
+  primary/secondary, secondary-panel toggle, resize, and mouse scrolling. Follow the
+  `Stack_pointer` role when available; otherwise use the selected capability and retain capability
+  cycling.
+- Render responsively: two memory panels when width permits and a usable primary panel on narrow
+  terminals.
 
 ## Sub-Agent Orchestration
 
@@ -219,116 +180,92 @@ Every prompt states the exact objective, acceptance criteria, starting commit, w
 owned subsystems, frozen interfaces, required checks, and forbidden actions. Agents do not push,
 switch branches, edit other worktrees, perform unrelated cleanup, or spawn agents.
 
-The root reviews the task diff and runs its gate before integration, integrates it, reruns the gate
-on main, and only then accepts the SHA and starts the successor. Ordinary task commits are
-cherry-picked. Historical integration branches are merged with `--no-ff`. No coding tasks overlap.
+Coding tasks never overlap. The root reviews each diff, runs the task gate, cherry-picks the commit,
+reruns the gate on main, and only then accepts the new SHA and starts its successor. No integration
+uses a merge commit.
 
-### Dependency-ordered task graph
+### T0 — Linear baseline and revised plan
 
-Before the first new coding task, the root commits this revised plan on accepted main. That
-documentation commit becomes the accepted base for T2-revised.
+- Root only; no coding delegation.
+- Construct and validate the curated history above.
+- Commit this revised plan as the second-pass accepted base.
+- Gate: every curated commit builds; final tree matches the accepted first-pass tree; full tests
+  pass; history contains no merge commits or `Merge` subjects.
 
-#### T2-revised — Frontend, contracts, and codec
+### T1 — Backend directories and namespaces
+
+- Model: `gpt-5.6-sol`; reasoning: `high`.
+- Move every implementation into its backend directory and private library.
+- Add sealed public façade modules and update registry/tests to the clean namespaced API.
+- Do not change parsing, semantics, or encodings yet.
+- Gate: full suite, `@install`, and an external-client compile using the new namespaces; old flat
+  modules are unavailable.
+
+### T2 — Common generated parser and active backends
 
 - Model: `gpt-5.6-sol`; reasoning: `xhigh`.
-- Depends on accepted T1 plus the revised-plan commit.
-- Remove `Surface_ast` and all lowering APIs.
-- Add the parameterized common frontend and instruction codec.
-- Revise session alias tracking while retaining `Machine_view`, diagnostics, and finite runtime
-  configuration.
-- Convert the interim adapter only as needed to prove the new existential session contract.
-- Gate: frontend macro/label/expression tests, two deliberately different fixture syntaxes, codec
-  collision/round-trip tests, session isolation tests, and existing characterization tests all pass.
+- Add shared tokens, ocamllex lexer, modular Menhir grammar, common assembly shell, and renamed
+  backend contract.
+- Split vanilla and locality Cerise into concrete `Ast` and exact `Asm_ir`, then migrate both
+  parsers.
+- Gate: syntax-compatibility corpus, macro hygiene, labels/expressions, located failures, parser
+  round trips, vanilla locality rejection, locality acceptance, no Menhir conflicts, and full suite.
 
-This remains an architectural serialization point.
-
-#### T3 — Vanilla and locality-cerise
+### T3 — uCerise and mCerise parser/IR migration
 
 - Model: `gpt-5.6-sol`; reasoning: `high`.
-- Implement separate ASTs, parsers, printers, codec tables, and machine adapters for both active
-  backends.
-- Merge sealing into vanilla and remove locality completely from vanilla syntax and types.
-- Add the permanent `cerise` alias and change `Cerise.Machine` to vanilla.
-- Gate: exact parser acceptance matrices, global-only cross-backend execution equivalence, alias
-  identity tests, golden encodings, and rejection of locality/U/Directed constructs.
+- Split both historical snapshots and migrate them to generated parsers without sharing their
+  semantic ASTs.
+- Gate: exact constructor and parser matrices, negative checks for all eight removed instructions,
+  `IsPtr` and U-capability behavior, golden codecs, paper examples, and full suite.
 
-#### T4 — uCerise and mCerise snapshots
+### T4 — Cerisier parser/IR migration
 
 - Model: `gpt-5.6-sol`; reasoning: `high`.
-- Implement independent historical AST/parser/machine modules using current behavior as the semantic
-  baseline and the two papers as the ISA authority.
-- Apply the exact eight-instruction removal list and add `IsPtr`.
-- Remove all sealing value forms from both backends.
-- Use automatically repacked codec tables.
-- Gate: exact constructor/parser/codec matrices, paper examples, locality and
-  uninitialized-capability transitions, negative tests for every removed instruction, and repository
-  checks showing the removed constructors do not exist in either backend.
+- Separate concrete enclave AST from assembly IR and migrate its parser while preserving finite
+  bounds and fixed encoding.
+- Gate: enclave lifecycle, parsing corpus, fixed codec tests, finite-bound behavior, examples, and
+  full suite.
 
-Baseline T0 profile tests may be retired only after these replacement tests pass.
+### T5 — Griotte parser/IR migration
 
-#### T5 — CLI, terminal UI, and website fixture
+- Model: `gpt-5.6-sol`; reasoning: `xhigh`.
+- Give handwritten and extracted Griotte independent `Ast`, `Asm_ir`, and generated parsers in
+  sibling directories.
+- Keep extracted/generated sources and regeneration scripts within the extracted backend boundary.
+- Gate: examples, rejection of `Rem`/`Div`, opcode gaps, regeneration twice with no diff,
+  per-step differential equivalence, and full suite.
+
+### T6 — CLI relocation and Notty restoration
 
 - Model: `gpt-5.6-terra`; reasoning: `high`.
-- Replace version/feature flags with `--backend`; omitted selection uses `vanilla`.
-- Ensure CLI and UI share one immutable session.
-- Adapt the website compatibility fixture exclusively to `Machine_session` and `Machine_view`.
-- Gate: multiple backend selections, alias reporting, unknown-name diagnostics, editing, stepping,
-  undo retention, capability selection, and sparse-memory navigation.
+- Move all terminal application code into the private `src` library, delete website-fixture code,
+  extend `Machine_view`, and restore the full Notty UX.
+- Gate: CLI selection and errors, session isolation, stepping/undo/navigation event tests,
+  fixed-size Notty render snapshots, narrow/wide layouts, every backend in interactive mode,
+  absence of Notty/CLI/web dependencies from `lib`, and full suite.
 
-#### T6 — Handwritten Griotte integration
-
-- Model: `gpt-5.6-sol`; reasoning: `xhigh`.
-- Root creates `agent/t6-griotte` from the local `griotte` branch and records both its historical tip
-  and the accepted main SHA.
-- Agent merges accepted main without committing separately, resolves the port into backend-owned
-  Griotte syntax, and creates one atomic merge commit.
-- Handwritten Griotte uses the common frontend and codec while preserving the extracted encoding.
-- Gate: Griotte examples, parser/codec tests, and the full accepted suite.
-- Root merges the task branch with `--no-ff`; it is never cherry-picked.
-
-#### T7 — Extracted Griotte
-
-- Model: `gpt-5.6-sol`; reasoning: `high`.
-- Add the extracted adapter, temporary-clone/Nix regeneration workflow, and state-by-state
-  differential tests.
-- Both Griotte implementations share the Griotte-specific source syntax, not a cross-backend AST.
-- Gate: reproducible regeneration, clean second regeneration, identical instruction encodings, and
-  observable-state equivalence after every step.
-
-#### T8 — Cerisier integration
-
-- Model: `gpt-5.6-sol`; reasoning: `high`.
-- Root creates `agent/t8-cerisier` from local `june/cerisier` and records both historical and
-  accepted-main SHAs.
-- Merge accepted main without a preliminary commit and port Cerisier as a complete independent
-  historical backend, not a vanilla extension.
-- Preserve its AST, enclave instructions, transitions, and fixed encoding.
-- Replace every `Infinite_z` use with finite `Z.t`; initialize bounds from
-  `Runtime_config.max_addr`.
-- Produce one atomic merge commit.
-- Gate: enclave lifecycle, ID storage, uniqueness, finite-bound behavior, examples, fixed encoding
-  tests, and full suite.
-- Root integrates with `--no-ff`; it is never cherry-picked.
-
-#### T9 — Cleanup and documentation
+### T7 — Cleanup and documentation
 
 - Model: `gpt-5.6-luna`; reasoning: `medium`.
-- Remove the obsolete monolithic AST/machine profiles, mutable flags, interim adapter, old parser
-  paths, old names, snapshot references, and `Infinite_z`.
-- Update examples and documentation.
-- Gate: no semantic changes, no public-interface redesign, and repository searches find no
-  operational dependency on removed infrastructure.
+- Remove the handwritten `Assembly_frontend`, transitional adapters, stale flat files,
+  compatibility names, and outdated documentation.
+- Update assembler, architecture, CLI, backend, regeneration, and UI documentation.
+- Gate: repository checks find no assembler-only types in backend `Ast` modules, no old parser
+  path, no flat backend modules, no website fixture, no merge-language history requirements, and
+  full Dune/Nix/regeneration checks.
 
-#### T10 — Final independent acceptance
+### T8 — Final acceptance
 
-Run two read-only agents concurrently in separate worktrees:
+After T7 is accepted, run two read-only agents concurrently:
 
-- `gpt-5.6-sol`, `xhigh`: architecture and semantic correctness review.
-- `gpt-5.6-terra`, `medium`: complete Dune, CLI, UI, Nix, regeneration, example, and
-  differential-test audit.
+- `gpt-5.6-sol`, `xhigh`: architecture, AST/Asm_ir boundaries, ISA, encoding, and parser
+  correctness.
+- `gpt-5.6-terra`, `high`: Dune/Nix/install, CLI, Notty snapshots, examples, regeneration, and
+  history audit.
 
-Material findings become new sequential, narrowly scoped coding tasks based on the latest accepted
-SHA. Repeat both reviews after fixes.
+Material findings become new sequential fix tasks from the latest accepted SHA, followed by both
+reviews again.
 
 ### Spawn template
 
@@ -359,8 +296,8 @@ spawn_agent(
 )
 ```
 
-The root replaces all placeholders and sends task-specific invariants, never the entire plan as the
-task prompt.
+The root replaces every placeholder and sends task-specific invariants, never the entire plan as
+the task prompt.
 
 ### Failure policy
 
@@ -372,21 +309,17 @@ task prompt.
 - No integration proceeds while accepted main is failing.
 - Nothing is pushed.
 
-## Acceptance Criteria and Assumptions
+## Final Acceptance
 
-- Backend parsers reject unsupported shapes directly; there is no superset semantic AST or delayed
-  feature lowering.
-- Vanilla cannot represent, parse, print, or encode locality.
-- Locality-cerise supports only Global and Local; uCerise supports Global and Local; mCerise supports
-  Global, Local, and Directed.
-- The eight instructions listed above are absent from both uCerise and mCerise, while `IsPtr` is
-  present.
-- Codec tables have no collisions and satisfy decode/encode round trips over every operand-shape
-  variant.
-- All accepted backend names resolve; old profile names fail with the deterministic valid-name list.
-- Interleaved sessions demonstrate absence of global backend/configuration state.
-- Cerisier intentionally uses finite Zarith bounds instead of its branch's infinite bound.
-- Griotte ancestry and Cerisier ancestry are preserved through merge commits.
-- Snapshotting is removed without replacement; website adaptation occurs after the interpreter API
-  stabilizes.
-- No work is pushed.
+- `c7f9009` is the exact first commit after the frozen `origin/main`.
+- `git rev-list --min-parents=2 origin/main..main` is empty, and no new subject begins with
+  `Merge`.
+- Every backend has its required directory and clean `Cerise.<Backend>` namespace.
+- All backend `Ast` modules are concrete machine ASTs; all unresolved assembly concepts live in
+  `Asm_ir` or the common construction layer.
+- Generated parsers preserve accepted syntax and reject backend-invalid shapes directly.
+- CLI/TUI code exists only under `src`; website compatibility code is absent.
+- The terminal UI uses composed Notty images and restores the old interactive experience.
+- All unit, characterization, parser, codec, differential, CLI, render-snapshot, install, Nix,
+  example, and regeneration gates pass.
+- No commits are pushed.
