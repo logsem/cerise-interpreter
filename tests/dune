@@ -62,3 +62,18 @@
   ../lib/assembly/common_parser.mly)
  (action
   (run %{dep:../scripts/historical-parser-architecture-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps
+  ../scripts/cerisier-parser-architecture-gate.sh
+  ../lib/cerisier/ast.ml
+  ../lib/cerisier/asm_ir.ml
+  ../lib/cerisier/parser.mly
+  ../lib/cerisier/parser_api.ml
+  ../lib/cerisier/dune
+  ../lib/assembly/token_spec.mly
+  ../lib/assembly/lexer.mll
+  ../lib/assembly/common_parser.mly)
+ (action
+  (run %{dep:../scripts/cerisier-parser-architecture-gate.sh} --root %{workspace_root})))

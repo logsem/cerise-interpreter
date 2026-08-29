@@ -13,7 +13,11 @@
   --unused-token LOADU
   --unused-token STOREU
   --unused-token ISPTR
-  --unused-token PROMOTEU))
+  --unused-token PROMOTEU
+  --unused-token EINIT
+  --unused-token EDEINIT
+  --unused-token ESTOREID
+  --unused-token ISUNIQUE))
 
 (library
  (name cerise_vanilla_private)

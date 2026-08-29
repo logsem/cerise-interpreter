@@ -50,16 +50,57 @@ let parser_matrix () =
       "jmper r1";
       "movsr r1 r2";
       "move r1 inf";
+      "move r1 infinity";
       "# inf";
+      "# infinity";
       "inf: halt";
+      "infinity: halt";
       "%define inf 3 halt";
+      "%define infinity 3 halt";
     ];
   Alcotest.(check bool)
     "word rejects inf" true
     (Result.is_error (Cerisier.Parser.parse_word "(RW, GLOBAL, 0, inf, 0)"));
   Alcotest.(check bool)
+    "word rejects infinity" true
+    (Result.is_error (Cerisier.Parser.parse_word "(RW, GLOBAL, 0, infinity, 0)"));
+  Alcotest.(check bool)
     "regfile rejects inf" true
-    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, inf, 0)"))
+    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, inf, 0)"));
+  Alcotest.(check bool)
+    "regfile rejects infinity" true
+    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, infinity, 0)"));
+  let located =
+    match Cerisier.Parser.parse_program ~filename:"located.s" "halt\n@" with
+    | Error (diagnostic :: _) -> (
+        match Diagnostic.location diagnostic with
+        | Some location -> location
+        | None -> Alcotest.fail "expected a located lexer diagnostic")
+    | _ -> Alcotest.fail "expected a located lexer diagnostic"
+  in
+  Alcotest.(check (option string)) "lexer diagnostic filename" (Some "located.s") located.source;
+  Alcotest.(check int) "lexer diagnostic line" 2 located.line;
+  let parser_location =
+    match Cerisier.Parser.parse_program ~filename:"syntax.s" "jmp\n)" with
+    | Error (diagnostic :: _) -> (
+        match Diagnostic.location diagnostic with
+        | Some location -> location
+        | None -> Alcotest.fail "expected a located parser diagnostic")
+    | _ -> Alcotest.fail "expected a located parser diagnostic"
+  in
+  Alcotest.(check (option string))
+    "parser diagnostic filename" (Some "syntax.s") parser_location.source;
+  Alcotest.(check int) "parser diagnostic line" 2 parser_location.line;
+  List.iter
+    (fun source ->
+      let parsed = Cerisier.Parser.parse_word source |> ok in
+      let concrete = Cerisier.Asm_ir.lower_word config parsed |> ok in
+      let printed = Cerisier.Printer.word concrete in
+      let reparsed = Cerisier.Parser.parse_word printed |> ok in
+      let round_trip = Cerisier.Asm_ir.lower_word config reparsed |> ok in
+      Alcotest.(check bool) ("word round trip " ^ source) true (concrete = round_trip))
+    [ "-17"; "(URWLX, DIRECTED, 0, MAX_ADDR, 4)"; "[SU, GLOBAL, 0, 8, 1]";
+      "{3: (RW, LOCAL, 0, 8, 1)}" ]
 
 let instructions =
   let open Cerisier.Ast in
@@ -315,7 +356,7 @@ let einit_configured_region () =
   let bounded_end = Z.pred (Runtime_config.max_addr config) in
   let oversized_end = Z.shift_left Z.one 100_000 in
   let make_state e =
-    let state = ok (Cerisier.Machine.init config [] None) in
+    let state = Cerisier.Machine.init config [] None in
     state
     |> Cerisier.Machine.set_register PC
          (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
@@ -391,8 +432,11 @@ let examples_and_lifecycle () =
     "stored enclave identity is observable" true
     (not (Z.equal (integer "r3" enclave) Z.zero));
   let enclave_source = In_channel.with_open_bin (fixture "enclave.s") In_channel.input_all in
-  let program = ok (Cerisier.Parser.parse_program enclave_source) in
-  let direct = ok (Cerisier.Machine.init config program None) |> Cerisier.Machine.run in
+  let program =
+    ok (Cerisier.Parser.parse_program enclave_source)
+    |> Cerisier.Asm_ir.lower_program config |> ok
+  in
+  let direct = Cerisier.Machine.init config program None |> Cerisier.Machine.run in
   Alcotest.(check int)
     "EDeInit removes the enclave table entry" 0
     (Cerisier.Machine.ETableMap.cardinal direct.enclave_table);

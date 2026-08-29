@@ -90,6 +90,8 @@ declared_name:
   | name = SEAL { name } | name = UNSEAL { name } | name = INVOKE { name }
   | name = FAIL { name } | name = HALT { name } | name = LOADU { name }
   | name = STOREU { name } | name = ISPTR { name } | name = PROMOTEU { name }
+  | name = EINIT { name } | name = EDEINIT { name }
+  | name = ESTOREID { name } | name = ISUNIQUE { name }
 
 %public expression:
   | value = expression_primary { value }
@@ -149,3 +151,5 @@ operand_symbol_name:
   | name = SEAL { name } | name = UNSEAL { name } | name = INVOKE { name }
   | name = FAIL { name } | name = HALT { name } | name = LOADU { name }
   | name = STOREU { name } | name = ISPTR { name } | name = PROMOTEU { name }
+  | name = EINIT { name } | name = EDEINIT { name }
+  | name = ESTOREID { name } | name = ISUNIQUE { name }

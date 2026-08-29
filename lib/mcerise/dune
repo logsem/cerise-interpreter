@@ -21,7 +21,11 @@
   --unused-token LBRACKET
   --unused-token RBRACKET
   --unused-token LBRACE
-  --unused-token RBRACE))
+  --unused-token RBRACE
+  --unused-token EINIT
+  --unused-token EDEINIT
+  --unused-token ESTOREID
+  --unused-token ISUNIQUE))
 
 (library
  (name cerise_mcerise_private)

@@ -40,6 +40,10 @@ let word lexbuf =
   | "storeu" -> STOREU original
   | "isptr" -> ISPTR original
   | "promoteu" -> PROMOTEU original
+  | "einit" -> EINIT original
+  | "edeinit" -> EDEINIT original
+  | "estoreid" -> ESTOREID original
+  | "isunique" -> ISUNIQUE original
   | "pc" | "ddc" | "stk" -> REGISTER original
   | name
     when String.length name > 1
