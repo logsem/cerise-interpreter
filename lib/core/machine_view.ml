@@ -35,6 +35,7 @@ type word = {
   edit_text : string;
   short_text : string;
   detail_text : string;
+  decoded_instruction : string option;
   fingerprint : string;
   kind : semantic_kind;
   integer : Z.t option;

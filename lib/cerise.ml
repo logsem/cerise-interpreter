@@ -14,6 +14,3 @@ module Machine_view = Machine_view
 module Machine_backend = Machine_backend
 module Machine_session = Machine_session
 module Backend_registry = Backend_registry
-module Cli_options = Cli_options
-module Application_model = Application_model
-module Website_fixture = Website_fixture

@@ -13,7 +13,7 @@
   (glob_files test_files/cerisier/pos/*.s)
   (source_tree test_files/griotte)
   (glob_files test_files/vanilla/pos/*))
- (libraries alcotest cerise))
+ (libraries alcotest cerise cerise_terminal notty-community))
 
 (rule
  (alias runtest)
@@ -44,6 +44,12 @@
   ../lib/core/assembly_construction.mli)
  (action
   (run %{dep:../scripts/active-parser-architecture-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps ../scripts/terminal-architecture-gate.sh ../lib/dune ../lib/cerise.ml ../src/dune)
+ (action
+  (run %{dep:../scripts/terminal-architecture-gate.sh} --root %{workspace_root})))
 
 (rule
  (alias runtest)

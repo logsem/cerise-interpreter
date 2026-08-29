@@ -5,7 +5,7 @@ type t = {
   backend : string;
   program_filename : string;
   regfile_filename : string option;
-  config : Runtime_config.t;
+  config : Cerise.Runtime_config.t;
 }
 
 val parse : string array -> (t, string) result

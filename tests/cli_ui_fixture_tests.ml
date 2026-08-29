@@ -26,6 +26,15 @@ let create ?(backend = "vanilla") ?(source = "halt") ?regfile config =
 
 let parse argv = Cli_options.parse (Array.of_list ("cerise-interpreter" :: argv))
 
+let contains text fragment =
+  let text_length = String.length text and fragment_length = String.length fragment in
+  let rec loop index =
+    if index + fragment_length > text_length then false
+    else if String.sub text index fragment_length = fragment then true
+    else loop (index + 1)
+  in
+  loop 0
+
 let check_same_session message expected actual =
   Alcotest.(check bool) message true (expected == actual)
 
@@ -147,9 +156,25 @@ let test_filename_diagnostics () =
       Alcotest.(check string) "regfile filename reaches parser" "broken-registers.reg" (diagnostic_source diagnostics)
   | Ok _ -> Alcotest.fail "invalid regfile was accepted"
 
-let test_capabilities_and_website_fixture () =
+let test_capabilities_and_rendering () =
   let config = Runtime_config.create ~max_addr:(Z.of_int 32) () in
   let vanilla = create ~backend:"vanilla" config in
+  List.iter
+    (fun (backend, expected) ->
+      let decoded = create ~backend ~source:"mov r1 7\nhalt" config |> Machine_session.view in
+      match Machine_view.memory_at Z.zero decoded with
+      | Some { decoded_instruction = Some text; _ } ->
+          Alcotest.(check string) (backend ^ " decoded instruction includes operands") expected text
+      | _ -> Alcotest.failf "%s encoded move did not produce decoded instruction text" backend)
+    [
+      ("vanilla", "mov r1 7");
+      ("locality-cerise", "mov r1 7");
+      ("ucerise", "mov r1 7");
+      ("mcerise", "mov r1 7");
+      ("cerisier", "mov r1 7");
+      ("griotte", "mov cra 7");
+      ("griotte-extracted", "mov cra 7");
+    ];
   let vanilla_state = Application_model.create vanilla |> Application_model.select_next_capability in
   (match Application_model.selected_capability vanilla_state with
   | Some register ->
@@ -163,26 +188,70 @@ let test_capabilities_and_website_fixture () =
       Alcotest.(check bool) "locality backend exposes locality" true
         (Option.is_some (Option.bind register.word.capability (fun capability -> capability.locality)))
   | None -> Alcotest.fail "locality pc should be selectable");
-  let fixture =
-    Website_fixture.create ~backend:"cerise" ~config ~source:"mov r1 4\nhalt" ~regfile:None |> get_ok
+  let state = Interactive_ui.create vanilla in
+  let wide_image = Interactive_ui.render ~width:120 ~height:8 state in
+  let wide = Interactive_ui.snapshot ~width:120 ~height:8 state in
+  let narrow = Interactive_ui.snapshot ~width:30 ~height:4 state in
+  Alcotest.(check int) "wide image width" 120 (Notty.I.width wide_image);
+  Alcotest.(check int) "wide image height" 8 (Notty.I.height wide_image);
+  Alcotest.(check string) "wide composed Notty golden"
+    {|vanilla  Running  [space step, n x10, backspace undo, tab follow, s panels, c cap, q quit]
+pc: (RWX, 0, 32, 0) RWX 0-20 @0         r3: 0                                   r7: 0
+ddc: [SU, 0, 16, 0]                     r4: 0                                   r8: 0
+r1: 0                                   r5: 0                                   r9: 0
+r2: 0                                   r6: 0                                   r10: 0
+HEAP / PC                                                   CAPABILITY / pc
+┏▶ 0  49  halt                                                                                            ┏▶ 0  49  halt
+┃  1  0  jmp pc                                                                                          ┃  1  0  jmp pc|}
+    wide;
+  Alcotest.(check bool) "wide composed golden has both panel titles" true
+    (contains wide "HEAP / PC" && contains wide "CAPABILITY / pc");
+  Alcotest.(check bool) "wide composed golden has PC bounds and cursor" true (contains wide "┏▶ 0");
+  Alcotest.(check string) "narrow composed golden"
+    "vanilla  Running  [space ste..\npc: (RWX, 0, 32, 0) RWX 0-20..\nHEAP / PC\n┏▶ 0  49  halt" narrow;
+  ignore (Interactive_ui.render ~width:1 ~height:1 state);
+  let next event state =
+    match Interactive_ui.transition ~rows:8 event state with
+    | Some state -> state | None -> Alcotest.fail "unexpected quit"
   in
-  Alcotest.(check string) "fixture session keeps alias spelling" "cerise"
-    (Machine_session.backend_name (Website_fixture.session fixture));
-  Alcotest.(check string) "fixture keeps alias spelling" "cerise" (Website_fixture.view fixture).backend_name;
-  let fixture =
-    Website_fixture.edit_register (register Machine_view.General "r2") "11" fixture |> get_ok
-  in
-  let fixture = Website_fixture.edit_memory (Z.of_int 31) "22" fixture |> get_ok in
-  let before_step = Website_fixture.session fixture in
-  let fixture = Website_fixture.step fixture |> Result.get_ok in
-  let fixture = Website_fixture.undo fixture in
-  Alcotest.(check bool) "website undo retains exact immutable session" true
-    (Machine_session.view before_step = Website_fixture.view fixture);
-  let fixture = Website_fixture.select_next_capability fixture |> Website_fixture.follow_selected_capability in
-  Alcotest.(check bool) "fixture selects a capability" true
-    (Option.is_some (Website_fixture.selected_capability fixture));
-  let fixture = Website_fixture.navigate_memory (Z.of_int 999) fixture in
-  check_z "fixture navigation remains bounded" (Z.of_int 31) (Website_fixture.memory_start fixture)
+  let event_state = Interactive_ui.create (create ~source:"mov r1 7\nhalt" config) in
+  let event_state = next Interactive_ui.Step event_state in
+  Alcotest.(check int) "step event retains history" 1
+    (Application_model.history_length (Interactive_ui.application event_state));
+  let event_state = next Interactive_ui.Step_ten event_state in
+  Alcotest.(check int) "ten-step event retains history" 2
+    (Application_model.history_length (Interactive_ui.application event_state));
+  let event_state = next Interactive_ui.Undo event_state in
+  let event_state = next (Interactive_ui.Move_primary Z.one) event_state in
+  let event_state = next (Interactive_ui.Page_primary 1) event_state in
+  let event_state = next (Interactive_ui.Move_secondary Z.one) event_state in
+  let event_state = next (Interactive_ui.Page_secondary 1) event_state in
+  let event_state = next Interactive_ui.Follow_primary event_state in
+  let event_state = next Interactive_ui.Follow_secondary event_state in
+  let event_state = next Interactive_ui.Cycle_capability event_state in
+  let event_state = next Interactive_ui.Toggle_secondary event_state in
+  let event_state = next (Interactive_ui.Resize (40, 8)) event_state in
+  Alcotest.(check bool) "toggle removes secondary panel" true
+    (not (contains (Interactive_ui.snapshot ~width:120 ~height:8 event_state) "CAPABILITY /"));
+  Alcotest.(check bool) "quit event is terminal" true
+    (Interactive_ui.transition ~rows:8 Interactive_ui.Quit event_state = None);
+  let halted = next Interactive_ui.Step (Interactive_ui.create (create ~source:"halt" config)) in
+  Alcotest.(check bool) "halted step keeps UI alive" true
+    (Option.is_some (Interactive_ui.transition ~rows:8 Interactive_ui.Step halted));
+  let failed = next Interactive_ui.Step (Interactive_ui.create (create ~source:"fail" config)) in
+  Alcotest.(check bool) "failed step keeps UI alive" true
+    (Option.is_some (Interactive_ui.transition ~rows:8 Interactive_ui.Step failed));
+  List.iter
+    (fun backend ->
+      let session = create ~backend config in
+      let state = Interactive_ui.create session in
+      let state = next Interactive_ui.Step state in
+      let state = next Interactive_ui.Step_ten state in
+      let state = next Interactive_ui.Undo state in
+      let state = next Interactive_ui.Cycle_capability state in
+      let state = next Interactive_ui.Toggle_secondary state in
+      ignore (Interactive_ui.render ~width:100 ~height:24 state))
+    (Backend_registry.names ())
 
 let () =
   Alcotest.run "cli-ui-fixture"
@@ -191,6 +260,6 @@ let () =
       ( "application",
         [ Alcotest.test_case "history and sparse navigation" `Quick test_application_history_and_navigation ] );
       ("diagnostics", [ Alcotest.test_case "source filenames" `Quick test_filename_diagnostics ]);
-      ( "website",
-        [ Alcotest.test_case "public session/view fixture" `Quick test_capabilities_and_website_fixture ] );
+      ( "rendering",
+        [ Alcotest.test_case "capabilities and fixed rendering" `Quick test_capabilities_and_rendering ] );
     ]

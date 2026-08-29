@@ -60,11 +60,19 @@ let sealing ?object_type ~sealed (can_seal, can_unseal) =
 let view_word word =
   let edit_text = Printer.word word in
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
+  let decoded_instruction =
+    match word with
+    | Ast.I encoded ->
+        Result.to_option (Codec.decode encoded)
+        |> Option.map Printer.instruction
+    | _ -> None
+  in
   let base kind integer capability sealing annotations =
     {
       Machine_view.edit_text;
       short_text = edit_text;
       detail_text = edit_text;
+      decoded_instruction;
       fingerprint;
       kind;
       integer;

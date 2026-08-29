@@ -26,3 +26,30 @@ let word = function
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sealed (o, s) -> Printf.sprintf "{%s: %s}" (Z.to_string o) (sealable s)
+
+let register = function PC -> "pc" | Reg n -> "r" ^ string_of_int n
+let operand = function Register r -> register r | Constant z -> Z.to_string z
+let instruction = function
+  | Jmp r -> "jmp " ^ register r | Jnz (a,b) -> Printf.sprintf "jnz %s %s" (register a) (register b)
+  | Move (r,a) -> Printf.sprintf "mov %s %s" (register r) (operand a)
+  | Load (a,b) -> Printf.sprintf "load %s %s" (register a) (register b)
+  | Store (a,b) -> Printf.sprintf "store %s %s" (register a) (operand b)
+  | Add (r,a,b) -> Printf.sprintf "add %s %s %s" (register r) (operand a) (operand b)
+  | Sub (r,a,b) -> Printf.sprintf "sub %s %s %s" (register r) (operand a) (operand b)
+  | Mul (r,a,b) -> Printf.sprintf "mul %s %s %s" (register r) (operand a) (operand b)
+  | Rem (r,a,b) -> Printf.sprintf "rem %s %s %s" (register r) (operand a) (operand b)
+  | Div (r,a,b) -> Printf.sprintf "div %s %s %s" (register r) (operand a) (operand b)
+  | Lt (r,a,b) -> Printf.sprintf "lt %s %s %s" (register r) (operand a) (operand b)
+  | Lea (r,a) -> Printf.sprintf "lea %s %s" (register r) (operand a)
+  | Restrict (r,a) -> Printf.sprintf "restrict %s %s" (register r) (operand a)
+  | SubSeg (r,a,b) -> Printf.sprintf "subseg %s %s %s" (register r) (operand a) (operand b)
+  | GetB (a,b) -> Printf.sprintf "getb %s %s" (register a) (register b)
+  | GetE (a,b) -> Printf.sprintf "gete %s %s" (register a) (register b)
+  | GetA (a,b) -> Printf.sprintf "geta %s %s" (register a) (register b)
+  | GetP (a,b) -> Printf.sprintf "getp %s %s" (register a) (register b)
+  | GetOType (a,b) -> Printf.sprintf "getotype %s %s" (register a) (register b)
+  | GetWType (a,b) -> Printf.sprintf "getwtype %s %s" (register a) (register b)
+  | Seal (a,b,c) -> Printf.sprintf "seal %s %s %s" (register a) (register b) (register c)
+  | UnSeal (a,b,c) -> Printf.sprintf "unseal %s %s %s" (register a) (register b) (register c)
+  | Invoke (a,b) -> Printf.sprintf "invoke %s %s" (register a) (register b)
+  | Fail -> "fail" | Halt -> "halt"

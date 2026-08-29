@@ -5,7 +5,6 @@
   cerise
   runtime_config
   diagnostic
-  cli_options
   assembly_frontend
   instruction_codec
   machine_view
@@ -19,8 +18,7 @@
   griotte_extracted
   backend_registry
   machine_session
-  application_model
-  website_fixture)
+  )
  (libraries
   cerise_core
   cerise_vanilla_private

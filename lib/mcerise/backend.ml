@@ -27,11 +27,18 @@ let step_n = Machine.step_n
 let view_word word =
   let edit_text = Printer.word word in
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
+  let decoded_instruction =
+    match word with
+    | Ast.I encoded ->
+        Result.to_option (Codec.decode encoded)
+        |> Option.map Printer.instruction
+    | _ -> None
+  in
   match word with
-  | Ast.I z -> { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; fingerprint;
+  | Ast.I z -> { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; decoded_instruction; fingerprint;
       kind=Integer; integer=Some z; capability=None; sealing=None; annotations=[] }
   | Cap (Cap (p,l,b,e,a)) ->
-      { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; fingerprint;
+      { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; decoded_instruction; fingerprint;
         kind=(if p=Ast.E then Sentry else Capability); integer=None;
         capability=Some {base=b;limit=e;cursor=a;permissions=[Printer.permission p];
           locality=Some (Printer.locality l)}; sealing=None; annotations=[] }

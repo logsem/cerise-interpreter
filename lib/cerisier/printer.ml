@@ -34,3 +34,41 @@ let word = function
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sealed (o, s) -> Printf.sprintf "{%s: %s}" (Z.to_string o) (sealable s)
+
+let register = function PC -> "pc" | Reg n -> "r" ^ string_of_int n
+let operand = function Register r -> register r | Const z -> Z.to_string z
+
+let instruction = function
+  | Jmp r -> Printf.sprintf "jmp %s" (register r)
+  | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (register b)
+  | Move (a, b) -> Printf.sprintf "mov %s %s" (register a) (operand b)
+  | Load (a, b) -> Printf.sprintf "load %s %s" (register a) (register b)
+  | Store (a, b) -> Printf.sprintf "store %s %s" (register a) (operand b)
+  | Add (a, b, c) -> Printf.sprintf "add %s %s %s" (register a) (operand b) (operand c)
+  | Sub (a, b, c) -> Printf.sprintf "sub %s %s %s" (register a) (operand b) (operand c)
+  | Mul (a, b, c) -> Printf.sprintf "mul %s %s %s" (register a) (operand b) (operand c)
+  | Rem (a, b, c) -> Printf.sprintf "rem %s %s %s" (register a) (operand b) (operand c)
+  | Div (a, b, c) -> Printf.sprintf "div %s %s %s" (register a) (operand b) (operand c)
+  | Lt (a, b, c) -> Printf.sprintf "lt %s %s %s" (register a) (operand b) (operand c)
+  | Lea (a, b) -> Printf.sprintf "lea %s %s" (register a) (operand b)
+  | Restrict (a, b) -> Printf.sprintf "restrict %s %s" (register a) (operand b)
+  | SubSeg (a, b, c) -> Printf.sprintf "subseg %s %s %s" (register a) (operand b) (operand c)
+  | GetL (a, b) -> Printf.sprintf "getl %s %s" (register a) (register b)
+  | GetB (a, b) -> Printf.sprintf "getb %s %s" (register a) (register b)
+  | GetE (a, b) -> Printf.sprintf "gete %s %s" (register a) (register b)
+  | GetA (a, b) -> Printf.sprintf "geta %s %s" (register a) (register b)
+  | GetP (a, b) -> Printf.sprintf "getp %s %s" (register a) (register b)
+  | GetOType (a, b) -> Printf.sprintf "getotype %s %s" (register a) (register b)
+  | GetWType (a, b) -> Printf.sprintf "getwtype %s %s" (register a) (register b)
+  | Seal (a, b, c) -> Printf.sprintf "seal %s %s %s" (register a) (register b) (register c)
+  | UnSeal (a, b, c) -> Printf.sprintf "unseal %s %s %s" (register a) (register b) (register c)
+  | Invoke (a, b) -> Printf.sprintf "invoke %s %s" (register a) (register b)
+  | LoadU (a, b, c) -> Printf.sprintf "loadu %s %s %s" (register a) (register b) (operand c)
+  | StoreU (a, b, c) -> Printf.sprintf "storeu %s %s %s" (register a) (operand b) (operand c)
+  | PromoteU a -> Printf.sprintf "promoteu %s" (register a)
+  | EInit (a, b) -> Printf.sprintf "einit %s %s" (register a) (register b)
+  | EDeInit a -> Printf.sprintf "edeinit %s" (register a)
+  | EStoreId (a, b) -> Printf.sprintf "estoreid %s %s" (register a) (register b)
+  | IsUnique (a, b) -> Printf.sprintf "isunique %s %s" (register a) (register b)
+  | Fail -> "fail"
+  | Halt -> "halt"

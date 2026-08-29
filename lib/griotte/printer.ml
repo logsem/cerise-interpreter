@@ -78,3 +78,37 @@ let word = function
       Printf.sprintf "(E-%s, %s, %s, %s, %s)" (permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
   | Sealed (otype, s) -> Printf.sprintf "{%s: %s}" (Z.to_string otype) (sealable s)
+
+let operand = function Register r -> register r | Constant z -> Z.to_string z
+
+let instruction = function
+  | Jalr (a, b) -> Printf.sprintf "jalr %s %s" (register a) (register b)
+  | Jmp a -> Printf.sprintf "jmp %s" (operand a)
+  | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (operand b)
+  | ReadSR (a, b) -> Printf.sprintf "readsr %s %s" (register a) (system_register b)
+  | WriteSR (a, b) -> Printf.sprintf "writesr %s %s" (system_register a) (register b)
+  | Move (a, b) -> Printf.sprintf "mov %s %s" (register a) (operand b)
+  | Load (a, b) -> Printf.sprintf "load %s %s" (register a) (register b)
+  | Store (a, b) -> Printf.sprintf "store %s %s" (register a) (operand b)
+  | Add (a, b, c) -> Printf.sprintf "add %s %s %s" (register a) (operand b) (operand c)
+  | Sub (a, b, c) -> Printf.sprintf "sub %s %s %s" (register a) (operand b) (operand c)
+  | Mul (a, b, c) -> Printf.sprintf "mul %s %s %s" (register a) (operand b) (operand c)
+  | LAnd (a, b, c) -> Printf.sprintf "land %s %s %s" (register a) (operand b) (operand c)
+  | LOr (a, b, c) -> Printf.sprintf "lor %s %s %s" (register a) (operand b) (operand c)
+  | LShiftL (a, b, c) -> Printf.sprintf "lshiftl %s %s %s" (register a) (operand b) (operand c)
+  | LShiftR (a, b, c) -> Printf.sprintf "lshiftr %s %s %s" (register a) (operand b) (operand c)
+  | Lt (a, b, c) -> Printf.sprintf "lt %s %s %s" (register a) (operand b) (operand c)
+  | Lea (a, b) -> Printf.sprintf "lea %s %s" (register a) (operand b)
+  | Restrict (a, b) -> Printf.sprintf "restrict %s %s" (register a) (operand b)
+  | SubSeg (a, b, c) -> Printf.sprintf "subseg %s %s %s" (register a) (operand b) (operand c)
+  | GetL (a, b) -> Printf.sprintf "getl %s %s" (register a) (register b)
+  | GetB (a, b) -> Printf.sprintf "getb %s %s" (register a) (register b)
+  | GetE (a, b) -> Printf.sprintf "gete %s %s" (register a) (register b)
+  | GetA (a, b) -> Printf.sprintf "geta %s %s" (register a) (register b)
+  | GetP (a, b) -> Printf.sprintf "getp %s %s" (register a) (register b)
+  | GetOType (a, b) -> Printf.sprintf "getotype %s %s" (register a) (register b)
+  | GetWType (a, b) -> Printf.sprintf "getwtype %s %s" (register a) (register b)
+  | Seal (a, b, c) -> Printf.sprintf "seal %s %s %s" (register a) (register b) (register c)
+  | UnSeal (a, b, c) -> Printf.sprintf "unseal %s %s %s" (register a) (register b) (register c)
+  | Fail -> "fail"
+  | Halt -> "halt"

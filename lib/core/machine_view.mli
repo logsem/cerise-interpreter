@@ -34,6 +34,8 @@ type word = {
   edit_text : string;
   short_text : string;
   detail_text : string;
+  (** Human-readable instruction text when this integer decodes in the owning backend. *)
+  decoded_instruction : string option;
   fingerprint : string;
   kind : semantic_kind;
   integer : Z.t option;
