@@ -128,7 +128,7 @@ let test_registry_and_shared_frontend () =
   Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default;
   Alcotest.(check (list string))
     "deterministic active backends"
-    [ "vanilla"; "cerise"; "locality-cerise" ]
+    [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise" ]
     (Backend_registry.names ());
   let selected = Backend_registry.find "cerise" |> Option.get in
   let module Backend = (val selected : Machine_backend.S) in

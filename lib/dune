@@ -25,6 +25,22 @@
   locality_cerise_backend
   locality_cerise_state
   locality_cerise_view
+  ucerise_ast
+  ucerise_parser
+  ucerise_codec
+  ucerise_printer
+  ucerise_machine
+  ucerise_backend
+  ucerise_state
+  ucerise_view
+  mcerise_ast
+  mcerise_parser
+  mcerise_codec
+  mcerise_printer
+  mcerise_machine
+  mcerise_backend
+  mcerise_state
+  mcerise_view
   interim_legacy_backend
   backend_registry
   machine_session)
