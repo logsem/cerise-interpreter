@@ -56,6 +56,14 @@ if ocamlfind ocamlc -package cerise-interpreter -c \
 fi
 grep -Eq 'Unbound module.*Vanilla_ast' "$stage/old-flat.log"
 
+if ocamlfind ocamlc -package cerise-interpreter -c \
+  "$repository_root/tests/api_gate/obsolete_state_view_client.ml" \
+  -o "$stage/obsolete-state-view-client.cmo" >"$stage/obsolete-state-view.log" 2>&1; then
+  echo "legacy State/View compatibility names are still public" >&2
+  exit 1
+fi
+grep -Eq 'Unbound module|Unbound value|Unbound constructor' "$stage/obsolete-state-view.log"
+
 public_dir="$stage/lib/cerise-interpreter"
 if find "$public_dir" -path "$public_dir/__private__" -prune -o \
   -type f -name '*_ast.cmi' -print | grep -q .; then

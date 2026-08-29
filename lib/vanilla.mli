@@ -24,7 +24,7 @@ module Ast : sig
 end
 
 module Asm_ir : sig
-  type expression = Assembly_frontend.Expression.t
+  type expression
   type register_term = Named of Ast.register | Register_parameter of string
   type permission_term = Permission_literal of Ast.permission | Permission_parameter of string
   type seal_permission_term = Seal_permission_literal of Ast.seal_permission | Seal_permission_parameter of string
@@ -106,17 +106,6 @@ module Machine : sig
   val run : t -> t
 end
 
-module State : sig
-  type t = Machine.t
-  type status = Running | Halted | Failed
-  val status : t -> Machine.status
-  val registers : t -> Ast.word Machine.RegMap.t
-  val memory : t -> Ast.word Machine.MemMap.t
-end
-module View : sig
-  val inspect : Machine.t -> Machine_view.t
-  val word : Ast.word -> Machine_view.word
-end
 module Parser : sig
   type program = Asm_ir.program
   type regfile = Asm_ir.regfile

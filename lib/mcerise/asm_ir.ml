@@ -1,6 +1,6 @@
 open Ast
 
-type expression = Assembly_frontend.Expression.t
+type expression = Assembly_construction.Expression.t
 type register_term = Named of register | Register_parameter of string
 type permission_term = Permission_literal of permission | Permission_parameter of string
 type locality_term = Locality of locality | Locality_parameter of string
@@ -111,7 +111,7 @@ module Syntax = struct
     | Constant_argument c -> Constant_argument (map_constant f c) | a -> a
 
   let rec expression_parameters parameters acc = function
-    | Assembly_frontend.Expression.Parameter name -> (
+    | Assembly_construction.Expression.Parameter name -> (
         match List.assoc_opt name parameters with
         | Some (Expression_kind | Value_kind) -> acc
         | Some _ ->
@@ -280,7 +280,7 @@ let diagnostic message = Error [ Diagnostic.error message ]
 let ( let* ) = Result.bind
 
 let eval config expression =
-  match Assembly_frontend.Expression.evaluate_runtime config expression with
+  match Assembly_construction.Expression.evaluate_runtime config expression with
   | Ok value -> Ok value
   | Error message -> diagnostic message
 

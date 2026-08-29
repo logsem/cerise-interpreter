@@ -5,7 +5,6 @@
   cerise
   runtime_config
   diagnostic
-  assembly_frontend
   instruction_codec
   machine_view
   machine_backend

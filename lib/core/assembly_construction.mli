@@ -1,6 +1,14 @@
 (** Backend-neutral source construction and expansion for generated assembly parsers. *)
 
-module Expression = Assembly_frontend.Expression
+module Expression : sig
+  type t = Integer of Z.t | Current_address | Max_address | Stack_address | Symbol of string | Parameter of string
+    | Add of t * t | Subtract of t * t | Multiply of t * t | Logand of t * t | Logor of t * t
+    | Shift_left of t * t | Shift_right of t * t
+  val map_symbols : (string -> t) -> t -> t
+  val map_parameters : (string -> t option) -> t -> t
+  val simplify : t -> t
+  val evaluate_runtime : Runtime_config.t -> t -> (Z.t,string) result
+end
 
 exception Parse_error of Diagnostic.source_location * string
 

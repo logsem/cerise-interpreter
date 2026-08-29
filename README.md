@@ -16,7 +16,7 @@ make
 Finally, the command `make install` creates a symbolic link to the interpreter in this repository.
 
 ## Usage
-Executable: `./interpreter <file>`
+Executable: `./interpreter [options] <file>`
 Assembly examples in `./tests/test_files` (for the syntax)
 
 See [assembler.md](assembler.md) for the complete assembly language, register-file, integer
@@ -34,6 +34,10 @@ Example:
 ```
 
 For more information about the options, `./interpreter --help`.
+
+Useful options are `-I`/`--interactive`, `--backend NAME`, `--mem-size SIZE`, and
+`--regfile FILE`; provide one program file. Without `-I` execution is non-interactive.
+`--help` lists the complete current CLI.
 
 ## Regenerating extracted Griotte
 
@@ -68,12 +72,16 @@ For an interactive version of the interpreter: `./interpreter -I <file>`
 | `Arrow Right`           | navigate down memory  (1 page)   |
 | `Arrow Left` + `SHIFT`  | navigate up memory  (10 pages)   |
 | `Arrow Right` + `SHIFT` | navigate down memory  (10 pages) |
-| `TAB`                   | follow the cursor of PC          |
-| `TAB` + `SHIFT`         | follow the cursor of STK         |
+| `TAB`                   | follow the primary PC cursor     |
+| `TAB` + `SHIFT`         | follow the secondary cursor     |
+| `c`                     | cycle capability display/fallback |
+| `s`                     | toggle the secondary row         |
 
 
-The `Arrow` keybindings can be combined with `CTLR` for navigating in the stack.
-It is possible to scroll for navigating through the memory and the stack (depending on the position of cursor of the mouse). Combine mouse scroll + `CTLR` for navigating faster.
+The `Arrow` keybindings can be combined with `CTRL` to target the secondary row. `TAB` follows the
+primary PC cursor and `SHIFT-TAB` follows the secondary cursor. Resizing redraws the display.
+The mouse wheel navigates memory or stack based on the cursor position; `CTRL` pages instead of
+single rows, and the panel is selected by the pointer's x-position.
 
 ## Using Nix
 
@@ -85,7 +93,7 @@ nix build
 
 To run
 ```
-nix run #. -- <args>
+nix run .# -- <args>
 ```
 For instance
 ```

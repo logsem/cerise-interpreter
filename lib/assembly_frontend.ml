@@ -1,1 +1,0 @@
-include Cerise_core.Assembly_frontend

@@ -95,7 +95,7 @@ module Ast : sig
 end
 
 module Asm_ir : sig
-  type expression = Assembly_frontend.Expression.t
+  type expression
   type register_term = Named of Ast.register | Register_parameter of string
   type permission_term = Permission_literal of Ast.permission | Permission_parameter of string
 

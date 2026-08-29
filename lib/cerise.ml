@@ -8,7 +8,6 @@ module Griotte_extracted = Griotte_extracted
 module Machine = Vanilla.Machine
 module Runtime_config = Runtime_config
 module Diagnostic = Diagnostic
-module Assembly_frontend = Assembly_frontend
 module Instruction_codec = Instruction_codec
 module Machine_view = Machine_view
 module Machine_backend = Machine_backend

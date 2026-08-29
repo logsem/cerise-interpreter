@@ -1,10 +1,10 @@
 open Ast
-open Assembly_frontend
+open Assembly_construction
 
 let ( let* ) = Result.bind
 let diagnostic message = Error [ Diagnostic.error message ]
 
-type expression = Assembly_frontend.Expression.t
+type expression = Assembly_construction.Expression.t
 type register_term = Named of register | Register_parameter of string
 type permission_term = Permission_literal of permission | Permission_parameter of string
 
@@ -533,7 +533,7 @@ module Assembler = Assembly_construction.Make (Syntax)
 let assemble = Assembler.assemble
 
 let eval config expression =
-  match Assembly_frontend.Expression.evaluate_runtime config expression with
+  match Assembly_construction.Expression.evaluate_runtime config expression with
   | Ok value -> Ok value
   | Error message -> diagnostic message
 

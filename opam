@@ -5,6 +5,8 @@ maintainer: ""
 authors: [ "anonymous" ]
 depends: [
   "dune"
+  "menhir"
+  "menhirLib"
   "zarith"
   "containers"
   "alcotest" {with-test}

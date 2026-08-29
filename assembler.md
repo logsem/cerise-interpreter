@@ -13,7 +13,9 @@ mov r1 42       ; decimal integer
 mov r2 0x2a     ; hexadecimal integer
 ```
 
-Integer literals must fit in an OCaml machine integer when read. Negative integers use unary `-`.
+Integer literals are lexed as arbitrary-sized Zarith `Z.t` values; they do not need to fit an OCaml
+machine integer. Later backend/runtime bounds, operand widths, and codec tables may impose finite
+limits and reject an otherwise valid lexical integer. Negative integers use unary `-`.
 Identifiers start with a letter or underscore and continue with letters, digits, or underscores.
 Labels are case-sensitive. Instruction names are lowercase; `loadU`, `storeU`, and `promoteU` also
 accept a lowercase `u`. Registers are case-insensitive. Permissions and word types are case-sensitive.
@@ -86,7 +88,14 @@ Operands are separated by whitespace rather than commas.
 
 ## Expressions and labels
 
-Expressions contain integer literals, labels, parentheses, binary `+` and `-`, and unary `-`.
+Expressions contain integer literals, labels, parentheses, unary `-`, and binary `+`, `-`, `*`,
+`&&`, `||`, `<<`, and `>>`. Parenthesize compound expressions: associativity and grouping follow
+the explicit shared Menhir grammar rather than an assumed conventional precedence. The shared
+ocamllex lexer defines the
+token universe and the shared Menhir construction fragment composes expression, label, definition,
+and typed-macro syntax into each backend's exact grammar. Lexical recognition is deliberately not
+backend acceptance: each backend validates its own instructions, values, permissions, localities,
+and word shapes.
 Use parentheses around compound expressions when they occur as an instruction operand:
 
 ```asm
@@ -231,7 +240,38 @@ available backends are:
 | `griotte` | Griotte capability machine with its own parser and instruction set |
 | `griotte-extracted` | Rocq-extracted Griotte implementation behind a differential adapter |
 
-Each backend parses and validates its own syntax. The common construction-block frontend handles
+Each backend parses and validates its own syntax. The shared generated-parser construction layer handles
 expressions, labels, definitions, and typed sequence macros; instruction encodings use backend
 codec tables. Consequently, an instruction, permission, locality, or word can be rejected by the
 selected backend even when it is valid in another one.
+
+## Exact backend ISA
+
+Vanilla's exact instruction list is `Jmp Jnz Move Load Store Add Sub Mul Rem Div Lt Lea Restrict
+SubSeg GetB GetE GetA GetP GetOType GetWType Seal UnSeal Invoke Fail Halt`. Locality-Cerise adds
+`GetL` and the `RWL`/`RWLX` locality permissions, with the otherwise same instruction list.
+
+The uCerise and mCerise instruction sets are exactly `Jmp Jnz Move Load Store Add Sub Lt Lea
+Restrict SubSeg IsPtr GetP GetL GetB GetE GetA Fail Halt LoadU StoreU PromoteU`. They explicitly do
+not contain `Mul Rem Div Invoke GetOType GetWType Seal UnSeal`. Vanilla is global-only and supports
+sealing; the locality extension adds `GetL`, `RWL`, and `RWLX` locality forms only. Vanilla capability
+syntax therefore has no locality field, while locality syntax uses `Global`/`Local` (not `Directed` or
+`U`). Historical uCerise/mCerise and Cerisier retain their distinct locality, uninitialized, sealing,
+and enclave semantics. Cerisier's exact constructors are `Jmp Jnz Move Load Store Add Sub Mul Rem
+Div Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType GetWType Seal UnSeal Invoke LoadU
+StoreU PromoteU EInit EDeInit EStoreId IsUnique Fail Halt`.
+
+Both Griotte backends have exactly `Jalr Jmp Jnz ReadSR WriteSR Move Load Store Add Sub Mul LAnd
+LOr LShiftL LShiftR Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType GetWType Seal UnSeal
+Fail Halt`. They reject `Rem` and `Div`, and preserve the fixed opcode gaps in their codec tables.
+
+Backend value shapes are independent. Vanilla capabilities are exactly `(permission, base, end,
+address)` and are global-only; locality-Cerise capabilities are `(permission, locality, base, end,
+address)`. Vanilla has no locality field, and no directed locality or uninitialized permissions or
+capabilities. uCerise and mCerise use their
+historical capability and uninitialized-word shapes (mCerise additionally has `Directed` locality),
+while Cerisier adds its enclave/sealing forms. Griotte uses CHERI register aliases (`cnull`, `cra`,
+`csp`, `cgp`, `ctp`, `ct0`–`ct6`, `cs0`–`cs11`, `ca0`–`ca7`) and system register `MTDC`; its
+four-component permissions, `Global`/`Local` capabilities, and `Int`, `Cap`, `SealRange`, `Sealed`,
+and `Sentry` word types are distinct from Cerise. Register aliases (`pc`, `ddc`, and `stk`) are
+backend-specific rather than universal. Lexer recognition never guarantees backend acceptance.

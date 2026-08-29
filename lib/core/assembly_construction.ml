@@ -1,4 +1,46 @@
-module Expression = Assembly_frontend.Expression
+module Expression = struct
+  type t = Integer of Z.t | Current_address | Max_address | Stack_address | Symbol of string | Parameter of string
+    | Add of t * t | Subtract of t * t | Multiply of t * t | Logand of t * t | Logor of t * t
+    | Shift_left of t * t | Shift_right of t * t
+  let shift_count value =
+    if Z.sign value < 0 then Error "shift count must be non-negative"
+    else if not (Z.fits_int value) then Error "shift count does not fit in a machine integer"
+    else Ok (Z.to_int value)
+  let rec map_symbols mapper = function
+    | Symbol name -> mapper name
+    | Add (a,b) -> Add (map_symbols mapper a,map_symbols mapper b) | Subtract (a,b) -> Subtract (map_symbols mapper a,map_symbols mapper b)
+    | Multiply (a,b) -> Multiply (map_symbols mapper a,map_symbols mapper b) | Logand (a,b) -> Logand (map_symbols mapper a,map_symbols mapper b)
+    | Logor (a,b) -> Logor (map_symbols mapper a,map_symbols mapper b) | Shift_left (a,b) -> Shift_left (map_symbols mapper a,map_symbols mapper b)
+    | Shift_right (a,b) -> Shift_right (map_symbols mapper a,map_symbols mapper b)
+    | (Integer _ | Current_address | Max_address | Stack_address | Parameter _) as e -> e
+  let rec map_parameters mapper = function
+    | Parameter name as e -> Option.value (mapper name) ~default:e
+    | Add (a,b) -> Add (map_parameters mapper a,map_parameters mapper b) | Subtract (a,b) -> Subtract (map_parameters mapper a,map_parameters mapper b)
+    | Multiply (a,b) -> Multiply (map_parameters mapper a,map_parameters mapper b) | Logand (a,b) -> Logand (map_parameters mapper a,map_parameters mapper b)
+    | Logor (a,b) -> Logor (map_parameters mapper a,map_parameters mapper b) | Shift_left (a,b) -> Shift_left (map_parameters mapper a,map_parameters mapper b)
+    | Shift_right (a,b) -> Shift_right (map_parameters mapper a,map_parameters mapper b)
+    | (Integer _ | Current_address | Max_address | Stack_address | Symbol _) as e -> e
+  let rec simplify = function
+    | Add (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x+y) | a,b -> Add(a,b))
+    | Subtract (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x-y) | a,b -> Subtract(a,b))
+    | Multiply (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x*y) | a,b -> Multiply(a,b))
+    | Logand (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer (Z.logand x y) | a,b -> Logand(a,b))
+    | Logor (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer (Z.logor x y) | a,b -> Logor(a,b))
+    | Shift_left (a,b) -> (match simplify a,simplify b with Integer x,Integer y when Z.sign y >= 0 && Z.fits_int y -> Integer (Z.shift_left x (Z.to_int y)) | a,b -> Shift_left(a,b))
+    | Shift_right (a,b) -> (match simplify a,simplify b with Integer x,Integer y when Z.sign y >= 0 && Z.fits_int y -> Integer (Z.shift_right x (Z.to_int y)) | a,b -> Shift_right(a,b))
+    | e -> e
+  let rec evaluate_runtime config = function
+    | Integer v -> Ok v | Max_address -> Ok (Runtime_config.max_addr config) | Stack_address -> Ok (Runtime_config.stack_addr config)
+    | Add(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.add x) (evaluate_runtime config b))
+    | Subtract(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.sub x) (evaluate_runtime config b))
+    | Multiply(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.mul x) (evaluate_runtime config b))
+    | Logand(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.logand x) (evaluate_runtime config b))
+    | Logor(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.logor x) (evaluate_runtime config b))
+    | Shift_left(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.bind (evaluate_runtime config b) (fun y -> Result.map (Z.shift_left x) (shift_count y)))
+    | Shift_right(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.bind (evaluate_runtime config b) (fun y -> Result.map (Z.shift_right x) (shift_count y)))
+    | Current_address -> Error "an unresolved current-address expression remains" | Symbol n -> Error (Printf.sprintf "an unresolved symbol %S remains" n)
+    | Parameter n -> Error (Printf.sprintf "an unexpanded macro parameter $%s remains" n)
+end
 
 exception Parse_error of Diagnostic.source_location * string
 

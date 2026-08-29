@@ -28,7 +28,10 @@
               ];
             };
 
-          nativeBuildInputs = [ menhir ];
+          nativeBuildInputs = [ pkgs.bash pkgs.ripgrep menhir ];
+          postPatch = ''
+            patchShebangs scripts lib/griotte_extracted/scripts
+          '';
           buildInputs = [ containers menhirLib notty-community zarith ];
           checkInputs = [ alcotest ];
 
