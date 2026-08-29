@@ -9,9 +9,9 @@ let name = "cerisier"
 let description =
   "Historical Cerisier enclave machine with Directed, uninitialized, and sealing capabilities"
 
-type program = Ast.program
-type regfile = Ast.regfile
-type word = Ast.word_term
+type asm_program = Ast.program
+type asm_regfile = Ast.regfile
+type asm_word = Ast.word_term
 type state = Machine.t
 
 let parse_program = Parser.parse_program

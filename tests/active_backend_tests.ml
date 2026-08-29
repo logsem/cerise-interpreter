@@ -7,6 +7,12 @@ let ok = function
 
 let check_reject parser source = Alcotest.(check bool) source true (Result.is_error (parser source))
 
+let read_file path =
+  let channel = open_in path in
+  Fun.protect
+    ~finally:(fun () -> close_in channel)
+    (fun () -> really_input_string channel (in_channel_length channel))
+
 let allocation_test () =
   let expected_v =
     [
@@ -342,6 +348,82 @@ let initial_views_and_alias () =
     "stack locality" "LOCAL"
     (Option.get (Option.bind stk.word.capability (fun c -> c.locality)))
 
+let generated_parser_locations_and_round_trips () =
+  let check_location label expected_line expected_column = function
+    | Error (diagnostic :: _) -> (
+        match Diagnostic.location diagnostic with
+        | Some location ->
+            Alcotest.(check (option string)) (label ^ " filename") (Some "active.s") location.source;
+            Alcotest.(check int) (label ^ " line") expected_line location.line;
+            Alcotest.(check int) (label ^ " column") expected_column location.column
+        | None -> Alcotest.fail (label ^ " diagnostic has no source location"))
+    | Error [] -> Alcotest.fail (label ^ " returned no diagnostic")
+    | Ok _ -> Alcotest.fail (label ^ " unexpectedly parsed")
+  in
+  Vanilla.Parser.parse_program ~filename:"active.s" "halt\n@" |> check_location "lexer" 2 1;
+  Vanilla.Parser.parse_program ~filename:"active.s" "halt\nmove r1"
+  |> check_location "parser" 2 8;
+  let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
+  let vanilla_term = ok (Vanilla.Parser.parse_word "{7: (RW, 0, MAX_ADDR, 3)}") in
+  let vanilla_word = ok (Vanilla.Asm_ir.lower_word config vanilla_term) in
+  let vanilla_round_trip =
+    Vanilla.Printer.word vanilla_word |> Vanilla.Parser.parse_word |> ok
+    |> Vanilla.Asm_ir.lower_word config |> ok
+  in
+  Alcotest.(check bool) "vanilla word round trip" true (vanilla_word = vanilla_round_trip);
+  let locality_term =
+    ok (Locality_cerise.Parser.parse_word "[SU, LOCAL, 0, STK_ADDR, 3]")
+  in
+  let locality_word = ok (Locality_cerise.Asm_ir.lower_word config locality_term) in
+  let locality_round_trip =
+    Locality_cerise.Printer.word locality_word |> Locality_cerise.Parser.parse_word |> ok
+    |> Locality_cerise.Asm_ir.lower_word config |> ok
+  in
+  Alcotest.(check bool) "locality word round trip" true (locality_word = locality_round_trip);
+  ignore (ok (Vanilla.Parser.parse_regfile "r1 := 1 ; comment with spaces\n r2 := (RO, 0, 4, 0)"))
+
+let active_macro_hygiene_and_resolution () =
+  let source =
+    "%define OFFSET 2 \
+     %macro inner(dst: reg) private: move $dst private + OFFSET %endmacro \
+     %macro outer(dst: reg) %inner($dst) %endmacro \
+     %outer(r1) %outer(r2) move r3 &CURRENT_ADDR halt"
+  in
+  let final = Machine_session.run (session "vanilla" source) |> fun result -> result.session in
+  let view = Machine_session.view final in
+  Alcotest.(check string) "first hygienic label" "2"
+    (Z.to_string (integer_register "r1" view));
+  Alcotest.(check string) "second hygienic label" "3"
+    (Z.to_string (integer_register "r2" view));
+  Alcotest.(check string) "resolved current address" "2"
+    (Z.to_string (integer_register "r3" view));
+  let collision =
+    "__macro_0_inner_private: move r8 __macro_0_inner_private " ^ source
+  in
+  ignore (ok (Vanilla.Parser.parse_program collision));
+  ignore
+    (ok
+       (Vanilla.Parser.parse_program
+          "%macro halt(dst: reg) move $dst halt %endmacro halt: %halt(r4) halt"));
+  check_reject Vanilla.Parser.parse_word "(RW, LOCAL, 0, 4, 0)";
+  ignore (ok (Locality_cerise.Parser.parse_word "(RW, GLOBAL, 0, 4, 0)"))
+
+let checked_in_vanilla_corpus () =
+  let base = "test_files/vanilla/pos/" in
+  List.iter
+    (fun name -> ignore (ok (Vanilla.Parser.parse_program ~filename:name (read_file (base ^ name)))))
+    [
+      "cap_machine_lecture_exercise.s";
+      "jmper.s";
+      "mov_test.s";
+      "test1.s";
+      "test1_labels.s";
+    ];
+  ignore
+    (ok
+       (Vanilla.Parser.parse_regfile ~filename:"cap_machine_lecture_exercise.reg"
+          (read_file (base ^ "cap_machine_lecture_exercise.reg"))))
+
 let () =
   Alcotest.run "active backends"
     [
@@ -356,5 +438,10 @@ let () =
           Alcotest.test_case "memory sealing invoke" `Quick memory_and_sealing;
           Alcotest.test_case "restriction locality edits" `Quick restriction_locality_and_edits;
           Alcotest.test_case "views and alias" `Quick initial_views_and_alias;
+          Alcotest.test_case "generated diagnostics and round trips" `Quick
+            generated_parser_locations_and_round_trips;
+          Alcotest.test_case "active macro hygiene and resolution" `Quick
+            active_macro_hygiene_and_resolution;
+          Alcotest.test_case "checked-in vanilla syntax corpus" `Quick checked_in_vanilla_corpus;
         ] );
     ]

@@ -1,6 +1,23 @@
+(copy_files ../assembly/*.mly)
+(copy_files ../assembly/lexer.mll)
+
+(ocamllex lexer)
+
+(menhir
+ (modules token_spec common_parser parser)
+ (merge_into generated_parser)
+ (flags
+  --strict
+  --unused-token GETL
+  --unused-token LOCALITY
+  --unused-token LOADU
+  --unused-token STOREU
+  --unused-token ISPTR
+  --unused-token PROMOTEU))
+
 (library
  (name cerise_vanilla_private)
  (package cerise-interpreter)
  (wrapped true)
- (libraries cerise_core zarith)
+ (libraries cerise_core menhirLib zarith)
  (flags (:standard -open Cerise_core)))

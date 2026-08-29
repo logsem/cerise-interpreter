@@ -1,4 +1,5 @@
 module Vanilla_ast = Cerise.Vanilla.Ast
+module Vanilla_asm_ir = Cerise.Vanilla.Asm_ir
 module Vanilla_parser = Cerise.Vanilla.Parser
 module Vanilla_printer = Cerise.Vanilla.Printer
 module Vanilla_codec = Cerise.Vanilla.Codec
@@ -8,6 +9,7 @@ module Vanilla_state = Cerise.Vanilla.State
 module Vanilla_view = Cerise.Vanilla.View
 
 module Locality_ast = Cerise.Locality_cerise.Ast
+module Locality_asm_ir = Cerise.Locality_cerise.Asm_ir
 module Locality_parser = Cerise.Locality_cerise.Parser
 module Locality_printer = Cerise.Locality_cerise.Printer
 module Locality_codec = Cerise.Locality_cerise.Codec

@@ -10,7 +10,8 @@
   cli_ui_fixture_tests
   public_api_compile)
  (deps
-  (glob_files test_files/cerisier/pos/*.s))
+  (glob_files test_files/cerisier/pos/*.s)
+  (glob_files test_files/vanilla/pos/*))
  (libraries alcotest cerise))
 
 (rule
@@ -23,3 +24,21 @@
   ../lib/griotte_extracted/generated/griotte_extracted.mli)
  (action
   (run %{dep:../scripts/regeneration-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps
+  ../scripts/active-parser-architecture-gate.sh
+  ../lib/assembly/token_spec.mly
+  ../lib/assembly/lexer.mll
+  ../lib/assembly/common_parser.mly
+  ../lib/vanilla/ast.ml
+  ../lib/vanilla/asm_ir.ml
+  ../lib/vanilla/parser.mly
+  ../lib/locality_cerise/ast.ml
+  ../lib/locality_cerise/asm_ir.ml
+  ../lib/locality_cerise/parser.mly
+  ../lib/core/assembly_construction.ml
+  ../lib/core/assembly_construction.mli)
+ (action
+  (run %{dep:../scripts/active-parser-architecture-gate.sh} --root %{workspace_root})))

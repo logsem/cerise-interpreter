@@ -1,18 +1,69 @@
 open Ast
-open Assembly_frontend
 
-let error tokens message =
-  match tokens with
-  | token :: _ -> Error [ Diagnostic.error ~location:(Token.location token) message ]
-  | [] -> Error [ Diagnostic.error message ]
+type expression = Assembly_frontend.Expression.t
+type register_term = Named of register | Register_parameter of string
+type permission_term = Permission_literal of permission | Permission_parameter of string
 
-let identifier expected = function
-  | token :: rest when Token.kind token = Token.Identifier expected -> Ok rest
-  | tokens -> error tokens (Printf.sprintf "Expected `%s`." expected)
+type seal_permission_term =
+  | Seal_permission_literal of seal_permission
+  | Seal_permission_parameter of string
 
-let punctuation expected = function
-  | token :: rest when Token.kind token = Token.Punctuation expected -> Ok rest
-  | tokens -> error tokens (Printf.sprintf "Expected `%c`." expected)
+type locality_term = Locality of locality | Locality_parameter of string
+
+type constant_term =
+  | Expression of expression
+  | Permission of permission
+  | Seal_permission of seal_permission
+  | Permission_locality of permission_term * locality_term
+  | Seal_permission_locality of seal_permission_term * locality_term
+  | Parameterized_permission_locality of string * locality_term
+  | Locality_constant of locality
+  | Word_type of word_type
+  | Value_parameter of string
+
+type operand_term = Register_term of register_term | Constant_term of constant_term
+
+type sealable_term =
+  | Cap_term of permission_term * locality_term * expression * expression * expression
+  | SealRange_term of seal_permission_term * locality_term * expression * expression * expression
+
+type word_term =
+  | I_term of expression
+  | Sealable_term of sealable_term
+  | Sealed_term of expression * sealable_term
+
+type instruction_term =
+  | Jmp_term of register_term
+  | Jnz_term of register_term * register_term
+  | Move_term of register_term * operand_term
+  | Load_term of register_term * register_term
+  | Store_term of register_term * operand_term
+  | Add_term of register_term * operand_term * operand_term
+  | Sub_term of register_term * operand_term * operand_term
+  | Mul_term of register_term * operand_term * operand_term
+  | Rem_term of register_term * operand_term * operand_term
+  | Div_term of register_term * operand_term * operand_term
+  | Lt_term of register_term * operand_term * operand_term
+  | Lea_term of register_term * operand_term
+  | Restrict_term of register_term * operand_term
+  | SubSeg_term of register_term * operand_term * operand_term
+  | GetL_term of register_term * register_term
+  | GetB_term of register_term * register_term
+  | GetE_term of register_term * register_term
+  | GetA_term of register_term * register_term
+  | GetP_term of register_term * register_term
+  | GetOType_term of register_term * register_term
+  | GetWType_term of register_term * register_term
+  | Seal_term of register_term * register_term * register_term
+  | UnSeal_term of register_term * register_term * register_term
+  | Invoke_term of register_term * register_term
+  | Fail_term
+  | Halt_term
+
+type statement = Op of instruction_term | Word of word_term
+type program = statement list
+type regfile = (register * word_term) list
+type word = word_term
 
 let parse_register_name name =
   match String.lowercase_ascii name with
@@ -26,17 +77,6 @@ let parse_register_name name =
       | Some n when n >= 0 && n <= 31 -> Some (Reg n)
       | _ -> None)
   | _ -> None
-
-let parse_register = function
-  | token :: rest -> (
-      match Token.kind token with
-      | Identifier name -> (
-          match parse_register_name name with
-          | Some register -> Ok (Named register, rest)
-          | None -> error [ token ] "Expected a register.")
-      | Parameter name -> Ok (Register_parameter name, rest)
-      | _ -> error [ token ] "Expected a register.")
-  | [] -> error [] "Expected a register."
 
 let parse_permission = function
   | "O" -> Some O
@@ -68,246 +108,6 @@ let parse_word_type = function
   | "Sealed" -> Some Sealed
   | _ -> None
 
-let scalar_constant token =
-  match Token.kind token with
-  | Identifier name -> (
-      match parse_permission name with
-      | Some permission -> Some (Permission permission)
-      | None -> (
-          match parse_seal_permission name with
-          | Some permission -> Some (Seal_permission permission)
-          | None -> (
-              match parse_word_type name with
-              | Some w -> Some (Word_type w)
-              | None -> Option.map (fun l -> Locality_constant l) (parse_locality name))))
-  | _ -> None
-
-let parse_operand = function
-  | open_token :: permission_token :: comma :: locality_token :: close :: rest
-    when Token.kind open_token = Punctuation '('
-         && Token.kind comma = Punctuation ','
-         && Token.kind close = Punctuation ')' -> (
-      let locality =
-        match Token.kind locality_token with
-        | Identifier name -> Option.map (fun locality -> Locality locality) (parse_locality name)
-        | Parameter name -> Some (Locality_parameter name)
-        | _ -> None
-      in
-      match (Token.kind permission_token, locality) with
-      | Identifier p, Some locality -> (
-          match parse_permission p with
-          | Some p -> Ok (Constant_term (Permission_locality (Permission_literal p, locality)), rest)
-          | None -> (
-              match parse_seal_permission p with
-              | Some p ->
-                  Ok
-                    ( Constant_term (Seal_permission_locality (Seal_permission_literal p, locality)),
-                      rest )
-              | None -> error [ permission_token ] "Expected a permission/locality pair."))
-      | Parameter name, Some locality ->
-          Ok (Constant_term (Parameterized_permission_locality (name, locality)), rest)
-      | _ -> error [ permission_token ] "Expected a permission/locality pair.")
-  | token :: rest as tokens -> (
-      match Token.kind token with
-      | Parameter name -> Ok (Constant_term (Value_parameter name), rest)
-      | Identifier name -> (
-          match parse_register_name name with
-          | Some register -> Ok (Register_term (Named register), rest)
-          | None -> (
-              match scalar_constant token with
-              | Some constant -> Ok (Constant_term constant, rest)
-              | None ->
-                  Result.map
-                    (fun (e, rest) -> (Constant_term (Expression e), rest))
-                    (parse_expression tokens)))
-      | _ ->
-          Result.map
-            (fun (e, rest) -> (Constant_term (Expression e), rest))
-            (parse_expression tokens))
-  | [] -> error [] "Expected a register or constant."
-
-let unary constructor rest =
-  Result.map (fun (r, rest) -> (constructor r, rest)) (parse_register rest)
-
-let binary constructor rest =
-  match parse_register rest with
-  | Error _ as e -> e
-  | Ok (a, rest) -> Result.map (fun (b, rest) -> (constructor a b, rest)) (parse_register rest)
-
-let reg_operand constructor rest =
-  match parse_register rest with
-  | Error _ as e -> e
-  | Ok (a, rest) -> Result.map (fun (b, rest) -> (constructor a b, rest)) (parse_operand rest)
-
-let ternary_operands constructor rest =
-  match parse_register rest with
-  | Error _ as e -> e
-  | Ok (a, rest) -> (
-      match parse_operand rest with
-      | Error _ as e -> e
-      | Ok (b, rest) -> Result.map (fun (c, rest) -> (constructor a b c, rest)) (parse_operand rest)
-      )
-
-let three_registers constructor rest =
-  match parse_register rest with
-  | Error _ as e -> e
-  | Ok (a, rest) -> (
-      match parse_register rest with
-      | Error _ as e -> e
-      | Ok (b, rest) ->
-          Result.map (fun (c, rest) -> (constructor a b c, rest)) (parse_register rest))
-
-let parse_instruction = function
-  | token :: rest -> (
-      match Token.kind token with
-      | Identifier name ->
-          let result =
-            match String.lowercase_ascii name with
-            | "jmp" -> unary (fun r -> Jmp_term r) rest
-            | "jnz" -> binary (fun a b -> Jnz_term (a, b)) rest
-            | "move" | "mov" -> reg_operand (fun a b -> Move_term (a, b)) rest
-            | "load" -> binary (fun a b -> Load_term (a, b)) rest
-            | "store" -> reg_operand (fun a b -> Store_term (a, b)) rest
-            | "add" -> ternary_operands (fun a b c -> Add_term (a, b, c)) rest
-            | "sub" -> ternary_operands (fun a b c -> Sub_term (a, b, c)) rest
-            | "mul" -> ternary_operands (fun a b c -> Mul_term (a, b, c)) rest
-            | "rem" -> ternary_operands (fun a b c -> Rem_term (a, b, c)) rest
-            | "div" -> ternary_operands (fun a b c -> Div_term (a, b, c)) rest
-            | "lt" -> ternary_operands (fun a b c -> Lt_term (a, b, c)) rest
-            | "lea" -> reg_operand (fun a b -> Lea_term (a, b)) rest
-            | "restrict" -> reg_operand (fun a b -> Restrict_term (a, b)) rest
-            | "subseg" -> ternary_operands (fun a b c -> SubSeg_term (a, b, c)) rest
-            | "getl" -> binary (fun a b -> GetL_term (a, b)) rest
-            | "getb" -> binary (fun a b -> GetB_term (a, b)) rest
-            | "gete" -> binary (fun a b -> GetE_term (a, b)) rest
-            | "geta" -> binary (fun a b -> GetA_term (a, b)) rest
-            | "getp" -> binary (fun a b -> GetP_term (a, b)) rest
-            | "getotype" -> binary (fun a b -> GetOType_term (a, b)) rest
-            | "getwtype" -> binary (fun a b -> GetWType_term (a, b)) rest
-            | "seal" -> three_registers (fun a b c -> Seal_term (a, b, c)) rest
-            | "unseal" -> three_registers (fun a b c -> UnSeal_term (a, b, c)) rest
-            | "invoke" -> binary (fun a b -> Invoke_term (a, b)) rest
-            | "fail" -> Ok (Fail_term, rest)
-            | "halt" -> Ok (Halt_term, rest)
-            | unsupported ->
-                error [ token ]
-                  (Printf.sprintf "Unsupported locality-Cerise instruction `%s`." unsupported)
-          in
-          Result.map_error
-            (List.map (fun diagnostic ->
-                 match Diagnostic.location diagnostic with
-                 | Some _ -> diagnostic
-                 | None ->
-                     Diagnostic.make ~severity:(Diagnostic.severity diagnostic)
-                       ~location:(Token.location token) (Diagnostic.message diagnostic)))
-            result
-      | _ -> error [ token ] "Expected an instruction.")
-  | [] -> error [] "Expected an instruction."
-
-let parse_expr_then separator closing constructor tokens =
-  match parse_expression tokens with
-  | Error _ as e -> e
-  | Ok (b, rest) -> (
-      match punctuation separator rest with
-      | Error _ as e -> e
-      | Ok rest -> (
-          match parse_expression rest with
-          | Error _ as e -> e
-          | Ok (e, rest) -> (
-              match punctuation separator rest with
-              | Error _ as e -> e
-              | Ok rest -> (
-                  match parse_expression rest with
-                  | Error _ as e -> e
-                  | Ok (a, rest) ->
-                      Result.map (fun rest -> (constructor b e a, rest)) (punctuation closing rest))
-              )))
-
-let parse_permission_term = function
-  | token :: rest -> (
-      match Token.kind token with
-      | Identifier name -> (
-          match parse_permission name with
-          | Some permission -> Ok (Permission_literal permission, rest)
-          | None -> error [ token ] "Expected a locality-Cerise permission.")
-      | Parameter name -> Ok (Permission_parameter name, rest)
-      | _ -> error [ token ] "Expected a locality-Cerise permission.")
-  | [] -> error [] "Expected a locality-Cerise permission."
-
-let parse_seal_permission_term = function
-  | token :: rest -> (
-      match Token.kind token with
-      | Identifier name -> (
-          match parse_seal_permission name with
-          | Some permission -> Ok (Seal_permission_literal permission, rest)
-          | None -> error [ token ] "Expected a sealing permission.")
-      | Parameter name -> Ok (Seal_permission_parameter name, rest)
-      | _ -> error [ token ] "Expected a sealing permission.")
-  | [] -> error [] "Expected a sealing permission."
-
-let parse_locality_term = function
-  | token :: rest -> (
-      match Token.kind token with
-      | Identifier name -> (
-          match parse_locality name with
-          | Some locality -> Ok (Locality locality, rest)
-          | None -> error [ token ] "Expected GLOBAL or LOCAL.")
-      | Parameter name -> Ok (Locality_parameter name, rest)
-      | _ -> error [ token ] "Expected GLOBAL or LOCAL.")
-  | [] -> error [] "Expected locality."
-
-let parse_sealable = function
-  | open_token :: rest when Token.kind open_token = Punctuation '(' -> (
-      match parse_permission_term rest with
-      | Error _ as error -> error
-      | Ok (permission, rest) -> (
-          match punctuation ',' rest with
-          | Error _ as error -> error
-          | Ok rest -> (
-              match parse_locality_term rest with
-              | Error _ as error -> error
-              | Ok (locality, rest) -> (
-                  match punctuation ',' rest with
-                  | Error _ as error -> error
-                  | Ok rest ->
-                      parse_expr_then ',' ')'
-                        (fun b e a -> Cap_term (permission, locality, b, e, a))
-                        rest))))
-  | open_token :: rest when Token.kind open_token = Punctuation '[' -> (
-      match parse_seal_permission_term rest with
-      | Error _ as error -> error
-      | Ok (permission, rest) -> (
-          match punctuation ',' rest with
-          | Error _ as error -> error
-          | Ok rest -> (
-              match parse_locality_term rest with
-              | Error _ as error -> error
-              | Ok (locality, rest) -> (
-                  match punctuation ',' rest with
-                  | Error _ as error -> error
-                  | Ok rest ->
-                      parse_expr_then ',' ']'
-                        (fun b e a -> SealRange_term (permission, locality, b, e, a))
-                        rest))))
-  | tokens -> error tokens "Expected a capability or seal range."
-
-let parse_word tokens =
-  match tokens with
-  | token :: _ when Token.kind token = Punctuation '(' || Token.kind token = Punctuation '[' ->
-      Result.map (fun (s, rest) -> (Sealable_term s, rest)) (parse_sealable tokens)
-  | token :: rest when Token.kind token = Punctuation '{' -> (
-      match parse_expression rest with
-      | Error _ as e -> e
-      | Ok (otype, rest) -> (
-          match punctuation ':' rest with
-          | Error _ as e -> e
-          | Ok rest -> (
-              match parse_sealable rest with
-              | Error _ as e -> e
-              | Ok (s, rest) ->
-                  Result.map (fun rest -> (Sealed_term (otype, s), rest)) (punctuation '}' rest))))
-  | _ -> Result.map (fun (e, rest) -> (I_term e, rest)) (parse_expression tokens)
-
 type parameter_kind =
   | Register_kind
   | Expression_kind
@@ -322,59 +122,8 @@ type macro_argument = Register_argument of register | Constant_argument of const
 module Syntax = struct
   type nonrec statement = statement
   type raw_word = word_term
-  type nonrec regfile = regfile
   type nonrec macro_argument = macro_argument
   type nonrec parameter_kind = parameter_kind
-
-  let parse_statement tokens =
-    Result.map (fun (op, rest) -> (Op op, rest)) (parse_instruction tokens)
-
-  let parse_raw_word = parse_word
-
-  let parse_regfile tokens =
-    let rec loop acc = function
-      | [] -> Ok (List.rev acc, [])
-      | token :: rest -> (
-          match Token.kind token with
-          | Identifier name -> (
-              match parse_register_name name with
-              | None -> error [ token ] "Expected a register assignment."
-              | Some register -> (
-                  match rest with
-                  | assign :: rest when Token.kind assign = Assign -> (
-                      match parse_word rest with
-                      | Error _ as e -> e
-                      | Ok (word, rest) -> loop ((register, word) :: acc) rest)
-                  | _ -> error rest "Expected `:=` after the register."))
-          | _ -> error [ token ] "Expected a register assignment.")
-    in
-    loop [] tokens
-
-  let parse_macro_argument tokens =
-    match parse_operand tokens with
-    | Ok (Constant_term c, rest) -> Ok (Constant_argument c, rest)
-    | Ok (Register_term (Named r), rest) -> Ok (Register_argument r, rest)
-    | Ok (Register_term (Register_parameter _), _) ->
-        error tokens "A macro argument cannot be a parameter register here."
-    | Error _ -> (
-        match tokens with
-        | token :: rest -> (
-            match Token.kind token with
-            | Identifier name -> (
-                match parse_register_name name with
-                | Some r -> Ok (Register_argument r, rest)
-                | None -> (
-                    match scalar_constant token with
-                    | Some c -> Ok (Constant_argument c, rest)
-                    | None ->
-                        Result.map
-                          (fun (e, r) -> (Constant_argument (Expression e), r))
-                          (parse_expression tokens)))
-            | _ ->
-                Result.map
-                  (fun (e, r) -> (Constant_argument (Expression e), r))
-                  (parse_expression tokens))
-        | [] -> error [] "Expected a macro argument.")
 
   let statement_of_raw_word word = Word word
 
@@ -472,7 +221,6 @@ module Syntax = struct
     | Word w -> Word (map_word f w)
 
   let map_raw_word_expressions = map_word
-  let map_regfile_expressions f rf = List.map (fun (r, w) -> (r, map_word f w)) rf
 
   let map_argument_expressions f = function
     | Constant_argument c -> Constant_argument (map_constant f c)
@@ -803,5 +551,155 @@ module Syntax = struct
         Result.map (fun constant -> Constant_argument constant) (sub_constant arguments constant)
 end
 
-module Frontend = Assembly_frontend.Make (Syntax)
-include Frontend
+let valid_parameter_kind name = Option.is_some (Syntax.parameter_kind name)
+let parameter_kind name = Option.get (Syntax.parameter_kind name)
+
+type source_program =
+  (statement, word_term, macro_argument, parameter_kind) Assembly_construction.item list
+
+module Assembler = Assembly_construction.Make (Syntax)
+
+let assemble = Assembler.assemble
+
+let diagnostic message = Error [ Diagnostic.error message ]
+let ( let* ) = Result.bind
+
+let eval config expression =
+  match Assembly_frontend.Expression.evaluate_runtime config expression with
+  | Ok z -> Ok z
+  | Error message -> diagnostic message
+
+let lower_permission = function
+  | Permission_literal permission -> Ok permission
+  | Permission_parameter name ->
+      diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." name)
+
+let lower_seal_permission = function
+  | Seal_permission_literal permission -> Ok permission
+  | Seal_permission_parameter name ->
+      diagnostic (Printf.sprintf "Unexpanded seal-permission parameter $%s." name)
+
+let lower_locality = function
+  | Locality locality -> Ok locality
+  | Locality_parameter name -> diagnostic (Printf.sprintf "Unexpanded locality parameter $%s." name)
+
+let lower_sealable config = function
+  | Cap_term (permission, locality, base, limit, cursor) ->
+      let* permission = lower_permission permission in
+      let* locality = lower_locality locality in
+      let* base = eval config base in
+      let* limit = eval config limit in
+      let* cursor = eval config cursor in
+      Ok (Cap (permission, locality, base, limit, cursor))
+  | SealRange_term (permission, locality, base, limit, cursor) ->
+      let* permission = lower_seal_permission permission in
+      let* locality = lower_locality locality in
+      let* base = eval config base in
+      let* limit = eval config limit in
+      let* cursor = eval config cursor in
+      Ok (SealRange (permission, locality, base, limit, cursor))
+
+let lower_word config = function
+  | I_term expression -> Result.map (fun value -> I value) (eval config expression)
+  | Sealable_term sealable ->
+      Result.map (fun value -> Sealable value) (lower_sealable config sealable)
+  | Sealed_term (object_type, sealable) ->
+      let* object_type = eval config object_type in
+      Result.map (fun value -> Sealed (object_type, value)) (lower_sealable config sealable)
+
+let lower_register = function
+  | Named register -> Ok register
+  | Register_parameter name ->
+      diagnostic (Printf.sprintf "Unexpanded register parameter $%s." name)
+
+let lower_constant config = function
+  | Expression expression -> eval config expression
+  | Permission permission -> Ok (Codec.encode_permission permission)
+  | Seal_permission permission -> Ok (Codec.encode_seal_permission permission)
+  | Word_type word_type -> Ok (Codec.encode_word_type word_type)
+  | Permission_locality (permission, locality) ->
+      let* permission = lower_permission permission in
+      Result.map (Codec.encode_permission_locality permission) (lower_locality locality)
+  | Seal_permission_locality (permission, locality) ->
+      let* permission = lower_seal_permission permission in
+      Result.map (Codec.encode_seal_permission_locality permission) (lower_locality locality)
+  | Parameterized_permission_locality (name, _) ->
+      diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." name)
+  | Locality_constant locality -> Ok (Codec.encode_locality locality)
+  | Value_parameter name -> diagnostic (Printf.sprintf "Unexpanded value parameter $%s." name)
+
+let lower_operand config = function
+  | Register_term register -> Result.map (fun value -> Register value) (lower_register register)
+  | Constant_term constant -> Result.map (fun value -> Constant value) (lower_constant config constant)
+
+let lower_instruction config instruction =
+  let r = lower_register and o = lower_operand config in
+  let rr constructor first second =
+    let* first = r first in
+    Result.map (fun second -> constructor (first, second)) (r second)
+  in
+  let ro constructor first second =
+    let* first = r first in
+    Result.map (fun second -> constructor (first, second)) (o second)
+  in
+  let roo constructor first second third =
+    let* first = r first in
+    let* second = o second in
+    Result.map (fun third -> constructor (first, second, third)) (o third)
+  in
+  let rrr constructor first second third =
+    let* first = r first in
+    let* second = r second in
+    Result.map (fun third -> constructor (first, second, third)) (r third)
+  in
+  match instruction with
+  | Jmp_term value -> Result.map (fun value -> Jmp value) (r value)
+  | Jnz_term (a, b) -> rr (fun (a, b) -> Jnz (a, b)) a b
+  | Move_term (a, b) -> ro (fun (a, b) -> Move (a, b)) a b
+  | Load_term (a, b) -> rr (fun (a, b) -> Load (a, b)) a b
+  | Store_term (a, b) -> ro (fun (a, b) -> Store (a, b)) a b
+  | Add_term (a, b, c) -> roo (fun (a, b, c) -> Add (a, b, c)) a b c
+  | Sub_term (a, b, c) -> roo (fun (a, b, c) -> Sub (a, b, c)) a b c
+  | Mul_term (a, b, c) -> roo (fun (a, b, c) -> Mul (a, b, c)) a b c
+  | Rem_term (a, b, c) -> roo (fun (a, b, c) -> Rem (a, b, c)) a b c
+  | Div_term (a, b, c) -> roo (fun (a, b, c) -> Div (a, b, c)) a b c
+  | Lt_term (a, b, c) -> roo (fun (a, b, c) -> Lt (a, b, c)) a b c
+  | Lea_term (a, b) -> ro (fun (a, b) -> Lea (a, b)) a b
+  | Restrict_term (a, b) -> ro (fun (a, b) -> Restrict (a, b)) a b
+  | SubSeg_term (a, b, c) -> roo (fun (a, b, c) -> SubSeg (a, b, c)) a b c
+  | GetL_term (a, b) -> rr (fun (a, b) -> GetL (a, b)) a b
+  | GetB_term (a, b) -> rr (fun (a, b) -> GetB (a, b)) a b
+  | GetE_term (a, b) -> rr (fun (a, b) -> GetE (a, b)) a b
+  | GetA_term (a, b) -> rr (fun (a, b) -> GetA (a, b)) a b
+  | GetP_term (a, b) -> rr (fun (a, b) -> GetP (a, b)) a b
+  | GetOType_term (a, b) -> rr (fun (a, b) -> GetOType (a, b)) a b
+  | GetWType_term (a, b) -> rr (fun (a, b) -> GetWType (a, b)) a b
+  | Seal_term (a, b, c) -> rrr (fun (a, b, c) -> Seal (a, b, c)) a b c
+  | UnSeal_term (a, b, c) -> rrr (fun (a, b, c) -> UnSeal (a, b, c)) a b c
+  | Invoke_term (a, b) -> rr (fun (a, b) -> Invoke (a, b)) a b
+  | Fail_term -> Ok Fail
+  | Halt_term -> Ok Halt
+
+let lower_program config program =
+  let rec loop words = function
+    | [] -> Ok (List.rev words)
+    | statement :: rest -> (
+        match statement with
+        | Op instruction ->
+            let* instruction = lower_instruction config instruction in
+            (match Codec.encode instruction with
+            | Ok encoded -> loop (I encoded :: words) rest
+            | Error error -> diagnostic (Instruction_codec.error_message error))
+        | Word word ->
+            let* word = lower_word config word in
+            loop (word :: words) rest)
+  in
+  loop [] program
+
+let lower_regfile config entries =
+  List.fold_left
+    (fun result (register, word) ->
+      let* entries = result in
+      Result.map (fun word -> (register, word) :: entries) (lower_word config word))
+    (Ok []) entries
+  |> Result.map List.rev

@@ -8,9 +8,9 @@ module Xcodec = Codec
 let name = "griotte-extracted"
 let description = "Rocq-extracted CHERIoT-inspired Griotte capability machine"
 
-type program = Ast.program
-type regfile = Ast.regfile
-type word = Ast.word_term
+type asm_program = Ast.program
+type asm_regfile = Ast.regfile
+type asm_word = Ast.word_term
 
 (* The generated machine fixes MemNum and ONum at this exclusive bound. *)
 let extracted_bound = Z.of_int 2_000_000

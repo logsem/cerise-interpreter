@@ -1,5 +1,6 @@
 module Ast = Ast
-module Parser = Parser
+module Asm_ir = Asm_ir
+module Parser = Parser_api
 module Printer = Printer
 module Codec = Codec
 module Machine = Machine
@@ -7,15 +8,23 @@ module Machine = Machine
 let name = "locality-cerise"
 let description = "Canonical sealing-enabled Local stack Cerise machine"
 
-type program = Ast.program
-type regfile = Ast.regfile
-type word = Ast.word_term
+type asm_program = Asm_ir.program
+type asm_regfile = Asm_ir.regfile
+type asm_word = Asm_ir.word
 type state = Machine.t
 
 let parse_program = Parser.parse_program
 let parse_regfile = Parser.parse_regfile
 let parse_word = Parser.parse_word
-let init = Machine.init
+let init config program regfile =
+  let ( let* ) = Result.bind in
+  let* program = Asm_ir.lower_program config program in
+  let* regfile =
+    match regfile with
+    | None -> Ok None
+    | Some entries -> Result.map Option.some (Asm_ir.lower_regfile config entries)
+  in
+  Ok (Machine.init config program regfile)
 let step = Machine.step
 let step_n = Machine.step_n
 let permission_text = Printer.permission
@@ -122,7 +131,7 @@ let ( let* ) = Result.bind
 
 let set_register id term (state : state) =
   let* r = register_of_id id in
-  Result.map (fun word -> Machine.set_register r word state) (Machine.lower_word state.config term)
+  Result.map (fun word -> Machine.set_register r word state) (Asm_ir.lower_word state.config term)
 
 let set_memory address term (state : state) =
   if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.config) >= 0 then
@@ -135,4 +144,4 @@ let set_memory address term (state : state) =
   else
     Result.map
       (fun word -> Machine.set_memory_raw address word state)
-      (Machine.lower_word state.config term)
+      (Asm_ir.lower_word state.config term)

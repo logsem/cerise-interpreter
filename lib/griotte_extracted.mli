@@ -36,4 +36,4 @@ module Codec :
       Z.t -> (Ast.word_type, string) result
   end
 
-module Backend : Machine_backend.S with type program = Ast.program and type regfile = Ast.regfile and type word = Ast.word_term
+module Backend : Machine_backend.S with type asm_program = Ast.program and type asm_regfile = Ast.regfile and type asm_word = Ast.word_term

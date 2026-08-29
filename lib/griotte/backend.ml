@@ -7,9 +7,9 @@ module Machine = Machine
 let name = "griotte"
 let description = "Handwritten CHERIoT-inspired Griotte capability machine"
 
-type program = Ast.program
-type regfile = Ast.regfile
-type word = Ast.word_term
+type asm_program = Ast.program
+type asm_regfile = Ast.regfile
+type asm_word = Ast.word_term
 type state = Machine.t
 
 let parse_program = Parser.parse_program

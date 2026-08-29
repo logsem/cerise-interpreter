@@ -547,4 +547,4 @@ module Parser : sig
   val parse_word : ?filename:string -> string -> (word, Diagnostic.t list) result
 end
 
-module Backend : Machine_backend.S with type program = Ast.program and type regfile = Ast.regfile and type word = Ast.word_term and type state = Machine.t
+module Backend : Machine_backend.S with type asm_program = Ast.program and type asm_regfile = Ast.regfile and type asm_word = Ast.word_term and type state = Machine.t

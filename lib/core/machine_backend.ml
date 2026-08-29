@@ -10,21 +10,21 @@ module type S = sig
   val name : string
   val description : string
 
-  type program
-  type regfile
-  type word
+  type asm_program
+  type asm_regfile
+  type asm_word
   type state
 
-  val parse_program : ?filename:string -> string -> (program, Diagnostic.t list) result
-  val parse_regfile : ?filename:string -> string -> (regfile, Diagnostic.t list) result
-  val parse_word : ?filename:string -> string -> (word, Diagnostic.t list) result
-  val init : Runtime_config.t -> program -> regfile option -> (state, Diagnostic.t list) result
+  val parse_program : ?filename:string -> string -> (asm_program, Diagnostic.t list) result
+  val parse_regfile : ?filename:string -> string -> (asm_regfile, Diagnostic.t list) result
+  val parse_word : ?filename:string -> string -> (asm_word, Diagnostic.t list) result
+  val init : Runtime_config.t -> asm_program -> asm_regfile option -> (state, Diagnostic.t list) result
   val step : state -> (state, execution_error) result
   val step_n : int -> state -> (state, execution_error) result
   val inspect : state -> Machine_view.t
 
   val set_register :
-    Machine_view.Register_id.t -> word -> state -> (state, Diagnostic.t list) result
+    Machine_view.Register_id.t -> asm_word -> state -> (state, Diagnostic.t list) result
 
-  val set_memory : Z.t -> word -> state -> (state, Diagnostic.t list) result
+  val set_memory : Z.t -> asm_word -> state -> (state, Diagnostic.t list) result
 end

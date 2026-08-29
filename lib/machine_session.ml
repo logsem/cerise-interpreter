@@ -1,6 +1,6 @@
 type t =
   | Session :
-      (module Machine_backend.S with type state = 'state and type word = 'word) * string * 'state
+      (module Machine_backend.S with type state = 'state and type asm_word = 'word) * string * 'state
       -> t
 
 type execution_error = Machine_backend.execution_error
@@ -38,7 +38,7 @@ let create_with_backend ?source_filename ?regfile_filename requested_name config
                 (Session
                    ( (module Backend : Machine_backend.S
                        with type state = Backend.state
-                        and type word = Backend.word),
+                        and type asm_word = Backend.asm_word),
                      requested_name,
                      state ))))
 
