@@ -11,11 +11,7 @@ module type MachineConfig = sig
   val addr_max : Z.t
 end
 
-module type Ui = sig
-  val render_loop : ?show_stack:bool -> Z.t ref -> Z.t ref -> Machine.t -> unit
-end
-
-module MkUi (Cfg : MachineConfig) : Ui = struct
+module MkUi (M : Legacy_machine_backend.S) (Cfg : MachineConfig) = struct
   module Perm = struct
     let width = 5
 
@@ -173,7 +169,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     (* <reg>: <word>  <reg>: <word>  <reg>: <word>
        <reg>: <word>  <reg>: <word>
     *)
-    let ui width (regs : Machine.reg_state) =
+    let ui width (regs : M.reg_state) =
       let reg_width = Regname.width + 2 + Word.width + 2 in
       let ncols = max 1 (width / reg_width) in
       let nregs_per_col = 33. (* nregs *) /. float ncols |> ceil |> int_of_float in
@@ -189,7 +185,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
             I.empty col
           <|> loop false regs
       in
-      loop true (Machine.RegMap.to_seq regs |> List.of_seq) |> I.hsnap ~align:`Left width
+      loop true (M.RegMap.to_seq regs |> List.of_seq) |> I.hsnap ~align:`Left width
   end
 
   module Instr = struct
@@ -221,9 +217,9 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let img_instr in_range a w =
       match w with
       | Ast.I z when in_range a <> `No -> (
-          match Machine.decode_machine_op z with
+          match M.decode_machine_op z with
           | i -> Instr.ui i
-          | exception Machine.DecodeException _ -> I.string A.(fg green) "???")
+          | exception M.DecodeException _ -> I.string A.(fg green) "???")
       | _ -> I.empty
 
     let render_prog width (pc : Ast.word) data_range =
@@ -300,7 +296,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
     let id (_ : Ast.word) (_ : int) start_addr (_ : int) = start_addr
 
     let ui ?(upd_prog = follow_addr) ?(upd_stk = follow_addr) ?(show_stack = true) height width
-        (mem : Machine.mem_state) (pc : Ast.word) (stk : Ast.word) (start_prog : Z.t)
+        (mem : M.mem_state) (pc : Ast.word) (stk : Ast.word) (start_prog : Z.t)
         (start_stk : Z.t) =
       let addr_show (start_addr : Z.t) =
         let start_addr_int = Z.to_int start_addr in
@@ -308,7 +304,7 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         |> List.filter (fun a ->
             a >= 0 && a < Z.to_int Cfg.addr_max)
         |> List.map (fun a ->
-            Z.(~$a, match Machine.MemMap.find_opt ~$a mem with Some w -> w | None -> Ast.I Z.zero))
+            Z.(~$a, match M.MemMap.find_opt ~$a mem with Some w -> w | None -> Ast.I Z.zero))
       in
 
       let start_prog = upd_prog pc height start_prog 2 in
@@ -325,13 +321,13 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
   module Exec_state = struct
     let width = 7
 
-    let ui (s : Machine.exec_state) =
+    let ui (s : M.exec_state) =
       I.hsnap ~align:`Left width
       @@
       match s with
-      | Running -> I.string A.empty "Running"
-      | Halted -> I.string A.(st bold) "Halted"
-      | Failed -> I.string A.(st bold ++ fg red) "Failed"
+      | M.Running -> I.string A.empty "Running"
+      | M.Halted -> I.string A.(st bold) "Halted"
+      | M.Failed -> I.string A.(st bold ++ fg red) "Failed"
   end
 
   module Render = struct
@@ -341,23 +337,23 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
         if show_stack then if showing then false else true else false
       in
       let rec loop ?(update_prog = Program_panel.id) ?(update_stk = Program_panel.id) show_stack
-          (m : Machine.t) history =
+          (m : M.t) history =
         let term_width, term_height = Term.size term in
-        let reg = Machine.get_regfile m in
-        let mem = Machine.get_memory m in
+        let reg = M.get_regfile m in
+        let mem = M.get_memory m in
         let regs_img = Regs_panel.ui term_width reg in
         let mem_img, panel_start, panel_stk =
           Program_panel.ui ~upd_prog:update_prog ~upd_stk:update_stk ~show_stack
             (term_height - 1 - I.height regs_img)
-            term_width mem (Machine.RegMap.find Ast.PC reg)
-            (if !flags.stack then Machine.RegMap.find Ast.stk reg else Ast.I Z.zero)
+            term_width mem (M.RegMap.find Ast.PC reg)
+            (if !flags.stack then M.RegMap.find Ast.stk reg else Ast.I Z.zero)
             !prog_panel_start !stk_panel_start
         in
         prog_panel_start := panel_start;
         stk_panel_start := panel_stk;
         let mach_state_img =
           I.hsnap ~align:`Right term_width
-            (I.string A.empty "machine state: " <|> Exec_state.ui (Machine.get_exec_state m))
+            (I.string A.empty "machine state: " <|> Exec_state.ui (M.get_exec_state m))
         in
         let img = regs_img <-> mach_state_img <-> mem_img in
         Term.image term img;
@@ -422,13 +418,13 @@ module MkUi (Cfg : MachineConfig) : Ui = struct
           | `Key (`ASCII 's', _) ->
               loop ~update_prog:Program_panel.id (toggle_show_stack show_stack) m history
           | `Key (`ASCII ' ', _) -> (
-              match Machine.step m with
+              match M.step m with
               | Some m' ->
                   loop ~update_prog:Program_panel.follow_addr ~update_stk:Program_panel.follow_addr
                     show_stack m' (m :: history)
               | None -> (* XX *) loop show_stack m history)
           | `Key (`ASCII 'n', _) -> (
-              match Machine.step_n m 10 with
+              match M.step_n m 10 with
               | Some m' when m != m' ->
                   loop ~update_prog:Program_panel.follow_addr ~update_stk:Program_panel.follow_addr
                     show_stack m' (m :: history)

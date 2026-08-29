@@ -1,0 +1,30 @@
+type t
+type execution_error = Machine_backend.execution_error
+
+type stop_reason =
+  | Halted
+  | Failed
+  | Breakpoint of Z.t
+  | Step_limit
+  | Execution_error of execution_error
+
+type run_result = { session : t; reason : stop_reason; steps : int }
+
+val create :
+  backend:string ->
+  config:Runtime_config.t ->
+  source:string ->
+  regfile:string option ->
+  (t, Diagnostic.t list) result
+
+val backend_name : t -> string
+val view : t -> Machine_view.t
+val step : t -> (t, execution_error) result
+val step_n : int -> t -> (t, execution_error) result
+
+val run : ?breakpoints:Z.t list -> ?max_steps:int -> t -> run_result
+(** Run until the machine stops, reaches a breakpoint before executing that address, or consumes
+    [max_steps]. [max_steps] is useful to bound programs that do not halt. *)
+
+val set_register_text : Machine_view.Register_id.t -> string -> t -> (t, Diagnostic.t list) result
+val set_memory_text : Z.t -> string -> t -> (t, Diagnostic.t list) result

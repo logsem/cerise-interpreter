@@ -1,5 +1,14 @@
 (library
  (name cerise)
  (public_name cerise-interpreter)
- (modules cerise)
- (libraries cerise_internal))
+ (modules
+  cerise
+  runtime_config
+  diagnostic
+  surface_ast
+  machine_view
+  machine_backend
+  interim_legacy_backend
+  backend_registry
+  machine_session)
+ (libraries cerise_internal zarith))

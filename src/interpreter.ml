@@ -1,7 +1,8 @@
 open Cerise
 
 let () =
-  let mode, filename_prog, regfile_name = Cli_parser.parse_arguments () in
+  let mode, backend, filename_prog, regfile_name = Cli_parser.parse_arguments () in
+  let module M = (val Legacy_machine_backend.select backend) in
 
   (* Parse initial memory (program) *)
   let prog =
@@ -19,24 +20,26 @@ let () =
 
   (* Parse initial register file *)
   let regfile =
-    let init_regfile = Machine.init_reg_state stk_addr in
+    let init_regfile = M.init_reg_state stk_addr in
     if regfile_name = "" then init_regfile
     else
       match Program.parse_regfile_from_file regfile_name stk_addr with
-      | Ok regs -> (Machine.RegMap.fold (fun r w rf -> Machine.RegMap.add r w rf) regs) init_regfile
+      | Ok regs -> (M.RegMap.fold (fun r w rf -> M.RegMap.add r w rf) regs) init_regfile
       | Error msg ->
           Printf.eprintf "Regfile parse error: %s\n" msg;
           exit 1
   in
-  let m_init = Program.init_machine prog regfile in
+  let m_init = M.init regfile (M.init_mem_state Z.zero prog) in
 
   match mode with
   | Cli_parser.Interactive_mode ->
       let module Cfg = struct
         let addr_max : Z.t = Parameters.get_max_addr ()
       end in
-      let module Ui = Interactive_ui.MkUi (Cfg) in
+      let module Ui = Interactive_ui.MkUi (M) (Cfg) in
       let prog_panel_start = ref Z.zero in
       let stk_panel_start = ref stk_addr in
       Ui.render_loop ~show_stack:!Parameters.flags.stack prog_panel_start stk_panel_start m_init
-  | Cli_parser.Interpreter_mode -> Interpreter_ui.interpreter m_init
+  | Cli_parser.Interpreter_mode ->
+      let module Ui = Interpreter_ui.Make (M) in
+      Ui.interpreter m_init

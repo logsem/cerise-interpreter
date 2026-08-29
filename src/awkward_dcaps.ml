@@ -12,7 +12,7 @@ let () =
   let module Cfg = struct
     let addr_max = addr_max
   end in
-  let module Ui = Interactive_ui.MkUi (Cfg) in
+  let module Ui = Interactive_ui.MkUi (Legacy_machine_backend.Default) (Cfg) in
   let init_regfile = Machine.init_reg_state Cfg.addr_max in
 
   let m_init_state, m_init_conf = Program.init_machine prog init_regfile in

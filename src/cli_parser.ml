@@ -3,9 +3,8 @@ open Cerise
 
 type cli_mode = Interactive_mode | Interpreter_mode
 
-(** Initialize the Cerise version and returns (mode, program_filename, register_filename, size_mem)
-*)
-let parse_arguments () : cli_mode * string * string =
+(** Initialize the Cerise version and return the selected mode, backend, program, and register file. *)
+let parse_arguments () : cli_mode * Legacy_machine_backend.choice * string * string =
   let usage_msg =
     "interpreter [-I] [--interactive] [--version version] [--locality locality] [--sealing | \
      --no-sealing]  [--stack | --no-stack] [--uperms | --no-uperms] [--mem-size size] <file>"
@@ -123,4 +122,4 @@ let parse_arguments () : cli_mode * string * string =
         exit 1
   in
 
-  (mode, filename_prog, !regfile_name_option)
+  (mode, Legacy_machine_backend.Default, filename_prog, !regfile_name_option)
