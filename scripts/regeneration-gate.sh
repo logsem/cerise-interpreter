@@ -6,7 +6,7 @@ repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 if [ "${1:-}" = "--root" ]; then repository_root=$2; shift 2; fi
 if [ "$#" -ne 0 ]; then echo "Usage: $0 [--root REPOSITORY]" >&2; exit 2; fi
 
-generated=$repository_root/lib/internal/extracted
+generated=$repository_root/lib/griotte_extracted/generated
 installer=$repository_root/scripts/regenerate-griotte-extracted.sh
 temporary_root=$(mktemp -d)
 trap 'rm -rf -- "$temporary_root"' EXIT HUP INT TERM

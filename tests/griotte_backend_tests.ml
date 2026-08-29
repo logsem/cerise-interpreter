@@ -45,7 +45,7 @@ let expected_allocations =
   ]
 
 let instructions =
-  let open Griotte_ast in
+  let open Griotte.Ast in
   let a = Reg 1 and b = Reg 2 and rr = Register (Reg 3) and c = Constant (z (-7)) in
   [
     Jmp rr;
@@ -115,26 +115,26 @@ let instructions =
 
 let codec () =
   Alcotest.(check (list (triple string int int)))
-    "historical fixed allocation" expected_allocations Griotte_codec.allocations;
+    "historical fixed allocation" expected_allocations Griotte.Codec.allocations;
   List.iter
     (fun instruction ->
-      let encoded = Result.get_ok (Griotte_codec.encode instruction) in
+      let encoded = Result.get_ok (Griotte.Codec.encode instruction) in
       Alcotest.(check bool)
         "round trip" true
-        (Result.get_ok (Griotte_codec.decode encoded) = instruction))
+        (Result.get_ok (Griotte.Codec.decode encoded) = instruction))
     instructions;
-  let open Griotte_ast in
+  let open Griotte.Ast in
   check_z "negative immediate is historical signed high payload" (z (-767))
-    (Result.get_ok (Griotte_codec.encode (Jmp (Constant (z (-3))))));
+    (Result.get_ok (Griotte.Codec.encode (Jmp (Constant (z (-3))))));
   check_z "Jalr golden signed pair" (z 14340)
-    (Result.get_ok (Griotte_codec.encode (Jalr (Reg 1, Reg 2))));
+    (Result.get_ok (Griotte.Codec.encode (Jalr (Reg 1, Reg 2))));
   check_z "Move reg/negative constant golden" (z 47624)
-    (Result.get_ok (Griotte_codec.encode (Move (Reg 1, Constant (z (-7))))));
+    (Result.get_ok (Griotte.Codec.encode (Move (Reg 1, Constant (z (-7))))));
   List.iter
     (fun encoded ->
       Alcotest.(check bool)
         "malformed/unknown rejected" true
-        (Result.is_error (Griotte_codec.decode encoded)))
+        (Result.is_error (Griotte.Codec.decode encoded)))
     [
       Z.minus_one;
       z 0xfe;
@@ -146,22 +146,22 @@ let codec () =
       Alcotest.(check bool)
         (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
         true
-        (Result.is_error (Griotte_codec.decode (z opcode))))
+        (Result.is_error (Griotte.Codec.decode (z opcode))))
     (List.init 8 (fun offset -> 0x18 + offset));
   let p = (XSR, WL, LG, LM) in
   Alcotest.(check bool)
     "permission round trip" true
-    (Result.get_ok (Griotte_codec.decode_permission (Griotte_codec.encode_permission p)) = p);
+    (Result.get_ok (Griotte.Codec.decode_permission (Griotte.Codec.encode_permission p)) = p);
   Alcotest.(check bool)
     "permission/locality round trip" true
     (Result.get_ok
-       (Griotte_codec.decode_permission_locality (Griotte_codec.encode_permission_locality p Local))
+       (Griotte.Codec.decode_permission_locality (Griotte.Codec.encode_permission_locality p Local))
     = (p, Local));
   List.iter
     (fun wt ->
       Alcotest.(check bool)
         "word type round trip" true
-        (Result.get_ok (Griotte_codec.decode_word_type (Griotte_codec.encode_word_type wt)) = wt))
+        (Result.get_ok (Griotte.Codec.decode_word_type (Griotte.Codec.encode_word_type wt)) = wt))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ];
   let tagged tag payload = Z.logor (z tag) (Z.shift_left payload 3) in
   let rejects_without_exception : type value.
@@ -172,20 +172,20 @@ let codec () =
       (match decoder encoded with Error _ -> true | Ok _ -> false | exception _ -> false)
   in
   let huge = Z.shift_left Z.one 10_000 in
-  rejects_without_exception "oversized permission" Griotte_codec.decode_permission (tagged 0 huge);
-  rejects_without_exception "high-bit permission" Griotte_codec.decode_permission (tagged 0 (z 64));
-  rejects_without_exception "oversized seal permission" Griotte_codec.decode_seal_permission
+  rejects_without_exception "oversized permission" Griotte.Codec.decode_permission (tagged 0 huge);
+  rejects_without_exception "high-bit permission" Griotte.Codec.decode_permission (tagged 0 (z 64));
+  rejects_without_exception "oversized seal permission" Griotte.Codec.decode_seal_permission
     (tagged 1 huge);
-  rejects_without_exception "oversized locality" Griotte_codec.decode_locality (tagged 2 huge);
-  rejects_without_exception "oversized word type" Griotte_codec.decode_word_type (tagged 3 huge);
-  rejects_without_exception "oversized permission/locality" Griotte_codec.decode_permission_locality
+  rejects_without_exception "oversized locality" Griotte.Codec.decode_locality (tagged 2 huge);
+  rejects_without_exception "oversized word type" Griotte.Codec.decode_word_type (tagged 3 huge);
+  rejects_without_exception "oversized permission/locality" Griotte.Codec.decode_permission_locality
     (tagged 4 huge);
-  rejects_without_exception "high-bit permission/locality" Griotte_codec.decode_permission_locality
+  rejects_without_exception "high-bit permission/locality" Griotte.Codec.decode_permission_locality
     (tagged 4 (z 128));
   rejects_without_exception "oversized seal permission/locality"
-    Griotte_codec.decode_seal_permission_locality (tagged 5 huge);
+    Griotte.Codec.decode_seal_permission_locality (tagged 5 huge);
   rejects_without_exception "high-bit seal permission/locality"
-    Griotte_codec.decode_seal_permission_locality
+    Griotte.Codec.decode_seal_permission_locality
     (tagged 5 (z 8))
 
 let parser () =
@@ -196,7 +196,7 @@ let parser () =
      Global) subseg cgp 0 8 getl ca0 cgp getb ca0 cgp gete ca0 cgp geta ca0 cgp getp ca0 cgp \
      getotype ca0 cgp getwtype ca0 cgp seal ca0 ca3 cgp unseal ca1 ca3 ca0 fail halt"
   in
-  ignore (ok (Griotte_parser.parse_program source));
+  ignore (ok (Griotte.Parser.parse_program source));
   let aliases =
     [
       "pc";
@@ -236,10 +236,10 @@ let parser () =
   in
   ignore
     (ok
-       (Griotte_parser.parse_program
+       (Griotte.Parser.parse_program
           (String.concat " " (List.map (fun r -> "mov " ^ r ^ " 0") aliases))));
   List.iter
-    (fun word -> ignore (ok (Griotte_parser.parse_word word)))
+    (fun word -> ignore (ok (Griotte.Parser.parse_word word)))
     [
       "9";
       "([XSR Ow LG LM], Global, 0, MAX_ADDR, 0)";
@@ -249,7 +249,7 @@ let parser () =
       "{3: [S, Global, 0, 15, 3]}";
     ];
   List.iter
-    (fun value -> ignore (ok (Griotte_parser.parse_program ("mov ca0 " ^ value ^ " halt"))))
+    (fun value -> ignore (ok (Griotte.Parser.parse_program ("mov ca0 " ^ value ^ " halt"))))
     [
       "O";
       "[R WL LG LM]";
@@ -269,16 +269,16 @@ let parser () =
     ];
   ignore
     (ok
-       (Griotte_parser.parse_regfile
+       (Griotte.Parser.parse_regfile
           "PC := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 0) CSP := ([R WL LG LM], Local, 8, \
            MAX_ADDR, 8) MTDC := 0"));
   ignore
     (ok
-       (Griotte_parser.parse_program
+       (Griotte.Parser.parse_program
           "%define N 3 start: mov ca0 &CURRENT_ADDR add ca1 ca0 N # (((start + N) << 3) || 1) halt"));
   ignore
     (ok
-       (Griotte_parser.parse_program
+       (Griotte.Parser.parse_program
           "%macro typed(dst: reg, e: expr, v: value, p: perm, sp: sealperm, l: locality, wt: \
            wtype) mov $dst $v restrict cgp ($p, $l) # ($p, $l, 0, $e, 0) # [$sp, $l, 0, 15, 0] mov \
            ca1 $wt %endmacro %typed(ca0, 8, -2, [R WL LG LM], SU, Local, Sentry) halt"));
@@ -286,7 +286,7 @@ let parser () =
     (fun source ->
       Alcotest.(check bool)
         ("reject " ^ source) true
-        (Result.is_error (Griotte_parser.parse_program source)))
+        (Result.is_error (Griotte.Parser.parse_program source)))
     [
       "invoke ca0 ca1";
       "loadu ca0 ca1 0";
@@ -299,10 +299,10 @@ let parser () =
     ];
   Alcotest.(check bool)
     "reject vanilla word" true
-    (Result.is_error (Griotte_parser.parse_word "(RW, 0, 8, 0)"));
+    (Result.is_error (Griotte.Parser.parse_word "(RW, 0, 8, 0)"));
   Alcotest.(check bool)
     "reject malformed permission" true
-    (Result.is_error (Griotte_parser.parse_word "([R BAD LG LM], Global, 0, 8, 0)"))
+    (Result.is_error (Griotte.Parser.parse_word "([R BAD LG LM], Global, 0, 8, 0)"))
 
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
@@ -531,7 +531,7 @@ let examples () =
   List.iter
     (fun relative ->
       let path = base ^ relative in
-      match Griotte_parser.parse_program ~filename:path (read_file path) with
+      match Griotte.Parser.parse_program ~filename:path (read_file path) with
       | Ok _ -> ()
       | Error diagnostics ->
           Alcotest.failf "Griotte program fixture %s failed: %s" path
@@ -540,7 +540,7 @@ let examples () =
   List.iter
     (fun relative ->
       let path = base ^ relative in
-      match Griotte_parser.parse_regfile ~filename:path (read_file path) with
+      match Griotte.Parser.parse_regfile ~filename:path (read_file path) with
       | Ok _ -> ()
       | Error diagnostics ->
           Alcotest.failf "Griotte regfile fixture %s failed: %s" path

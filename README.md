@@ -51,7 +51,7 @@ The defaults are `https://github.com/logsem/griotte.git` and branch
 or modified in place. `make check-griotte-extracted` verifies checked-in provenance hashes, while
 `make regeneration-gate` exercises the atomic installer twice from a controlled local output and
 checks byte identity and idempotence without network access. See
-`lib/internal/extracted/README.md` for the trust boundary and exact provenance.
+`lib/griotte_extracted/generated/README.md` for the trust boundary and exact provenance.
 
 ## Interactive interpreter
 For an interactive version of the interpreter: `./interpreter -I <file>`

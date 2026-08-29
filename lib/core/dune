@@ -1,0 +1,5 @@
+(library
+ (name cerise_core)
+ (public_name cerise-interpreter.core)
+ (wrapped true)
+ (libraries zarith))

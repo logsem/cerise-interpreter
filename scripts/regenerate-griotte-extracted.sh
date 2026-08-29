@@ -27,7 +27,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 source_repository=${GRIOTTE_URL:-https://github.com/logsem/griotte.git}
 source_branch=${GRIOTTE_BRANCH:-interpreter-extraction}
-destination=$repository_root/lib/internal/extracted
+destination=$repository_root/lib/griotte_extracted/generated
 install_from=
 check_only=false
 temporary_root=

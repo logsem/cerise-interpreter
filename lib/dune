@@ -10,56 +10,25 @@
   instruction_codec
   machine_view
   machine_backend
-  vanilla_ast
-  vanilla_parser
-  vanilla_printer
-  vanilla_codec
-  vanilla_machine
-  vanilla_backend
-  vanilla_state
-  vanilla_view
-  locality_cerise_ast
-  locality_cerise_parser
-  locality_cerise_codec
-  locality_cerise_printer
-  locality_cerise_machine
-  locality_cerise_backend
-  locality_cerise_state
-  locality_cerise_view
-  ucerise_ast
-  ucerise_parser
-  ucerise_codec
-  ucerise_printer
-  ucerise_machine
-  ucerise_backend
-  ucerise_state
-  ucerise_view
-  mcerise_ast
-  mcerise_parser
-  mcerise_codec
-  mcerise_printer
-  mcerise_machine
-  mcerise_backend
-  mcerise_state
-  mcerise_view
-  cerisier_ast
-  cerisier_parser
-  cerisier_codec
-  cerisier_printer
-  cerisier_machine
-  cerisier_backend
-  griotte_ast
-  griotte_parser
-  griotte_codec
-  griotte_printer
-  griotte_machine
-  griotte_backend
-  griotte_state
-  griotte_view
-  griotte_extracted_codec
-  griotte_extracted_backend
+  vanilla
+  locality_cerise
+  ucerise
+  mcerise
+  cerisier
+  griotte
+  griotte_extracted
   backend_registry
   machine_session
   application_model
   website_fixture)
- (libraries cerise_internal zarith))
+ (libraries
+  cerise_core
+  cerise_vanilla_private
+  cerise_locality_cerise_private
+  cerise_ucerise_private
+  cerise_mcerise_private
+  cerise_cerisier_private
+  cerise_griotte_contract
+  cerise_griotte_private
+  cerise_griotte_extracted_private
+  zarith))

@@ -1,0 +1,15 @@
+(library
+ (name cerise_griotte_contract)
+ (public_name cerise-interpreter.griotte_contract)
+ (wrapped true)
+ (modules ast parser printer)
+ (libraries cerise_core zarith)
+ (flags (:standard -open Cerise_core)))
+
+(library
+ (name cerise_griotte_private)
+ (package cerise-interpreter)
+ (wrapped true)
+ (modules codec machine backend state view)
+ (libraries cerise_core cerise_griotte_contract zarith)
+ (flags (:standard -open Cerise_core -open Cerise_griotte_contract)))

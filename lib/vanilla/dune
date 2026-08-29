@@ -1,0 +1,6 @@
+(library
+ (name cerise_vanilla_private)
+ (package cerise-interpreter)
+ (wrapped true)
+ (libraries cerise_core zarith)
+ (flags (:standard -open Cerise_core)))

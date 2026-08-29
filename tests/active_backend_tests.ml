@@ -38,7 +38,7 @@ let allocation_test () =
     ]
   in
   Alcotest.(check (list (triple string int int)))
-    "vanilla golden table" expected_v Vanilla_codec.allocations;
+    "vanilla golden table" expected_v Vanilla.Codec.allocations;
   let expected_l =
     List.map (fun (n, o, s) -> if o < 39 then (n, o, s) else (n, o + 1, s)) expected_v
   in
@@ -47,31 +47,31 @@ let allocation_test () =
     before @ [ ("GetL", 39, 1) ] @ after
   in
   Alcotest.(check (list (triple string int int)))
-    "locality golden table" expected_l Locality_cerise_codec.allocations
+    "locality golden table" expected_l Locality_cerise.Codec.allocations
 
 let parser_matrix () =
-  ignore (ok (Vanilla_parser.parse_program "%define N 2 start: move r1 start + N # 4 halt"));
+  ignore (ok (Vanilla.Parser.parse_program "%define N 2 start: move r1 start + N # 4 halt"));
   ignore
     (ok
-       (Vanilla_parser.parse_program
+       (Vanilla.Parser.parse_program
           "%macro put(dst: reg, x: value) move $dst $x %endmacro %put(r2, 9) halt"));
   ignore
     (ok
-       (Vanilla_parser.parse_program
+       (Vanilla.Parser.parse_program
           "%macro narrow(p: perm) restrict r1 $p %endmacro %narrow(RO) halt"));
-  ignore (ok (Vanilla_parser.parse_word "(RW, 0, MAX_ADDR, 0)"));
-  ignore (ok (Locality_cerise_parser.parse_word "(RWLX, LOCAL, STK_ADDR, MAX_ADDR, STK_ADDR)"));
-  ignore (ok (Locality_cerise_parser.parse_program "getl r1 r31 halt"));
+  ignore (ok (Vanilla.Parser.parse_word "(RW, 0, MAX_ADDR, 0)"));
+  ignore (ok (Locality_cerise.Parser.parse_word "(RWLX, LOCAL, STK_ADDR, MAX_ADDR, STK_ADDR)"));
+  ignore (ok (Locality_cerise.Parser.parse_program "getl r1 r31 halt"));
   ignore
     (ok
-       (Locality_cerise_parser.parse_program
+       (Locality_cerise.Parser.parse_program
           "%macro loc(x: locality) move r1 $x %endmacro %loc(GLOBAL) halt"));
-  check_reject Vanilla_parser.parse_word "(RW, GLOBAL, 0, 10, 0)";
-  check_reject Vanilla_parser.parse_program "getl r1 r2";
-  check_reject Vanilla_parser.parse_program "loadu r1 r2 0";
-  check_reject Locality_cerise_parser.parse_program "storeu r1 0 0";
-  check_reject Locality_cerise_parser.parse_word "(RW, DIRECTED, 0, 10, 0)";
-  check_reject Locality_cerise_parser.parse_word "(URW, GLOBAL, 0, 10, 0)"
+  check_reject Vanilla.Parser.parse_word "(RW, GLOBAL, 0, 10, 0)";
+  check_reject Vanilla.Parser.parse_program "getl r1 r2";
+  check_reject Vanilla.Parser.parse_program "loadu r1 r2 0";
+  check_reject Locality_cerise.Parser.parse_program "storeu r1 0 0";
+  check_reject Locality_cerise.Parser.parse_word "(RW, DIRECTED, 0, 10, 0)";
+  check_reject Locality_cerise.Parser.parse_word "(URW, GLOBAL, 0, 10, 0)"
 
 let session backend source =
   ok
@@ -97,7 +97,7 @@ let execution () =
   let finished = (Machine_session.run locality).session in
   Alcotest.(check string)
     "GetL Local"
-    (Z.to_string (Locality_cerise_codec.encode_locality Locality_cerise_ast.Local))
+    (Z.to_string (Locality_cerise.Codec.encode_locality Locality_cerise.Ast.Local))
     (Z.to_string (integer_register "r1" (Machine_session.view finished)))
 
 let memory_and_sealing () =
@@ -177,7 +177,7 @@ let restriction_locality_and_edits () =
     (Z.to_string (integer_register "r2" (Machine_session.view local)))
 
 let codec_round_trips () =
-  let open Vanilla_ast in
+  let open Vanilla.Ast in
   let r1 = Reg 1 and r2 = Reg 2 and o = Constant (Z.of_int (-7)) in
   let instructions =
     [
@@ -210,17 +210,17 @@ let codec_round_trips () =
   in
   List.iter
     (fun instruction ->
-      let encoded = Result.get_ok (Vanilla_codec.encode instruction) in
+      let encoded = Result.get_ok (Vanilla.Codec.encode instruction) in
       Alcotest.(check bool)
         "codec round trip" true
-        (Result.get_ok (Vanilla_codec.decode encoded) = instruction))
+        (Result.get_ok (Vanilla.Codec.decode encoded) = instruction))
     instructions;
   let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_003) (Z.of_int 0x35)) in
   let large_instruction = Move (Reg 1, Constant large_constant) in
-  let encoded = Result.get_ok (Vanilla_codec.encode large_instruction) in
+  let encoded = Result.get_ok (Vanilla.Codec.encode large_instruction) in
   Alcotest.(check bool)
     "large finite vanilla instruction round trip" true
-    (Vanilla_codec.decode encoded = Ok large_instruction)
+    (Vanilla.Codec.decode encoded = Ok large_instruction)
 
 let parameterized_values_and_total_decoders () =
   let vanilla_source =
@@ -259,8 +259,8 @@ let parameterized_values_and_total_decoders () =
   Alcotest.(check bool)
     "parameterized seal/locality restriction" true
     ((Machine_session.view seal_pair.session).status = Halted);
-  ignore (ok (Vanilla_parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
-  ignore (ok (Locality_cerise_parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
+  ignore (ok (Vanilla.Parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
+  ignore (ok (Locality_cerise.Parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
   let huge = Z.shift_left Z.one 10000 in
   let decoder_is_total decoder value =
     match decoder value with Error _ -> true | Ok _ -> false | exception _ -> false
@@ -269,38 +269,38 @@ let parameterized_values_and_total_decoders () =
     (fun value ->
       Alcotest.(check bool)
         "vanilla permission decoder total" true
-        (decoder_is_total Vanilla_codec.decode_permission value);
+        (decoder_is_total Vanilla.Codec.decode_permission value);
       Alcotest.(check bool)
         "vanilla seal decoder total" true
-        (decoder_is_total Vanilla_codec.decode_seal_permission value);
+        (decoder_is_total Vanilla.Codec.decode_seal_permission value);
       Alcotest.(check bool)
         "local permission decoder total" true
-        (decoder_is_total Locality_cerise_codec.decode_permission value);
+        (decoder_is_total Locality_cerise.Codec.decode_permission value);
       Alcotest.(check bool)
         "local seal decoder total" true
-        (decoder_is_total Locality_cerise_codec.decode_seal_permission value);
+        (decoder_is_total Locality_cerise.Codec.decode_seal_permission value);
       Alcotest.(check bool)
         "local locality decoder total" true
-        (decoder_is_total Locality_cerise_codec.decode_locality value);
+        (decoder_is_total Locality_cerise.Codec.decode_locality value);
       Alcotest.(check bool)
         "local permission/locality decoder total" true
-        (decoder_is_total Locality_cerise_codec.decode_permission_locality value);
+        (decoder_is_total Locality_cerise.Codec.decode_permission_locality value);
       Alcotest.(check bool)
         "local seal/locality decoder total" true
-        (decoder_is_total Locality_cerise_codec.decode_seal_permission_locality value))
+        (decoder_is_total Locality_cerise.Codec.decode_seal_permission_locality value))
     [ huge; Z.neg huge ];
   Alcotest.(check bool)
     "huge correctly tagged vanilla seal decoder total" true
-    (decoder_is_total Vanilla_codec.decode_seal_permission Z.(huge + one));
+    (decoder_is_total Vanilla.Codec.decode_seal_permission Z.(huge + one));
   Alcotest.(check bool)
     "huge correctly tagged locality decoder total" true
-    (decoder_is_total Locality_cerise_codec.decode_locality Z.(huge + of_int 2));
+    (decoder_is_total Locality_cerise.Codec.decode_locality Z.(huge + of_int 2));
   Alcotest.(check bool)
     "huge correctly tagged permission/locality decoder total" true
-    (decoder_is_total Locality_cerise_codec.decode_permission_locality Z.(huge + of_int 4));
+    (decoder_is_total Locality_cerise.Codec.decode_permission_locality Z.(huge + of_int 4));
   Alcotest.(check bool)
     "huge correctly tagged seal/locality decoder total" true
-    (decoder_is_total Locality_cerise_codec.decode_seal_permission_locality Z.(huge + of_int 5));
+    (decoder_is_total Locality_cerise.Codec.decode_seal_permission_locality Z.(huge + of_int 5));
   let run_malformed backend malformed regfile =
     ok
       (Machine_session.create ~backend ~config

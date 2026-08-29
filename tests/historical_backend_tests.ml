@@ -18,16 +18,16 @@ let allocations () =
      "LoadU";"StoreU";"PromoteU"] in
   let check name actual =
     Alcotest.(check (list (triple string int int))) name golden actual in
-  check "uCerise automatic allocation" Ucerise_codec.allocations;
-  check "mCerise automatic allocation" Mcerise_codec.allocations;
+  check "uCerise automatic allocation" Ucerise.Codec.allocations;
+  check "mCerise automatic allocation" Mcerise.Codec.allocations;
   Alcotest.(check int) "frozen ISA case count" 22 (List.length expected_names);
   Alcotest.(check (list string)) "uCerise exact ISA order" expected_names
-    (List.map (fun (name,_,_) -> name) Ucerise_codec.allocations);
+    (List.map (fun (name,_,_) -> name) Ucerise.Codec.allocations);
   Alcotest.(check (list string)) "mCerise exact ISA order" expected_names
-    (List.map (fun (name,_,_) -> name) Mcerise_codec.allocations)
+    (List.map (fun (name,_,_) -> name) Mcerise.Codec.allocations)
 
 let u_instructions =
-  let open Ucerise_ast in
+  let open Ucerise.Ast in
   let r1=Reg 1 and r2=Reg 2 and rg=Register (Reg 3) and c=Constant (Z.of_int (-7)) in
   [Jmp r1;Jnz(r1,r2);Move(r1,rg);Move(r1,c);Load(r1,r2);Store(r1,rg);Store(r1,c);
    Add(r1,rg,rg);Add(r1,rg,c);Add(r1,c,rg);Add(r1,c,c);
@@ -40,7 +40,7 @@ let u_instructions =
    StoreU(r1,rg,rg);StoreU(r1,rg,c);StoreU(r1,c,rg);StoreU(r1,c,c);PromoteU r1]
 
 let m_instructions =
-  let open Mcerise_ast in
+  let open Mcerise.Ast in
   let r1=Reg 1 and r2=Reg 2 and rg=Register (Reg 3) and c=Constant (Z.of_int (-7)) in
   [Jmp r1;Jnz(r1,r2);Move(r1,rg);Move(r1,c);Load(r1,r2);Store(r1,rg);Store(r1,c);
    Add(r1,rg,rg);Add(r1,rg,c);Add(r1,c,rg);Add(r1,c,c);
@@ -54,31 +54,31 @@ let m_instructions =
 
 let codecs () =
   List.iter (fun i ->
-    let z=Result.get_ok (Ucerise_codec.encode i) in
-    Alcotest.(check bool) "u round trip" true (Result.get_ok (Ucerise_codec.decode z)=i))
+    let z=Result.get_ok (Ucerise.Codec.encode i) in
+    Alcotest.(check bool) "u round trip" true (Result.get_ok (Ucerise.Codec.decode z)=i))
     u_instructions;
   List.iter (fun i ->
-    let z=Result.get_ok (Mcerise_codec.encode i) in
-    Alcotest.(check bool) "m round trip" true (Result.get_ok (Mcerise_codec.decode z)=i))
+    let z=Result.get_ok (Mcerise.Codec.encode i) in
+    Alcotest.(check bool) "m round trip" true (Result.get_ok (Mcerise.Codec.decode z)=i))
     m_instructions;
   List.iter (fun z ->
-    Alcotest.(check bool) "u malformed rejected" true (Result.is_error (Ucerise_codec.decode z));
-    Alcotest.(check bool) "m malformed rejected" true (Result.is_error (Mcerise_codec.decode z)))
+    Alcotest.(check bool) "u malformed rejected" true (Result.is_error (Ucerise.Codec.decode z));
+    Alcotest.(check bool) "m malformed rejected" true (Result.is_error (Mcerise.Codec.decode z)))
     [Z.minus_one; Z.shift_left Z.one 10000]
 
 let parser_matrix () =
   let source =
     "jmp r1\njnz r1 r2\nmove r1 -1\nload r1 r2\nstore r1 r2\nadd r1 r2 1\nsub r1 2 r2\nlt r1 r2 3\nlea r1 -1\nrestrict r1 (RW, GLOBAL)\nsubseg r1 0 4\nisptr r1 r2\ngetp r1 r2\ngetl r1 r2\ngetb r1 r2\ngete r1 r2\ngeta r1 r2\nfail\nhalt\nloadu r1 r2 -1\nstoreu r1 0 r2\npromoteu r1" in
-  ignore (ok (Ucerise_parser.parse_program source));
-  ignore (ok (Mcerise_parser.parse_program source));
-  ignore (ok (Ucerise_parser.parse_word "(URWLX, LOCAL, 1, 9, 4)"));
-  ignore (ok (Mcerise_parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"));
+  ignore (ok (Ucerise.Parser.parse_program source));
+  ignore (ok (Mcerise.Parser.parse_program source));
+  ignore (ok (Ucerise.Parser.parse_word "(URWLX, LOCAL, 1, 9, 4)"));
+  ignore (ok (Mcerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"));
   let typed_macro locality =
     Printf.sprintf
       "%%macro typed(dst: reg, e: expr, v: value, p: perm, l: locality) move $dst $v add $dst $e 1 restrict $dst ($p, $l) # ($p, $l, $e, $e + 8, $e) %%endmacro %%typed(r1, 4, 9, URWL, %s) halt"
       locality in
-  ignore (ok (Ucerise_parser.parse_program (typed_macro "LOCAL")));
-  ignore (ok (Mcerise_parser.parse_program (typed_macro "DIRECTED")));
+  ignore (ok (Ucerise.Parser.parse_program (typed_macro "LOCAL")));
+  ignore (ok (Mcerise.Parser.parse_program (typed_macro "DIRECTED")));
   let bad_unused =
     ["%macro bad(x: expr) move $x 1 %endmacro halt";
      "%macro bad(x: expr) move r1 $missing %endmacro halt";
@@ -88,35 +88,35 @@ let parser_matrix () =
      "%macro bad(x: expr) # (RW, $x, 0, 8, 0) %endmacro halt"] in
   List.iter (fun source ->
     Alcotest.(check bool) "u rejects invalid unused typed macro" true
-      (Result.is_error (Ucerise_parser.parse_program source));
+      (Result.is_error (Ucerise.Parser.parse_program source));
     Alcotest.(check bool) "m rejects invalid unused typed macro" true
-      (Result.is_error (Mcerise_parser.parse_program source))) bad_unused;
+      (Result.is_error (Mcerise.Parser.parse_program source))) bad_unused;
   let removed = ["Mul";"Rem";"Div";"Invoke";"GetOType";"GetWType";"Seal";"UnSeal"] in
   List.iter (fun op ->
     Alcotest.(check bool) ("u rejects "^op) true
-      (Result.is_error (Ucerise_parser.parse_program (op^" r1 r2 r3")));
+      (Result.is_error (Ucerise.Parser.parse_program (op^" r1 r2 r3")));
     Alcotest.(check bool) ("m rejects "^op) true
-      (Result.is_error (Mcerise_parser.parse_program (op^" r1 r2 r3")))) removed;
+      (Result.is_error (Mcerise.Parser.parse_program (op^" r1 r2 r3")))) removed;
   List.iter (fun word ->
-    Alcotest.(check bool) ("u rejects "^word) true (Result.is_error (Ucerise_parser.parse_word word));
-    Alcotest.(check bool) ("m rejects "^word) true (Result.is_error (Mcerise_parser.parse_word word)))
+    Alcotest.(check bool) ("u rejects "^word) true (Result.is_error (Ucerise.Parser.parse_word word));
+    Alcotest.(check bool) ("m rejects "^word) true (Result.is_error (Mcerise.Parser.parse_word word)))
     ["[SU, GLOBAL, 0, 9, 1]";"{1: (RW, GLOBAL, 0, 9, 1)}";
      "{1: [SU, GLOBAL, 0, 9, 1]}"];
   List.iter (fun value ->
     let source = "move r1 "^value in
     Alcotest.(check bool) ("u rejects sealing value "^value) true
-      (Result.is_error (Ucerise_parser.parse_program source));
+      (Result.is_error (Ucerise.Parser.parse_program source));
     Alcotest.(check bool) ("m rejects sealing value "^value) true
-      (Result.is_error (Mcerise_parser.parse_program source)))
+      (Result.is_error (Mcerise.Parser.parse_program source)))
     ["SO";"S";"U";"SU";"Int";"Cap";"SealRange";"Sealed"];
   Alcotest.(check bool) "u rejects sealing macro kind" true
-    (Result.is_error (Ucerise_parser.parse_program
+    (Result.is_error (Ucerise.Parser.parse_program
       "%macro x(p: sealperm) move r1 $p %endmacro %x(S)"));
   Alcotest.(check bool) "m rejects sealing macro kind" true
-    (Result.is_error (Mcerise_parser.parse_program
+    (Result.is_error (Mcerise.Parser.parse_program
       "%macro x(p: sealperm) move r1 $p %endmacro %x(S)"));
   Alcotest.(check bool) "u rejects Directed" true
-    (Result.is_error (Ucerise_parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"))
+    (Result.is_error (Ucerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"))
 
 let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) ()
 let session backend ?regfile source =
@@ -167,7 +167,7 @@ let semantics () =
     ((Machine_session.view bad_promote).status=Machine_view.Failed);
   let local = session "ucerise" "getl r1 stk halt" |> run in
   Alcotest.(check string) "u initial Local stack"
-    (Z.to_string (Ucerise_codec.encode_locality Ucerise_ast.Local))
+    (Z.to_string (Ucerise.Codec.encode_locality Ucerise.Ast.Local))
     (Z.to_string (int_reg "r1" local));
   let localized = session "ucerise"
     ~regfile:"r2 := (URWLX, GLOBAL, 1, 9, 4)"
@@ -176,7 +176,7 @@ let semantics () =
     (cap Machine_view.General "r2" localized).locality;
   let directed = session "mcerise" "getl r1 stk halt" |> run in
   Alcotest.(check string) "m initial Directed stack"
-    (Z.to_string (Mcerise_codec.encode_locality Mcerise_ast.Directed))
+    (Z.to_string (Mcerise.Codec.encode_locality Mcerise.Ast.Directed))
     (Z.to_string (int_reg "r1" directed));
   let m_exec = session "mcerise"
     ~regfile:"pc := (URWLX, DIRECTED, 0, 2, 0)"

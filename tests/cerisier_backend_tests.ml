@@ -26,9 +26,9 @@ let parser_matrix () =
      unseal r1 r2 r3 invoke r1 r2 loadu r1 r2 -1 storeu r1 0 r2 promoteu r1 einit r1 r2 edeinit r1 \
      estoreid r1 r2 isunique r1 r2 fail halt"
   in
-  ignore (ok (Cerisier_parser.parse_program complete));
+  ignore (ok (Cerisier.Parser.parse_program complete));
   List.iter
-    (fun source -> ignore (ok (Cerisier_parser.parse_word source)))
+    (fun source -> ignore (ok (Cerisier.Parser.parse_word source)))
     [
       "(URWLX, DIRECTED, 0, MAX_ADDR, 4)";
       "[SU, GLOBAL, 0, 8, 1]";
@@ -37,14 +37,14 @@ let parser_matrix () =
     ];
   ignore
     (ok
-       (Cerisier_parser.parse_program
+       (Cerisier.Parser.parse_program
           "%macro enclave(dst: reg, src: reg, n: expr) einit $dst $src lea $dst $n %endmacro \
            %enclave(r1, r2, 2) halt"));
   List.iter
     (fun source ->
       Alcotest.(check bool)
         ("reject " ^ source) true
-        (Result.is_error (Cerisier_parser.parse_program source)))
+        (Result.is_error (Cerisier.Parser.parse_program source)))
     [
       "isptr r1 r2";
       "jmper r1";
@@ -56,13 +56,13 @@ let parser_matrix () =
     ];
   Alcotest.(check bool)
     "word rejects inf" true
-    (Result.is_error (Cerisier_parser.parse_word "(RW, GLOBAL, 0, inf, 0)"));
+    (Result.is_error (Cerisier.Parser.parse_word "(RW, GLOBAL, 0, inf, 0)"));
   Alcotest.(check bool)
     "regfile rejects inf" true
-    (Result.is_error (Cerisier_parser.parse_regfile "r1 := (RW, GLOBAL, 0, inf, 0)"))
+    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, inf, 0)"))
 
 let instructions =
-  let open Cerisier_ast in
+  let open Cerisier.Ast in
   let r1 = Reg 1
   and r2 = Reg 2
   and r3 = Reg 3
@@ -148,18 +148,18 @@ let codec () =
       ("Fail", 60, 1);
       ("Halt", 61, 1);
     ]
-    Cerisier_codec.allocations;
+    Cerisier.Codec.allocations;
   List.iter
     (fun instruction ->
-      let encoded = Result.get_ok (Cerisier_codec.encode instruction) in
+      let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
       Alcotest.(check bool)
         "fixed codec round trip" true
-        (Result.get_ok (Cerisier_codec.decode encoded) = instruction))
+        (Result.get_ok (Cerisier.Codec.decode encoded) = instruction))
     instructions;
-  let open Cerisier_ast in
+  let open Cerisier.Ast in
   List.iter
     (fun (instruction, opcode) ->
-      let encoded = Result.get_ok (Cerisier_codec.encode instruction) in
+      let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
       Alcotest.(check int) "historical low-byte opcode" opcode (Z.to_int (Z.extract encoded 0 8)))
     [
       (Jmp (Reg 1), 0x00);
@@ -174,7 +174,7 @@ let codec () =
     (fun (instruction, expected) ->
       Alcotest.(check string)
         "complete historical numeric encoding" (Z.to_string expected)
-        (Z.to_string (Result.get_ok (Cerisier_codec.encode instruction))))
+        (Z.to_string (Result.get_ok (Cerisier.Codec.encode instruction))))
     [
       (EInit (Reg 1, Reg 2), Z.of_int 14392);
       (EDeInit (Reg 1), Z.of_int 569);
@@ -190,7 +190,7 @@ let codec () =
     (fun encoded ->
       Alcotest.(check bool)
         "malformed decode is structured" true
-        (Result.is_error (Cerisier_codec.decode encoded)))
+        (Result.is_error (Cerisier.Codec.decode encoded)))
     [
       Z.minus_one;
       Z.of_int 0x3e;
@@ -202,12 +202,12 @@ let codec () =
     (fun decode ->
       Alcotest.(check bool) "negative scalar rejected" true (Result.is_error (decode Z.minus_one)))
     [
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_permission z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_seal_permission z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_word_type z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_locality z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_permission_locality z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier_codec.decode_seal_permission_locality z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_permission z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_seal_permission z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_word_type z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_locality z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_permission_locality z));
+      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_seal_permission_locality z));
     ]
 
 let finite_bounds_and_edits () =
@@ -310,29 +310,29 @@ let parity_rules () =
     "historical SubSeg permits enlarged finite limit" "40" (Z.to_string loose.limit)
 
 let einit_configured_region () =
-  let open Cerisier_ast in
+  let open Cerisier.Ast in
   let b = Z.of_int 4 in
   let bounded_end = Z.pred (Runtime_config.max_addr config) in
   let oversized_end = Z.shift_left Z.one 100_000 in
   let make_state e =
-    let state = ok (Cerisier_machine.init config [] None) in
+    let state = ok (Cerisier.Machine.init config [] None) in
     state
-    |> Cerisier_machine.set_register PC
+    |> Cerisier.Machine.set_register PC
          (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
-    |> Cerisier_machine.set_register (Reg 31) (I Z.zero)
-    |> Cerisier_machine.set_register (Reg 2) (Sealable (Cap (RX, Global, b, e, Z.of_int 5)))
-    |> Cerisier_machine.set_memory_raw b
+    |> Cerisier.Machine.set_register (Reg 31) (I Z.zero)
+    |> Cerisier.Machine.set_register (Reg 2) (Sealable (Cap (RX, Global, b, e, Z.of_int 5)))
+    |> Cerisier.Machine.set_memory_raw b
          (Sealable (Cap (RW, Global, Z.of_int 2, Z.of_int 4, Z.of_int 2)))
-    |> Cerisier_machine.set_memory_raw (Z.of_int 3) (I (Z.of_int 99))
-    |> Cerisier_machine.set_memory_raw (Z.of_int 5) (I (Z.of_int 11))
-    |> Cerisier_machine.set_memory_raw (Z.of_int 7) (I (Z.of_int 22))
+    |> Cerisier.Machine.set_memory_raw (Z.of_int 3) (I (Z.of_int 99))
+    |> Cerisier.Machine.set_memory_raw (Z.of_int 5) (I (Z.of_int 11))
+    |> Cerisier.Machine.set_memory_raw (Z.of_int 7) (I (Z.of_int 22))
   in
-  let execute e = Cerisier_machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
+  let execute e = Cerisier.Machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
   let bounded = execute bounded_end
   and oversized = execute oversized_end
   and short = execute (Z.of_int 6) in
-  let identity (state : Cerisier_machine.t) =
-    Cerisier_machine.ETableMap.find Z.zero state.enclave_table
+  let identity (state : Cerisier.Machine.t) =
+    Cerisier.Machine.ETableMap.find Z.zero state.enclave_table
   in
   let rec expected_region address words =
     if address > bounded_end then List.rev words
@@ -357,7 +357,7 @@ let einit_configured_region () =
     (Z.to_string (identity short));
   List.iter
     (fun (label, requested_end, state) ->
-      match Cerisier_machine.read_register (Reg 1) state with
+      match Cerisier.Machine.read_register (Reg 1) state with
       | Sealable (Cap (E, Global, base, limit, cursor)) ->
           Alcotest.(check string) (label ^ " base") (Z.to_string b) (Z.to_string base);
           Alcotest.(check string)
@@ -391,11 +391,11 @@ let examples_and_lifecycle () =
     "stored enclave identity is observable" true
     (not (Z.equal (integer "r3" enclave) Z.zero));
   let enclave_source = In_channel.with_open_bin (fixture "enclave.s") In_channel.input_all in
-  let program = ok (Cerisier_parser.parse_program enclave_source) in
-  let direct = ok (Cerisier_machine.init config program None) |> Cerisier_machine.run in
+  let program = ok (Cerisier.Parser.parse_program enclave_source) in
+  let direct = ok (Cerisier.Machine.init config program None) |> Cerisier.Machine.run in
   Alcotest.(check int)
     "EDeInit removes the enclave table entry" 0
-    (Cerisier_machine.ETableMap.cardinal direct.enclave_table);
+    (Cerisier.Machine.ETableMap.cardinal direct.enclave_table);
   Alcotest.(check string) "enclave counter is monotone" "1" (Z.to_string direct.enclave_counter);
   let denied_init =
     session ~regfile:"r2 := (RX, GLOBAL, 3, 6, 4)"

@@ -1,0 +1,11 @@
+(library
+ (name cerise_griotte_extracted_private)
+ (package cerise-interpreter)
+ (wrapped true)
+ (libraries
+  cerise_core
+  cerise_griotte_contract
+  cerise_griotte_private
+  cerise_griotte_extracted_generated
+  zarith)
+ (flags (:standard -open Cerise_core)))

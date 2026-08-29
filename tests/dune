@@ -7,10 +7,11 @@
   cerisier_backend_tests
   griotte_backend_tests
   griotte_extracted_tests
- cli_ui_fixture_tests)
+  cli_ui_fixture_tests
+  public_api_compile)
  (deps
   (glob_files test_files/cerisier/pos/*.s))
- (libraries alcotest cerise cerise_internal))
+ (libraries alcotest cerise))
 
 (rule
  (alias runtest)
@@ -18,7 +19,7 @@
   ../scripts/check-griotte-extracted.sh
   ../scripts/regenerate-griotte-extracted.sh
   ../scripts/regeneration-gate.sh
-  ../lib/internal/extracted/griotte_extracted.ml
-  ../lib/internal/extracted/griotte_extracted.mli)
+  ../lib/griotte_extracted/generated/griotte_extracted.ml
+  ../lib/griotte_extracted/generated/griotte_extracted.mli)
  (action
   (run %{dep:../scripts/regeneration-gate.sh} --root %{workspace_root})))

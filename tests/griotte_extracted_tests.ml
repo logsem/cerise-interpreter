@@ -9,7 +9,7 @@ let z = Z.of_int
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
 let instructions =
-  let open Griotte_ast in
+  let open Griotte.Ast in
   let a = Reg 1 and b = Reg 2 and r = Register (Reg 3) and c = Constant (z (-7)) in
   [
     Jmp r;
@@ -80,23 +80,23 @@ let instructions =
 let encoding_identity () =
   List.iter
     (fun instruction ->
-      let expected = Result.get_ok (Griotte_codec.encode instruction) in
-      let actual = Result.get_ok (Griotte_extracted_codec.encode instruction) in
+      let expected = Result.get_ok (Griotte.Codec.encode instruction) in
+      let actual = Result.get_ok (Griotte_extracted.Codec.encode instruction) in
       Alcotest.(check string) "fixed numeric encoding" (Z.to_string expected) (Z.to_string actual);
       Alcotest.(check bool)
         "standalone round trip" true
-        (Griotte_extracted_codec.decode actual = Ok instruction))
+        (Griotte_extracted.Codec.decode actual = Ok instruction))
     instructions;
-  let open Griotte_ast in
+  let open Griotte.Ast in
   Alcotest.(check string)
     "negative Jmp golden" "-767"
-    (Z.to_string (Result.get_ok (Griotte_extracted_codec.encode (Jmp (Constant (z (-3)))))));
+    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jmp (Constant (z (-3)))))));
   Alcotest.(check string)
     "Jalr golden" "14340"
-    (Z.to_string (Result.get_ok (Griotte_extracted_codec.encode (Jalr (Reg 1, Reg 2)))));
+    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jalr (Reg 1, Reg 2)))));
   Alcotest.(check string)
     "Move negative constant golden" "47624"
-    (Z.to_string (Result.get_ok (Griotte_extracted_codec.encode (Move (Reg 1, Constant (z (-7)))))));
+    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (z (-7)))))));
   let permissions =
     List.concat_map
       (fun rx ->
@@ -112,57 +112,57 @@ let encoding_identity () =
     (fun permission ->
       Alcotest.(check string)
         "permission encoding identity"
-        (Z.to_string (Griotte_codec.encode_permission permission))
-        (Z.to_string (Griotte_extracted_codec.encode_permission permission));
+        (Z.to_string (Griotte.Codec.encode_permission permission))
+        (Z.to_string (Griotte_extracted.Codec.encode_permission permission));
       List.iter
         (fun locality ->
           Alcotest.(check string)
             "permission/locality encoding identity"
-            (Z.to_string (Griotte_codec.encode_permission_locality permission locality))
-            (Z.to_string (Griotte_extracted_codec.encode_permission_locality permission locality)))
+            (Z.to_string (Griotte.Codec.encode_permission_locality permission locality))
+            (Z.to_string (Griotte_extracted.Codec.encode_permission_locality permission locality)))
         [ Local; Global ])
     permissions;
   List.iter
     (fun seal_permission ->
       Alcotest.(check string)
         "seal-permission encoding identity"
-        (Z.to_string (Griotte_codec.encode_seal_permission seal_permission))
-        (Z.to_string (Griotte_extracted_codec.encode_seal_permission seal_permission));
+        (Z.to_string (Griotte.Codec.encode_seal_permission seal_permission))
+        (Z.to_string (Griotte_extracted.Codec.encode_seal_permission seal_permission));
       List.iter
         (fun locality ->
           Alcotest.(check string)
             "seal-permission/locality encoding identity"
-            (Z.to_string (Griotte_codec.encode_seal_permission_locality seal_permission locality))
+            (Z.to_string (Griotte.Codec.encode_seal_permission_locality seal_permission locality))
             (Z.to_string
-               (Griotte_extracted_codec.encode_seal_permission_locality seal_permission locality)))
+               (Griotte_extracted.Codec.encode_seal_permission_locality seal_permission locality)))
         [ Local; Global ])
     [ (false, false); (false, true); (true, false); (true, true) ];
   List.iter
     (fun word_type ->
       Alcotest.(check string)
         "word-type encoding identity"
-        (Z.to_string (Griotte_codec.encode_word_type word_type))
-        (Z.to_string (Griotte_extracted_codec.encode_word_type word_type)))
+        (Z.to_string (Griotte.Codec.encode_word_type word_type))
+        (Z.to_string (Griotte_extracted.Codec.encode_word_type word_type)))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ]
 
 let large_codec_round_trip () =
-  let open Griotte_ast in
+  let open Griotte.Ast in
   let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_019) (Z.of_int 0xa6)) in
   let instruction = Move (Reg 1, Constant large_constant) in
-  let handwritten = Result.get_ok (Griotte_codec.encode instruction) in
-  let extracted = Result.get_ok (Griotte_extracted_codec.encode instruction) in
+  let handwritten = Result.get_ok (Griotte.Codec.encode instruction) in
+  let extracted = Result.get_ok (Griotte_extracted.Codec.encode instruction) in
   Alcotest.(check string)
     "large finite encoding identity" (Z.to_string handwritten) (Z.to_string extracted);
   Alcotest.(check bool)
     "large finite handwritten round trip" true
-    (Griotte_codec.decode handwritten = Ok instruction);
+    (Griotte.Codec.decode handwritten = Ok instruction);
   Alcotest.(check bool)
     "large finite independent round trip" true
-    (Griotte_extracted_codec.decode extracted = Ok instruction)
+    (Griotte_extracted.Codec.decode extracted = Ok instruction)
 
 let decoder_totality () =
   let rejects value =
-    match Griotte_extracted_codec.decode value with
+    match Griotte_extracted.Codec.decode value with
     | Error _ -> true
     | Ok _ -> false
     | exception _ -> false
