@@ -32,6 +32,11 @@ module Expression : sig
     | Parameter of string
     | Add of t * t
     | Subtract of t * t
+    | Multiply of t * t
+    | Logand of t * t
+    | Logor of t * t
+    | Shift_left of t * t
+    | Shift_right of t * t
 
   val map_symbols : (string -> t) -> t -> t
   val map_parameters : (string -> t option) -> t -> t

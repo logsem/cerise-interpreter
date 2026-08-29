@@ -253,7 +253,8 @@ module Syntax = struct
         | Some _ ->
             Diagnostic.error (Printf.sprintf "$%s is not an expression parameter." name) :: acc
         | None -> Diagnostic.error (Printf.sprintf "Unknown macro parameter $%s." name) :: acc)
-    | Add (a,b) | Subtract (a,b) ->
+    | Add (a,b) | Subtract (a,b) | Multiply (a,b) | Logand (a,b) | Logor (a,b)
+    | Shift_left (a,b) | Shift_right (a,b) ->
         expression_parameters parameters (expression_parameters parameters acc a) b
     | _ -> acc
   let validate_register parameters acc = function

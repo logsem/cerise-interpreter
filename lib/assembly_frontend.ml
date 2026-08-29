@@ -104,7 +104,19 @@ let tokenize ?filename source =
           scan ending line
             (column + ending - index)
             (token (Identifier text) text line column index :: tokens)
-      | ('(' | ')' | '[' | ']' | '{' | '}' | ',' | ':' | '+' | '-' | '#') as punctuation ->
+      | '&' when index + 1 < length && Char.equal source.[index + 1] '&' ->
+          scan (index + 2) line (column + 2)
+            (token (Identifier "&&") "&&" line column index :: tokens)
+      | '|' when index + 1 < length && Char.equal source.[index + 1] '|' ->
+          scan (index + 2) line (column + 2)
+            (token (Identifier "||") "||" line column index :: tokens)
+      | '<' when index + 1 < length && Char.equal source.[index + 1] '<' ->
+          scan (index + 2) line (column + 2)
+            (token (Identifier "<<") "<<" line column index :: tokens)
+      | '>' when index + 1 < length && Char.equal source.[index + 1] '>' ->
+          scan (index + 2) line (column + 2)
+            (token (Identifier ">>") ">>" line column index :: tokens)
+      | ('(' | ')' | '[' | ']' | '{' | '}' | ',' | ':' | '+' | '-' | '*' | '#') as punctuation ->
           scan (index + 1) line (column + 1)
             (token (Punctuation punctuation) (String.make 1 punctuation) line column index :: tokens)
       | character ->
@@ -126,11 +138,26 @@ module Expression = struct
     | Parameter of string
     | Add of t * t
     | Subtract of t * t
+    | Multiply of t * t
+    | Logand of t * t
+    | Logor of t * t
+    | Shift_left of t * t
+    | Shift_right of t * t
+
+  let shift_count value =
+    if Z.sign value < 0 then Error "shift count must be non-negative"
+    else if not (Z.fits_int value) then Error "shift count does not fit in a machine integer"
+    else Ok (Z.to_int value)
 
   let rec map_symbols mapper = function
     | Symbol name -> mapper name
     | Add (left, right) -> Add (map_symbols mapper left, map_symbols mapper right)
     | Subtract (left, right) -> Subtract (map_symbols mapper left, map_symbols mapper right)
+    | Multiply (left, right) -> Multiply (map_symbols mapper left, map_symbols mapper right)
+    | Logand (left, right) -> Logand (map_symbols mapper left, map_symbols mapper right)
+    | Logor (left, right) -> Logor (map_symbols mapper left, map_symbols mapper right)
+    | Shift_left (left, right) -> Shift_left (map_symbols mapper left, map_symbols mapper right)
+    | Shift_right (left, right) -> Shift_right (map_symbols mapper left, map_symbols mapper right)
     | (Integer _ | Current_address | Max_address | Stack_address | Parameter _) as expression ->
         expression
 
@@ -138,6 +165,13 @@ module Expression = struct
     | Parameter name as expression -> Option.value (mapper name) ~default:expression
     | Add (left, right) -> Add (map_parameters mapper left, map_parameters mapper right)
     | Subtract (left, right) -> Subtract (map_parameters mapper left, map_parameters mapper right)
+    | Multiply (left, right) -> Multiply (map_parameters mapper left, map_parameters mapper right)
+    | Logand (left, right) -> Logand (map_parameters mapper left, map_parameters mapper right)
+    | Logor (left, right) -> Logor (map_parameters mapper left, map_parameters mapper right)
+    | Shift_left (left, right) ->
+        Shift_left (map_parameters mapper left, map_parameters mapper right)
+    | Shift_right (left, right) ->
+        Shift_right (map_parameters mapper left, map_parameters mapper right)
     | (Integer _ | Current_address | Max_address | Stack_address | Symbol _) as expression ->
         expression
 
@@ -150,6 +184,28 @@ module Expression = struct
         match (simplify left, simplify right) with
         | Integer left, Integer right -> Integer Z.(left - right)
         | left, right -> Subtract (left, right))
+    | Multiply (left, right) -> (
+        match (simplify left, simplify right) with
+        | Integer left, Integer right -> Integer Z.(left * right)
+        | left, right -> Multiply (left, right))
+    | Logand (left, right) -> (
+        match (simplify left, simplify right) with
+        | Integer left, Integer right -> Integer (Z.logand left right)
+        | left, right -> Logand (left, right))
+    | Logor (left, right) -> (
+        match (simplify left, simplify right) with
+        | Integer left, Integer right -> Integer (Z.logor left right)
+        | left, right -> Logor (left, right))
+    | Shift_left (left, right) -> (
+        match (simplify left, simplify right) with
+        | Integer left, Integer right when Z.sign right >= 0 && Z.fits_int right ->
+            Integer (Z.shift_left left (Z.to_int right))
+        | left, right -> Shift_left (left, right))
+    | Shift_right (left, right) -> (
+        match (simplify left, simplify right) with
+        | Integer left, Integer right when Z.sign right >= 0 && Z.fits_int right ->
+            Integer (Z.shift_right left (Z.to_int right))
+        | left, right -> Shift_right (left, right))
     | expression -> expression
 
   let rec evaluate_runtime config = function
@@ -163,6 +219,26 @@ module Expression = struct
     | Subtract (left, right) -> (
         match (evaluate_runtime config left, evaluate_runtime config right) with
         | Ok left, Ok right -> Ok Z.(left - right)
+        | Error message, _ | _, Error message -> Error message)
+    | Multiply (left, right) -> (
+        match (evaluate_runtime config left, evaluate_runtime config right) with
+        | Ok left, Ok right -> Ok Z.(left * right)
+        | Error message, _ | _, Error message -> Error message)
+    | Logand (left, right) -> (
+        match (evaluate_runtime config left, evaluate_runtime config right) with
+        | Ok left, Ok right -> Ok (Z.logand left right)
+        | Error message, _ | _, Error message -> Error message)
+    | Logor (left, right) -> (
+        match (evaluate_runtime config left, evaluate_runtime config right) with
+        | Ok left, Ok right -> Ok (Z.logor left right)
+        | Error message, _ | _, Error message -> Error message)
+    | Shift_left (left, right) -> (
+        match (evaluate_runtime config left, evaluate_runtime config right) with
+        | Ok left, Ok right -> Result.map (Z.shift_left left) (shift_count right)
+        | Error message, _ | _, Error message -> Error message)
+    | Shift_right (left, right) -> (
+        match (evaluate_runtime config left, evaluate_runtime config right) with
+        | Ok left, Ok right -> Result.map (Z.shift_right left) (shift_count right)
         | Error message, _ | _, Error message -> Error message)
     | Current_address -> Error "an unresolved current-address expression remains"
     | Symbol name -> Error (Printf.sprintf "an unresolved symbol %S remains" name)
@@ -205,6 +281,26 @@ let parse_expression tokens =
         match primary rest with
         | Error _ as error -> error
         | Ok (right, rest) -> continue (Expression.Subtract (left, right)) rest)
+    | operator :: rest when Token.kind operator = Punctuation '*' -> (
+        match primary rest with
+        | Error _ as error -> error
+        | Ok (right, rest) -> continue (Expression.Multiply (left, right)) rest)
+    | operator :: rest when Token.kind operator = Identifier "&&" -> (
+        match primary rest with
+        | Error _ as error -> error
+        | Ok (right, rest) -> continue (Expression.Logand (left, right)) rest)
+    | operator :: rest when Token.kind operator = Identifier "||" -> (
+        match primary rest with
+        | Error _ as error -> error
+        | Ok (right, rest) -> continue (Expression.Logor (left, right)) rest)
+    | operator :: rest when Token.kind operator = Identifier "<<" -> (
+        match primary rest with
+        | Error _ as error -> error
+        | Ok (right, rest) -> continue (Expression.Shift_left (left, right)) rest)
+    | operator :: rest when Token.kind operator = Identifier ">>" -> (
+        match primary rest with
+        | Error _ as error -> error
+        | Ok (right, rest) -> continue (Expression.Shift_right (left, right)) rest)
     | rest -> Ok (left, rest)
   in
   addition tokens
@@ -697,6 +793,31 @@ module Make (Syntax : SYNTAX) = struct
       | Subtract (left, right) ->
           Expression.simplify
             (Subtract
+               ( resolve_expression visiting current location left,
+                 resolve_expression visiting current location right ))
+      | Multiply (left, right) ->
+          Expression.simplify
+            (Multiply
+               ( resolve_expression visiting current location left,
+                 resolve_expression visiting current location right ))
+      | Logand (left, right) ->
+          Expression.simplify
+            (Logand
+               ( resolve_expression visiting current location left,
+                 resolve_expression visiting current location right ))
+      | Logor (left, right) ->
+          Expression.simplify
+            (Logor
+               ( resolve_expression visiting current location left,
+                 resolve_expression visiting current location right ))
+      | Shift_left (left, right) ->
+          Expression.simplify
+            (Shift_left
+               ( resolve_expression visiting current location left,
+                 resolve_expression visiting current location right ))
+      | Shift_right (left, right) ->
+          Expression.simplify
+            (Shift_right
                ( resolve_expression visiting current location left,
                  resolve_expression visiting current location right ))
     in

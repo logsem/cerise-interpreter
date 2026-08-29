@@ -3,6 +3,8 @@
 (library
  (name cerise_internal)
  (package cerise-interpreter)
+ (modules
+  (:standard \ griotte_extracted))
  (private_modules ir_expression_mapper macro_expander parser_driver)
  (libraries containers menhirLib zarith))
 

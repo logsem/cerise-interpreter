@@ -42,6 +42,14 @@
   mcerise_backend
   mcerise_state
   mcerise_view
+  griotte_ast
+  griotte_parser
+  griotte_codec
+  griotte_printer
+  griotte_machine
+  griotte_backend
+  griotte_state
+  griotte_view
   interim_legacy_backend
   backend_registry
   machine_session

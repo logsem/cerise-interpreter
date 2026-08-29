@@ -111,7 +111,13 @@ module Syntax_a = struct
         | None ->
             Diagnostic.error (Printf.sprintf "Unknown expression parameter $%s." name)
             :: diagnostics)
-    | Add (left, right) | Subtract (left, right) ->
+    | Add (left, right)
+    | Subtract (left, right)
+    | Multiply (left, right)
+    | Logand (left, right)
+    | Logor (left, right)
+    | Shift_left (left, right)
+    | Shift_right (left, right) ->
         expression_parameters parameters (expression_parameters parameters diagnostics left) right
     | Integer _ | Current_address | Max_address | Stack_address | Symbol _ -> diagnostics
 
@@ -261,6 +267,23 @@ let test_runtime_expressions_and_backend_specific_syntax () =
   in
   check_z "runtime max expression" (Z.of_int 99) (lookup "r1");
   check_z "runtime stack expression" (Z.of_int 62) (lookup "r2");
+  let negative_left_shift = Frontend.Expression.Shift_left (Integer Z.one, Integer Z.minus_one) in
+  let negative_right_shift = Frontend.Expression.Shift_right (Integer Z.one, Integer Z.minus_one) in
+  Alcotest.(check bool)
+    "invalid constant shift is not folded" true
+    (match Frontend.Expression.simplify negative_left_shift with
+    | Shift_left (Integer left, Integer right) -> Z.equal left Z.one && Z.equal right Z.minus_one
+    | _ -> false);
+  List.iter
+    (fun (name, expression) ->
+      Alcotest.(check (result string string))
+        name (Error "shift count must be non-negative")
+        (Result.map Z.to_string (Frontend.Expression.evaluate_runtime config expression)))
+    [ ("negative left shift", negative_left_shift); ("negative right shift", negative_right_shift) ];
+  (match Frontend_a.parse_program "set r1 1 + 2 * 3" |> get_ok with
+  | [ Syntax_a.Set (_, Integer result) ] ->
+      check_z "flat left-associative operators" (Z.of_int 9) result
+  | _ -> Alcotest.fail "common operators are not flat and left-associative");
   Alcotest.(check bool)
     "Fixture B has a different AST and raw shape" true
     (match Frontend_b.parse_program "push 4 # [5, 6] noop" |> get_ok with
