@@ -483,6 +483,7 @@ let capabilities_sealing_and_view () =
       "locality-cerise";
       "ucerise";
       "mcerise";
+      "cerisier";
       "griotte";
       "griotte-extracted";
     ]

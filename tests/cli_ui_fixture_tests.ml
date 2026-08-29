@@ -74,7 +74,7 @@ let test_cli () =
   match parse [ "--backend"; "missing"; "program.s" ] with
   | Error message ->
       Alcotest.(check string) "diagnostic lists names"
-        "Unknown backend \"missing\". Available backends: vanilla, cerise, locality-cerise, ucerise, mcerise, griotte, griotte-extracted."
+        "Unknown backend \"missing\". Available backends: vanilla, cerise, locality-cerise, ucerise, mcerise, cerisier, griotte, griotte-extracted."
         message
   | Ok _ -> Alcotest.fail "missing backend accepted"
 

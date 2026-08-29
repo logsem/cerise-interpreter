@@ -42,6 +42,12 @@
   mcerise_backend
   mcerise_state
   mcerise_view
+  cerisier_ast
+  cerisier_parser
+  cerisier_codec
+  cerisier_printer
+  cerisier_machine
+  cerisier_backend
   griotte_ast
   griotte_parser
   griotte_codec

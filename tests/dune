@@ -9,9 +9,12 @@
   core_architecture_tests
   active_backend_tests
   historical_backend_tests
+  cerisier_backend_tests
   griotte_backend_tests
   griotte_extracted_tests
-  cli_ui_fixture_tests)
+ cli_ui_fixture_tests)
+ (deps
+  (glob_files test_files/cerisier/pos/*.s))
  (libraries alcotest cerise cerise_internal))
 
 (rule
