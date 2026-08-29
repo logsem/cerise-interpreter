@@ -118,6 +118,47 @@ let parser_matrix () =
   Alcotest.(check bool) "u rejects Directed" true
     (Result.is_error (Ucerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"))
 
+let generated_construction_and_locations () =
+  let source =
+    "%define N 2 start: move r1 start + N %macro emit(x: expr) # $x %endmacro \
+     %emit(N + 5) halt"
+  in
+  ignore (ok (Ucerise.Parser.parse_program source));
+  ignore (ok (Mcerise.Parser.parse_program source));
+  ignore (ok (Ucerise.Parser.parse_regfile "r1 := 7 r2 := (URWL, LOCAL, 0, 8, 1)"));
+  ignore (ok (Mcerise.Parser.parse_regfile "r1 := 7 r2 := (URWL, DIRECTED, 0, 8, 1)"));
+  let check_location label expected_line expected_column = function
+    | Error (diagnostic :: _) -> (
+        match Diagnostic.location diagnostic with
+        | Some location ->
+            Alcotest.(check (option string)) (label ^ " filename") (Some "historical.s")
+              location.source;
+            Alcotest.(check int) (label ^ " line") expected_line location.line;
+            Alcotest.(check int) (label ^ " column") expected_column location.column
+        | None -> Alcotest.fail (label ^ " diagnostic has no source location"))
+    | Error [] -> Alcotest.fail (label ^ " returned no diagnostics")
+    | Ok _ -> Alcotest.fail (label ^ " unexpectedly parsed")
+  in
+  Ucerise.Parser.parse_program ~filename:"historical.s" "halt\n@"
+  |> check_location "u lexer" 2 1;
+  Mcerise.Parser.parse_program ~filename:"historical.s" "halt\nmove r1"
+  |> check_location "m parser" 2 8;
+  let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
+  let u_word = ok (Ucerise.Parser.parse_word "(URWLX, LOCAL, 1, 9, 4)") in
+  let u_concrete = ok (Ucerise.Asm_ir.lower_word config u_word) in
+  let u_round_trip =
+    ok (Ucerise.Parser.parse_word (Ucerise.Printer.word u_concrete))
+    |> Ucerise.Asm_ir.lower_word config |> ok
+  in
+  Alcotest.(check bool) "u word round trip" true (u_concrete = u_round_trip);
+  let m_word = ok (Mcerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)") in
+  let m_concrete = ok (Mcerise.Asm_ir.lower_word config m_word) in
+  let m_round_trip =
+    ok (Mcerise.Parser.parse_word (Mcerise.Printer.word m_concrete))
+    |> Mcerise.Asm_ir.lower_word config |> ok
+  in
+  Alcotest.(check bool) "m word round trip" true (m_concrete = m_round_trip)
+
 let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) ()
 let session backend ?regfile source =
   ok (Machine_session.create ~backend ~config ~source ~regfile)
@@ -232,6 +273,8 @@ let () =
   Alcotest.run "historical backends"
     [("isa",[Alcotest.test_case "allocations" `Quick allocations;
              Alcotest.test_case "codec matrix" `Quick codecs;
-             Alcotest.test_case "parser matrix" `Quick parser_matrix]);
+             Alcotest.test_case "parser matrix" `Quick parser_matrix;
+             Alcotest.test_case "generated construction and locations" `Quick
+               generated_construction_and_locations]);
      ("machine",[Alcotest.test_case "semantics" `Quick semantics;
                  Alcotest.test_case "sessions and edits" `Quick sessions_and_edits])]

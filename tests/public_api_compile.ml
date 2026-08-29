@@ -19,6 +19,7 @@ module Locality_state = Cerise.Locality_cerise.State
 module Locality_view = Cerise.Locality_cerise.View
 
 module Ucerise_ast = Cerise.Ucerise.Ast
+module Ucerise_asm_ir = Cerise.Ucerise.Asm_ir
 module Ucerise_parser = Cerise.Ucerise.Parser
 module Ucerise_printer = Cerise.Ucerise.Printer
 module Ucerise_codec = Cerise.Ucerise.Codec
@@ -28,6 +29,7 @@ module Ucerise_state = Cerise.Ucerise.State
 module Ucerise_view = Cerise.Ucerise.View
 
 module Mcerise_ast = Cerise.Mcerise.Ast
+module Mcerise_asm_ir = Cerise.Mcerise.Asm_ir
 module Mcerise_parser = Cerise.Mcerise.Parser
 module Mcerise_printer = Cerise.Mcerise.Printer
 module Mcerise_codec = Cerise.Mcerise.Codec

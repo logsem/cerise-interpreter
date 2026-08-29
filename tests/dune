@@ -42,3 +42,23 @@
   ../lib/core/assembly_construction.mli)
  (action
   (run %{dep:../scripts/active-parser-architecture-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps
+  ../scripts/historical-parser-architecture-gate.sh
+  ../lib/ucerise/ast.ml
+  ../lib/ucerise/asm_ir.ml
+  ../lib/ucerise/parser.mly
+  ../lib/ucerise/parser_api.ml
+  ../lib/ucerise/dune
+  ../lib/mcerise/ast.ml
+  ../lib/mcerise/asm_ir.ml
+  ../lib/mcerise/parser.mly
+  ../lib/mcerise/parser_api.ml
+  ../lib/mcerise/dune
+  ../lib/assembly/token_spec.mly
+  ../lib/assembly/lexer.mll
+  ../lib/assembly/common_parser.mly)
+ (action
+  (run %{dep:../scripts/historical-parser-architecture-gate.sh} --root %{workspace_root})))

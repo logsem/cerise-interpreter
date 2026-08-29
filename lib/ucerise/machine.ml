@@ -4,93 +4,19 @@ module RegMap = Map.Make(struct type t = register let compare = compare end)
 module MemMap = Map.Make(Z)
 type status = Running | Halted | Failed
 type t = { config: Runtime_config.t; status: status; registers: word RegMap.t; memory: word MemMap.t }
-let diagnostic s = Error [Diagnostic.error s]
-let ( let* ) = Result.bind
-
-let eval config expression =
-  match Assembly_frontend.Expression.evaluate_runtime config expression with
-  | Ok z -> Ok z | Error e -> diagnostic e
-let lower_permission = function
-  | Permission_literal p -> Ok p
-  | Permission_parameter n -> diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." n)
-let lower_locality = function
-  | Locality l -> Ok l
-  | Locality_parameter n -> diagnostic (Printf.sprintf "Unexpanded locality parameter $%s." n)
-let lower_word config = function
-  | I_term e -> Result.map (fun z -> I z) (eval config e)
-  | Cap_term (p,l,b,e,a) ->
-      let* p = lower_permission p in let* l = lower_locality l in
-      let* b = eval config b in let* e = eval config e in
-      Result.map (fun a -> Cap (Cap (p,l,b,e,a))) (eval config a)
-let lower_register = function
-  | Named r -> Ok r
-  | Register_parameter n -> diagnostic (Printf.sprintf "Unexpanded register parameter $%s." n)
-let lower_constant config = function
-  | Expression e -> eval config e
-  | Permission p -> Ok (Codec.encode_permission p)
-  | Permission_locality (p,l) ->
-      let* p = lower_permission p in Result.map (Codec.encode_permission_locality p) (lower_locality l)
-  | Parameterized_permission_locality (n,_) ->
-      diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." n)
-  | Locality_constant l -> Ok (Codec.encode_locality l)
-  | Value_parameter n -> diagnostic (Printf.sprintf "Unexpanded value parameter $%s." n)
-let lower_operand config = function
-  | Register_term r -> Result.map (fun r -> Register r) (lower_register r)
-  | Constant_term c -> Result.map (fun z -> Constant z) (lower_constant config c)
-let lower_instruction config op =
-  let r = lower_register and o = lower_operand config in
-  let rr c a b = let* a = r a in Result.map (fun b -> c (a,b)) (r b) in
-  let ro c a b = let* a = r a in Result.map (fun b -> c (a,b)) (o b) in
-  let roo c a b d = let* a = r a in let* b = o b in Result.map (fun d -> c (a,b,d)) (o d) in
-  let rro c a b d = let* a = r a in let* b = r b in Result.map (fun d -> c (a,b,d)) (o d) in
-  match op with
-  | Jmp_term a -> Result.map (fun a -> Jmp a) (r a)
-  | Jnz_term (a,b) -> rr (fun (a,b) -> Jnz (a,b)) a b
-  | Move_term (a,b) -> ro (fun (a,b) -> Move (a,b)) a b
-  | Load_term (a,b) -> rr (fun (a,b) -> Load (a,b)) a b
-  | Store_term (a,b) -> ro (fun (a,b) -> Store (a,b)) a b
-  | Add_term (a,b,c) -> roo (fun (a,b,c) -> Add (a,b,c)) a b c
-  | Sub_term (a,b,c) -> roo (fun (a,b,c) -> Sub (a,b,c)) a b c
-  | Lt_term (a,b,c) -> roo (fun (a,b,c) -> Lt (a,b,c)) a b c
-  | Lea_term (a,b) -> ro (fun (a,b) -> Lea (a,b)) a b
-  | Restrict_term (a,b) -> ro (fun (a,b) -> Restrict (a,b)) a b
-  | SubSeg_term (a,b,c) -> roo (fun (a,b,c) -> SubSeg (a,b,c)) a b c
-  | IsPtr_term (a,b) -> rr (fun (a,b) -> IsPtr (a,b)) a b
-  | GetP_term (a,b) -> rr (fun (a,b) -> GetP (a,b)) a b
-  | GetL_term (a,b) -> rr (fun (a,b) -> GetL (a,b)) a b
-  | GetB_term (a,b) -> rr (fun (a,b) -> GetB (a,b)) a b
-  | GetE_term (a,b) -> rr (fun (a,b) -> GetE (a,b)) a b
-  | GetA_term (a,b) -> rr (fun (a,b) -> GetA (a,b)) a b
-  | Fail_term -> Ok Fail | Halt_term -> Ok Halt
-  | LoadU_term (a,b,c) -> rro (fun (a,b,c) -> LoadU (a,b,c)) a b c
-  | StoreU_term (a,b,c) -> roo (fun (a,b,c) -> StoreU (a,b,c)) a b c
-  | PromoteU_term a -> Result.map (fun a -> PromoteU a) (r a)
-
-let lower_program config program =
-  let rec loop addr memory = function
-    | [] -> Ok memory
-    | statement::rest -> (
-        match statement with
-        | Word term -> let* w = lower_word config term in loop Z.(succ addr) (MemMap.add addr w memory) rest
-        | Op term ->
-            let* op = lower_instruction config term in
-            match Codec.encode op with
-            | Ok z -> loop Z.(succ addr) (MemMap.add addr (I z) memory) rest
-            | Error e -> diagnostic (Instruction_codec.error_message e))
-  in loop Z.zero MemMap.empty program
-
 let init config program regfile =
   let stack = Runtime_config.stack_addr config and limit = Runtime_config.max_addr config in
   let registers = List.init 32 (fun n -> Reg n,I Z.zero) |> List.to_seq |> RegMap.of_seq in
   let registers = registers
     |> RegMap.add PC (Cap (Cap (RWX,Global,Z.zero,stack,Z.zero)))
     |> RegMap.add (Reg 31) (Cap (Cap (URWLX,Local,stack,limit,stack))) in
-  let* registers =
-    match regfile with None -> Ok registers | Some entries ->
-      List.fold_left (fun acc (r,w) ->
-        let* regs = acc in Result.map (fun w -> RegMap.add r w regs) (lower_word config w))
-        (Ok registers) entries in
-  Result.map (fun memory -> {config; status=Running; registers; memory}) (lower_program config program)
+  let registers =
+    match regfile with
+    | None -> registers
+    | Some entries -> List.fold_left (fun registers (r,w) -> RegMap.add r w registers) registers entries
+  in
+  let memory = List.mapi (fun address word -> Z.of_int address, word) program |> List.to_seq |> MemMap.of_seq in
+  {config; status=Running; registers; memory}
 
 let read_register r s = RegMap.find r s.registers
 let read_memory a s =
