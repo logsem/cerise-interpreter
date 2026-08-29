@@ -1,6 +1,6 @@
 type t =
   | Session :
-      (module Machine_backend.S with type state = 'state and type word = 'word) * 'state
+      (module Machine_backend.S with type state = 'state and type word = 'word) * string * 'state
       -> t
 
 type execution_error = Machine_backend.execution_error
@@ -18,49 +18,46 @@ let unknown_backend name =
   let available = String.concat ", " (Backend_registry.names ()) in
   Diagnostic.error (Printf.sprintf "Unknown backend %S. Available backends: %s." name available)
 
-let create_with_backend config source regfile (module Backend : Machine_backend.S) =
-  match Surface_ast.parse_program source with
+let create_with_backend requested_name config source regfile (module Backend : Machine_backend.S) =
+  match Backend.parse_program source with
   | Error _ as error -> error
-  | Ok surface_program -> (
-      match Backend.lower_program surface_program with
+  | Ok program -> (
+      let regfile_result =
+        match regfile with
+        | None -> Ok None
+        | Some source -> Result.map Option.some (Backend.parse_regfile source)
+      in
+      match regfile_result with
       | Error _ as error -> error
-      | Ok program -> (
-          let regfile_result =
-            match regfile with
-            | None -> Ok None
-            | Some source -> (
-                match Surface_ast.parse_regfile source with
-                | Error _ as error -> error
-                | Ok parsed ->
-                    let resolved = Surface_ast.resolve_regfile config parsed in
-                    Result.map Option.some (Backend.lower_regfile resolved))
-          in
-          match regfile_result with
+      | Ok regfile -> (
+          match Backend.init config program regfile with
           | Error _ as error -> error
-          | Ok regfile -> (
-              match Backend.init config program regfile with
-              | Error _ as error -> error
-              | Ok state ->
-                  Ok
-                    (Session
-                       ( (module Backend : Machine_backend.S
-                           with type state = Backend.state
-                            and type word = Backend.word),
-                         state )))))
+          | Ok state ->
+              Ok
+                (Session
+                   ( (module Backend : Machine_backend.S
+                       with type state = Backend.state
+                        and type word = Backend.word),
+                     requested_name,
+                     state ))))
 
 let create ~backend ~config ~source ~regfile =
   match Backend_registry.find backend with
   | None -> Error [ unknown_backend backend ]
-  | Some selected -> create_with_backend config source regfile selected
+  | Some selected -> create_with_backend backend config source regfile selected
 
-let backend_name (Session ((module Backend), _)) = Backend.name
-let view (Session ((module Backend), state)) = Backend.inspect state
+let backend_name (Session (_, requested_name, _)) = requested_name
 
-let step (Session ((module Backend), state)) =
-  Result.map (fun state -> Session ((module Backend), state)) (Backend.step state)
+let view (Session ((module Backend), requested_name, state)) =
+  { (Backend.inspect state) with backend_name = requested_name }
 
-let step_n count (Session ((module Backend), state)) =
-  Result.map (fun state -> Session ((module Backend), state)) (Backend.step_n count state)
+let step (Session ((module Backend), requested_name, state)) =
+  Result.map (fun state -> Session ((module Backend), requested_name, state)) (Backend.step state)
+
+let step_n count (Session ((module Backend), requested_name, state)) =
+  Result.map
+    (fun state -> Session ((module Backend), requested_name, state))
+    (Backend.step_n count state)
 
 let has_breakpoint breakpoints pc =
   match pc with
@@ -94,18 +91,18 @@ let run ?(breakpoints = []) ?max_steps session =
       }
   | _ -> loop 0 session
 
-let set_register_text id source (Session ((module Backend), state)) =
+let set_register_text id source (Session ((module Backend), requested_name, state)) =
   match Backend.parse_word source with
   | Error _ as error -> error
   | Ok word ->
       Result.map
-        (fun state -> Session ((module Backend), state))
+        (fun state -> Session ((module Backend), requested_name, state))
         (Backend.set_register id word state)
 
-let set_memory_text address source (Session ((module Backend), state)) =
+let set_memory_text address source (Session ((module Backend), requested_name, state)) =
   match Backend.parse_word source with
   | Error _ as error -> error
   | Ok word ->
       Result.map
-        (fun state -> Session ((module Backend), state))
+        (fun state -> Session ((module Backend), requested_name, state))
         (Backend.set_memory address word state)

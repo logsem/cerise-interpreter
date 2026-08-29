@@ -5,7 +5,8 @@
   cerise
   runtime_config
   diagnostic
-  surface_ast
+  assembly_frontend
+  instruction_codec
   machine_view
   machine_backend
   interim_legacy_backend

@@ -1,10 +1,12 @@
-let backends : (module Machine_backend.S) list =
-  [ (module Interim_legacy_backend : Machine_backend.S) ]
+type entry = { requested_name : string; backend : (module Machine_backend.S) }
 
-let default = Interim_legacy_backend.name
-let names () = List.map (fun (module Backend : Machine_backend.S) -> Backend.name) backends
+let backends =
+  [ { requested_name = "cerise"; backend = (module Interim_legacy_backend : Machine_backend.S) } ]
+
+let default = "cerise"
+let names () = List.map (fun entry -> entry.requested_name) backends
 
 let find name =
-  List.find_opt
-    (fun (module Backend : Machine_backend.S) -> String.equal name Backend.name)
+  List.find_map
+    (fun entry -> if String.equal name entry.requested_name then Some entry.backend else None)
     backends

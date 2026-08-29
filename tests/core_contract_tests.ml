@@ -27,7 +27,7 @@ let create ?(source = "halt") ?regfile () =
     ~regfile
   |> get_ok
 
-let test_parser_is_backend_independent () =
+let test_backend_owns_parser () =
   let source = "getl r1 stk\nseal r2 r0 r0\npromoteU r3\nrestrict r4 (RW, DIRECTED)\nhalt" in
   let profiles =
     [
@@ -46,13 +46,12 @@ let test_parser_is_backend_independent () =
       List.iter
         (fun profile ->
           Parameters.flags := profile;
-          let surface = Surface_ast.parse_program source |> get_ok in
-          Alcotest.(check string)
-            "shared parser does not change the selected legacy profile" profile.version
-            !Parameters.flags.version;
           let selected = Backend_registry.find Backend_registry.default |> Option.get in
           let module Backend = (val selected : Machine_backend.S) in
-          ignore (Backend.lower_program surface |> get_ok))
+          ignore (Backend.parse_program source |> get_ok);
+          Alcotest.(check string)
+            "backend parser does not leak the selected legacy profile" profile.version
+            !Parameters.flags.version)
         profiles)
 
 let capability_metadata bank key session =
@@ -125,6 +124,10 @@ let test_registry_and_shared_frontend () =
   Alcotest.(check string) "interim default" "cerise" Backend_registry.default;
   Alcotest.(check (list string))
     "one deterministic backend" [ "cerise" ] (Backend_registry.names ());
+  let selected = Backend_registry.find "cerise" |> Option.get in
+  let module Backend = (val selected : Machine_backend.S) in
+  Alcotest.(check string)
+    "registry key is separate from canonical name" "interim-legacy" Backend.name;
   let source =
     "%macro put(reg:reg, value:value)\n\
      mov $reg $value\n\
@@ -135,6 +138,11 @@ let test_registry_and_shared_frontend () =
      # 7"
   in
   let session = create ~source () in
+  Alcotest.(check string)
+    "requested backend spelling retained" "cerise"
+    (Machine_session.backend_name session);
+  Alcotest.(check string)
+    "requested spelling reaches the view" "cerise" (Machine_session.view session).backend_name;
   let stepped = Machine_session.step session |> Result.get_ok in
   check_z "macro and label resolved before lowering" (Z.of_int 2)
     (int_word (register_word Machine_view.General "r1" stepped));
@@ -245,16 +253,18 @@ let test_diagnostics () =
     | _ -> false);
   Alcotest.(check bool)
     "parse diagnostic carries a source position" true
-    (match Surface_ast.parse_program "mov r1" with
-    | Error (diagnostic :: _) -> Option.is_some (Diagnostic.location diagnostic)
-    | _ -> false)
+    (let selected = Backend_registry.find Backend_registry.default |> Option.get in
+     let module Backend = (val selected : Machine_backend.S) in
+     match Backend.parse_program ~filename:"broken.s" "mov r1" with
+     | Error (diagnostic :: _) -> Option.is_some (Diagnostic.location diagnostic)
+     | _ -> false)
 
 let () =
   Alcotest.run "Core contracts"
     [
       ( "session/view",
         [
-          Alcotest.test_case "backend-independent parser" `Quick test_parser_is_backend_independent;
+          Alcotest.test_case "backend-owned parser" `Quick test_backend_owns_parser;
           Alcotest.test_case "interleaved runtime configs" `Quick test_interleaved_runtime_configs;
           Alcotest.test_case "registry and shared frontend" `Quick test_registry_and_shared_frontend;
           Alcotest.test_case "pure ordered view" `Quick test_view_purity_and_ordering;

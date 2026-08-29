@@ -15,13 +15,13 @@ module type S = sig
   type word
   type state
 
-  val lower_program : Surface_ast.program -> (program, Diagnostic.t list) result
-  val lower_regfile : Surface_ast.regfile -> (regfile, Diagnostic.t list) result
+  val parse_program : ?filename:string -> string -> (program, Diagnostic.t list) result
+  val parse_regfile : ?filename:string -> string -> (regfile, Diagnostic.t list) result
+  val parse_word : ?filename:string -> string -> (word, Diagnostic.t list) result
   val init : Runtime_config.t -> program -> regfile option -> (state, Diagnostic.t list) result
   val step : state -> (state, execution_error) result
   val step_n : int -> state -> (state, execution_error) result
   val inspect : state -> Machine_view.t
-  val parse_word : string -> (word, Diagnostic.t list) result
 
   val set_register :
     Machine_view.Register_id.t -> word -> state -> (state, Diagnostic.t list) result

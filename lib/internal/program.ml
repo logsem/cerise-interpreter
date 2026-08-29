@@ -48,6 +48,9 @@ let parse_prog_from_string (source : string) : (Ast.t, string) Result.t =
   let filebuf = Lexing.from_string source in
   parse_prog_from_lexbuf filebuf
 
+let parse_regfile_ir_from_lexbuf (filebuf : Lexing.lexbuf) : (Irreg.t, string) Result.t =
+  try Parser_driver.parse_regfile filebuf with Failure message -> Error (failure_message message)
+
 let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) (stk_addr : Z.t) :
     (Ast.word Machine.RegMap.t, string) Result.t =
   try

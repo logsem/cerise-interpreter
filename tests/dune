@@ -1,3 +1,10 @@
 (tests
- (names tests tester program_errors macro_tests baseline_characterization core_contract_tests)
+ (names
+  tests
+  tester
+  program_errors
+  macro_tests
+  baseline_characterization
+  core_contract_tests
+  core_architecture_tests)
  (libraries alcotest cerise cerise_internal))
