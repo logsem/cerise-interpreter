@@ -50,6 +50,8 @@
   griotte_backend
   griotte_state
   griotte_view
+  griotte_extracted_codec
+  griotte_extracted_backend
   interim_legacy_backend
   backend_registry
   machine_session

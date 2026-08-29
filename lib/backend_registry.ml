@@ -5,6 +5,7 @@ let locality_cerise = (module Locality_cerise_backend : Machine_backend.S)
 let ucerise = (module Ucerise_backend : Machine_backend.S)
 let mcerise = (module Mcerise_backend : Machine_backend.S)
 let griotte = (module Griotte_backend : Machine_backend.S)
+let griotte_extracted = (module Griotte_extracted_backend : Machine_backend.S)
 
 let backends =
   [
@@ -14,6 +15,7 @@ let backends =
     { requested_name = "ucerise"; backend = ucerise };
     { requested_name = "mcerise"; backend = mcerise };
     { requested_name = "griotte"; backend = griotte };
+    { requested_name = "griotte-extracted"; backend = griotte_extracted };
   ]
 
 let default = "vanilla"

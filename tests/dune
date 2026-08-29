@@ -10,5 +10,17 @@
   active_backend_tests
   historical_backend_tests
   griotte_backend_tests
+  griotte_extracted_tests
   cli_ui_fixture_tests)
  (libraries alcotest cerise cerise_internal))
+
+(rule
+ (alias runtest)
+ (deps
+  ../scripts/check-griotte-extracted.sh
+  ../scripts/regenerate-griotte-extracted.sh
+  ../scripts/regeneration-gate.sh
+  ../lib/internal/extracted/griotte_extracted.ml
+  ../lib/internal/extracted/griotte_extracted.mli)
+ (action
+  (run %{dep:../scripts/regeneration-gate.sh} --root %{workspace_root})))

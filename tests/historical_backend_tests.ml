@@ -226,7 +226,7 @@ let sessions_and_edits () =
   Alcotest.(check (list string)) "word edit" ["URW"]
     (cap Machine_view.General "r2" edited).permissions;
   Alcotest.(check (list string)) "registry order"
-    ["vanilla";"cerise";"locality-cerise";"ucerise";"mcerise";"griotte"] (Backend_registry.names ())
+    ["vanilla";"cerise";"locality-cerise";"ucerise";"mcerise";"griotte";"griotte-extracted"] (Backend_registry.names ())
 
 let () =
   Alcotest.run "historical backends"

@@ -24,6 +24,7 @@
                 (inDirectory "src")
                 (inDirectory "lib")
                 (inDirectory "tests")
+                (inDirectory "scripts")
               ];
             };
 

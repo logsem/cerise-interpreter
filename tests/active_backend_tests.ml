@@ -316,7 +316,7 @@ let initial_views_and_alias () =
   Alcotest.(check string) "default" "vanilla" Backend_registry.default;
   Alcotest.(check (list string))
     "names"
-    [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "griotte" ]
+    [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "griotte"; "griotte-extracted" ]
     (Backend_registry.names ());
   Alcotest.(check bool)
     "old name absent" true

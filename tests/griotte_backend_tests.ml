@@ -477,11 +477,19 @@ let capabilities_sealing_and_view () =
   check_z "immutable session" Z.zero (int_reg "cra" initial);
   Alcotest.(check (list string))
     "registry order"
-    [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "griotte" ]
+    [
+      "vanilla";
+      "cerise";
+      "locality-cerise";
+      "ucerise";
+      "mcerise";
+      "griotte";
+      "griotte-extracted";
+    ]
     (Backend_registry.names ());
   Alcotest.(check bool)
-    "extracted deferred" true
-    (Result.is_error
+    "extracted registered" true
+    (Result.is_ok
        (Machine_session.create ~backend:"griotte-extracted" ~config ~source:"halt" ~regfile:None))
 
 let resolve_file path = if Sys.file_exists path then path else "../../../" ^ path

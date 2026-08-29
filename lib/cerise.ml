@@ -52,3 +52,5 @@ module Griotte_codec = Griotte_codec
 module Griotte_machine = Griotte_machine
 module Griotte_state = Griotte_state
 module Griotte_view = Griotte_view
+module Griotte_extracted = Griotte_extracted_backend
+module Griotte_extracted_codec = Griotte_extracted_codec
