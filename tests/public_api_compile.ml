@@ -46,6 +46,7 @@ module Cerisier_machine = Cerise.Cerisier.Machine
 module Cerisier_backend = Cerise.Cerisier.Backend
 
 module Griotte_ast = Cerise.Griotte.Ast
+module Griotte_asm_ir = Cerise.Griotte.Asm_ir
 module Griotte_parser = Cerise.Griotte.Parser
 module Griotte_printer = Cerise.Griotte.Printer
 module Griotte_codec = Cerise.Griotte.Codec
@@ -55,6 +56,7 @@ module Griotte_state = Cerise.Griotte.State
 module Griotte_view = Cerise.Griotte.View
 
 module Extracted_ast = Cerise.Griotte_extracted.Ast
+module Extracted_asm_ir = Cerise.Griotte_extracted.Asm_ir
 module Extracted_parser = Cerise.Griotte_extracted.Parser
 module Extracted_printer = Cerise.Griotte_extracted.Printer
 module Extracted_codec = Cerise.Griotte_extracted.Codec

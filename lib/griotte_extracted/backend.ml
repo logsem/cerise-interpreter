@@ -1,16 +1,18 @@
-module Ast = Cerise_griotte_contract.Ast
-module Parser = Cerise_griotte_contract.Parser
-module Printer = Cerise_griotte_contract.Printer
-module Loader = Cerise_griotte_private.Machine
+module Ast = Ast
+module Asm_ir = Asm_ir
+module Parser = Parser_api
+module Printer = Printer
+module State = State
+module View = View
 module E = Cerise_griotte_extracted_generated.Griotte_extracted
 module Xcodec = Codec
 
 let name = "griotte-extracted"
 let description = "Rocq-extracted CHERIoT-inspired Griotte capability machine"
 
-type asm_program = Ast.program
-type asm_regfile = Ast.regfile
-type asm_word = Ast.word_term
+type asm_program = Asm_ir.program
+type asm_regfile = Asm_ir.regfile
+type asm_word = Asm_ir.word
 
 (* The generated machine fixes MemNum and ONum at this exclusive bound. *)
 let extracted_bound = Z.of_int 2_000_000
@@ -389,7 +391,7 @@ let parameters : E.machineParameters =
         | Error _ -> raise Boundary_decode);
   }
 
-type state = { config : Runtime_config.t; raw : E.conf; snapshot : Loader.t }
+type state = { config : Runtime_config.t; raw : E.conf; snapshot : State.t }
 
 let map_bindings_to_e bindings empty insert key_convert =
   List.fold_left
@@ -400,19 +402,19 @@ let map_bindings_to_e bindings empty insert key_convert =
       Ok (insert map key word))
     (Ok empty) bindings
 
-let raw_of_snapshot (snapshot : Loader.t) =
+let raw_of_snapshot (snapshot : State.t) =
   let* registers =
     map_bindings_to_e
-      (Loader.RegMap.bindings snapshot.registers)
+      (State.RegMap.bindings snapshot.registers)
       E.reg_empty E.reg_insert register_to_e
   in
   let* system_registers =
-    map_bindings_to_e (Loader.SRegMap.bindings snapshot.system_registers) E.sreg_empty E.sreg_insert
+    map_bindings_to_e (State.SRegMap.bindings snapshot.system_registers) E.sreg_empty E.sreg_insert
       (fun sr -> Ok (system_register_to_e sr))
   in
   let* memory =
     map_bindings_to_e
-      (Loader.MemMap.bindings snapshot.memory)
+      (State.MemMap.bindings snapshot.memory)
       E.mem_empty E.mem_insert (finz_to_e "memory address")
   in
   Ok (E.Executable, ((registers, system_registers), memory))
@@ -431,52 +433,28 @@ let snapshot_of_raw config (flag, conf) =
     let* registers =
       fold_extracted
         (E.reg_elements (E.reg0 conf))
-        Loader.RegMap.empty Loader.RegMap.add register_of_e
+        State.RegMap.empty State.RegMap.add register_of_e
     in
-    let registers = Loader.RegMap.add Ast.cnull (Ast.I Z.zero) registers in
+    let registers = State.RegMap.add Ast.cnull (Ast.I Z.zero) registers in
     let* system_registers =
       fold_extracted
         (E.sreg_elements (E.sreg conf))
-        Loader.SRegMap.empty Loader.SRegMap.add
+        State.SRegMap.empty State.SRegMap.add
         (fun sr -> Ok (system_register_of_e sr))
     in
     let* memory =
-      fold_extracted (E.mem_elements (E.mem0 conf)) Loader.MemMap.empty Loader.MemMap.add finz_of_e
+      fold_extracted (E.mem_elements (E.mem0 conf)) State.MemMap.empty State.MemMap.add finz_of_e
     in
     let status =
       match flag with
-      | E.Executable | NextI -> Loader.Running
-      | Halted -> Loader.Halted
-      | Failed -> Loader.Failed
+      | E.Executable | NextI -> State.Running
+      | Halted -> State.Halted
+      | Failed -> State.Failed
     in
-    Ok { Loader.config; status; registers; system_registers; memory }
+    Ok { State.config; status; registers; system_registers; memory }
   with _ -> boundary_error "exception while converting an extracted configuration"
 
-let fail_state state = { state with snapshot = { state.snapshot with status = Loader.Failed } }
-
-let lower_program config program =
-  let rec loop address memory = function
-    | [] -> Ok memory
-    | statement :: rest ->
-        let* word =
-          match statement with
-          | Ast.Word term -> Loader.lower_word config term
-          | Ast.Op term -> (
-              let* instruction = Loader.lower_instruction config term in
-              match Xcodec.encode instruction with
-              | Ok encoded -> Ok (Ast.I encoded)
-              | Error message -> diagnostic ("Extracted Griotte encoding failed: " ^ message))
-        in
-        if Loader.word_is_derived word then
-          loop Z.(succ address) (Loader.MemMap.add address word memory) rest
-        else
-          diagnostic
-            (Printf.sprintf
-               "Initial program word at address %s is not derived from a Griotte architectural \
-                root."
-               (Z.to_string address))
-  in
-  loop Z.zero Loader.MemMap.empty program
+let fail_state state = { state with snapshot = { state.snapshot with status = State.Failed } }
 
 let init config program regfile =
   if Z.compare (Runtime_config.max_addr config) extracted_bound > 0 then
@@ -485,9 +463,13 @@ let init config program regfile =
          (Z.to_string (Runtime_config.max_addr config))
          (Z.to_string extracted_bound))
   else
-    let* base = Loader.init config [] regfile in
-    let* memory = lower_program config program in
-    let snapshot = { base with memory } in
+    let* program = Asm_ir.lower_program config program in
+    let* regfile =
+      match regfile with
+      | None -> Ok None
+      | Some regfile -> Result.map Option.some (Asm_ir.lower_regfile config regfile)
+    in
+    let* snapshot = State.init config program regfile in
     match raw_of_snapshot snapshot with
     | Error message -> diagnostic ("Cannot represent initial extracted Griotte state: " ^ message)
     | Ok raw -> Ok { config; raw; snapshot }
@@ -495,13 +477,11 @@ let init config program regfile =
 let parse_program = Parser.parse_program
 let parse_regfile = Parser.parse_regfile
 let parse_word = Parser.parse_word
-
-let inspect state =
-  { (Cerise_griotte_private.Backend.inspect state.snapshot) with Machine_view.backend_name = name }
+let inspect state = View.inspect ~backend_name:name state.snapshot
 
 let step state =
   match state.snapshot.status with
-  | Loader.Halted -> Error (Machine_backend.Stopped Machine_view.Halted)
+  | State.Halted -> Error (Machine_backend.Stopped Machine_view.Halted)
   | Failed -> Error (Machine_backend.Stopped Machine_view.Failed)
   | Running -> (
       let _, conf = state.raw in
@@ -521,7 +501,7 @@ let rec step_n count state =
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as error -> error
 
-let lower_edit state term = Loader.lower_word state.config term
+let lower_edit state term = Asm_ir.lower_word state.config term
 
 let set_register id term state =
   let* word = lower_edit state term in
@@ -532,10 +512,10 @@ let set_register id term state =
       | Ok extracted ->
           let flag, conf = state.raw in
           let raw = (flag, E.update_sreg conf E.MTDC extracted) in
-          let snapshot = Loader.set_system_register Ast.MTDC word state.snapshot in
+          let snapshot = State.set_system_register Ast.MTDC word state.snapshot in
           Ok { state with raw; snapshot })
   | _ -> (
-      let* register = Cerise_griotte_private.Backend.register_of_id id in
+      let* register = View.register_of_id id in
       let word = match register with Ast.Reg 0 -> Ast.I Z.zero | _ -> word in
       match (register_to_e register, word_to_e word) with
       | Error message, _ | _, Error message ->
@@ -543,7 +523,7 @@ let set_register id term state =
       | Ok extracted_register, Ok extracted_word ->
           let flag, conf = state.raw in
           let raw = (flag, E.update_reg conf extracted_register extracted_word) in
-          let snapshot = Loader.set_register register word state.snapshot in
+          let snapshot = State.set_register register word state.snapshot in
           Ok { state with raw; snapshot })
 
 let set_memory address term state =
@@ -559,5 +539,5 @@ let set_memory address term state =
     | Ok address', Ok word' ->
         let flag, conf = state.raw in
         let raw = (flag, E.update_mem conf address' word') in
-        let snapshot = Loader.set_memory_raw address word state.snapshot in
+        let snapshot = State.set_memory_raw address word state.snapshot in
         Ok { state with raw; snapshot }

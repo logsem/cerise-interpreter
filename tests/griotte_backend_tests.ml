@@ -302,7 +302,55 @@ let parser () =
     (Result.is_error (Griotte.Parser.parse_word "(RW, 0, 8, 0)"));
   Alcotest.(check bool)
     "reject malformed permission" true
-    (Result.is_error (Griotte.Parser.parse_word "([R BAD LG LM], Global, 0, 8, 0)"))
+    (Result.is_error (Griotte.Parser.parse_word "([R BAD LG LM], Global, 0, 8, 0)"));
+  let parser_config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) () in
+  let original_word =
+    ok
+      (Griotte.Asm_ir.lower_word parser_config
+         (ok (Griotte.Parser.parse_word "{3: ([R W DL DRO], Local, 0, 8, 1)}")))
+  in
+  let printed_word = Griotte.Printer.word original_word in
+  let reparsed_word =
+    ok (Griotte.Asm_ir.lower_word parser_config (ok (Griotte.Parser.parse_word printed_word)))
+  in
+  Alcotest.(check bool) "word printer round trip" true (original_word = reparsed_word);
+  let original_regfile =
+    ok
+      (Griotte.Asm_ir.lower_regfile parser_config
+         (ok
+            (Griotte.Parser.parse_regfile
+               "cra := {3: ([R W DL DRO], Local, 0, 8, 1)} mtdc := [SU, Global, 0, 15, 2]")))
+  in
+  let registers, system_registers = original_regfile in
+  let printed_regfile =
+    List.map
+      (fun (register, word) ->
+        Printf.sprintf "%s := %s" (Griotte.Printer.register register) (Griotte.Printer.word word))
+      registers
+    @ List.map
+        (fun (register, word) ->
+          Printf.sprintf "%s := %s"
+            (Griotte.Printer.system_register register)
+            (Griotte.Printer.word word))
+        system_registers
+    |> String.concat " "
+  in
+  let reparsed_regfile =
+    ok
+      (Griotte.Asm_ir.lower_regfile parser_config
+         (ok (Griotte.Parser.parse_regfile printed_regfile)))
+  in
+  Alcotest.(check bool) "regfile printer round trip" true (original_regfile = reparsed_regfile);
+  match Griotte.Parser.parse_program ~filename:"located.griotte" "halt\n@" with
+  | Error (diagnostic :: _) ->
+      Alcotest.(check bool)
+        "lexer failure is located" true
+        (match Diagnostic.location diagnostic with
+        | Some location ->
+            location.source = Some "located.griotte" && location.line = 2 && location.column = 1
+        | None -> false)
+  | Error [] -> Alcotest.fail "located lexer failure returned no diagnostic"
+  | Ok _ -> Alcotest.fail "invalid character was accepted"
 
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
@@ -513,6 +561,11 @@ let examples () =
       "switcher/switcher.s";
       "switcher/switcher_commented.s";
       "switcher/switcher_example.s";
+      "default/pos/deep_local.s";
+      "default/pos/deep_ro.s";
+      "default/pos/jmper_jalr.s";
+      "default/neg/bad_movsr_noperm.s";
+      "cli_smoke.s";
     ]
   in
   let regfile_files =

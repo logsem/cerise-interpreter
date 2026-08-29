@@ -13,10 +13,10 @@ test:
 	dune test
 
 regenerate-griotte-extracted:
-	./scripts/regenerate-griotte-extracted.sh
+	./lib/griotte_extracted/scripts/regenerate.sh
 
 check-griotte-extracted:
-	./scripts/check-griotte-extracted.sh --root "$(CURDIR)"
+	./lib/griotte_extracted/scripts/check.sh --root "$(CURDIR)"
 
 regeneration-gate:
 	./scripts/regeneration-gate.sh --root "$(CURDIR)"

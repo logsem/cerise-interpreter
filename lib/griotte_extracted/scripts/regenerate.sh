@@ -3,7 +3,7 @@ set -eu
 
 usage() {
   cat <<'EOF'
-Usage: scripts/regenerate-griotte-extracted.sh [options]
+Usage: lib/griotte_extracted/scripts/regenerate.sh [options]
 
 Clone and build options:
   --source REPOSITORY   Git URL or local Git repository
@@ -24,7 +24,7 @@ EOF
 }
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 source_repository=${GRIOTTE_URL:-https://github.com/logsem/griotte.git}
 source_branch=${GRIOTTE_BRANCH:-interpreter-extraction}
 destination=$repository_root/lib/griotte_extracted/generated

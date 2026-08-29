@@ -26,6 +26,29 @@ ocamlfind ocamlc -package cerise-interpreter -linkpkg \
 "$stage/public-api-client"
 
 if ocamlfind ocamlc -package cerise-interpreter -c \
+  "$repository_root/tests/api_gate/griotte_nominal_types_client.ml" \
+  -o "$stage/griotte-nominal-types-client.cmo" >"$stage/griotte-nominal.log" 2>&1; then
+  echo "handwritten and extracted Griotte AST identities are not nominally independent" >&2
+  exit 1
+fi
+grep -q 'Griotte_extracted.Ast.instruction' "$stage/griotte-nominal.log"
+
+if ocamlfind ocamlc -package cerise-interpreter -c \
+  "$repository_root/tests/api_gate/griotte_nominal_asm_ir_client.ml" \
+  -o "$stage/griotte-nominal-asm-ir-client.cmo" >"$stage/griotte-nominal-asm-ir.log" 2>&1; then
+  echo "handwritten and extracted Griotte Asm_ir identities are not nominally independent" >&2
+  exit 1
+fi
+grep -q 'Griotte_extracted.Asm_ir.program' "$stage/griotte-nominal-asm-ir.log"
+
+contract_package=cerise-interpreter.griotte_"contract"
+if OCAMLPATH="$stage/lib${OCAMLPATH:+:$OCAMLPATH}" \
+  ocamlfind query "$contract_package" >"$stage/griotte-contract.log" 2>&1; then
+  echo "temporary Griotte contract package is still installed" >&2
+  exit 1
+fi
+
+if ocamlfind ocamlc -package cerise-interpreter -c \
   "$repository_root/tests/api_gate/old_flat_api_client.ml" \
   -o "$stage/old-flat-api-client.cmo" >"$stage/old-flat.log" 2>&1; then
   echo "legacy flat backend modules are still public" >&2

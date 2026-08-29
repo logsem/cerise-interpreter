@@ -14,6 +14,8 @@ let parameter position name kind =
 %}
 
 %nonassoc OPERAND_END
+/* Griotte's E-[...] sentry form must win over expression subtraction. */
+%nonassoc PERMISSION
 %nonassoc MINUS
 
 %start <Asm_ir.source_program> program
@@ -92,6 +94,10 @@ declared_name:
   | name = STOREU { name } | name = ISPTR { name } | name = PROMOTEU { name }
   | name = EINIT { name } | name = EDEINIT { name }
   | name = ESTOREID { name } | name = ISUNIQUE { name }
+  | name = JALR { name } | name = READSR { name } | name = WRITESR { name }
+  | name = LAND { name } | name = LOR { name } | name = LSHIFTL { name }
+  | name = LSHIFTR { name } | name = SYSTEM_REGISTER { name }
+  | name = GRIOTTE_PERMISSION { name }
 
 %public expression:
   | value = expression_primary { value }
@@ -153,3 +159,7 @@ operand_symbol_name:
   | name = STOREU { name } | name = ISPTR { name } | name = PROMOTEU { name }
   | name = EINIT { name } | name = EDEINIT { name }
   | name = ESTOREID { name } | name = ISUNIQUE { name }
+  | name = JALR { name } | name = READSR { name } | name = WRITESR { name }
+  | name = LAND { name } | name = LOR { name } | name = LSHIFTL { name }
+  | name = LSHIFTR { name } | name = SYSTEM_REGISTER { name }
+  | name = GRIOTTE_PERMISSION { name }

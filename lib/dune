@@ -28,7 +28,6 @@
   cerise_ucerise_private
   cerise_mcerise_private
   cerise_cerisier_private
-  cerise_griotte_contract
   cerise_griotte_private
   cerise_griotte_extracted_private
   zarith))

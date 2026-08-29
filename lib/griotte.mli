@@ -1,530 +1,286 @@
-module Ast = Cerise_griotte_contract.Ast
-module Parser = Cerise_griotte_contract.Parser
-module Printer = Cerise_griotte_contract.Printer
-module Codec :
-  sig
-    val register_codec :
-      Ast.register
-      Instruction_codec.scalar_codec
-    val system_register_codec :
-      Ast.system_register
-      Instruction_codec.scalar_codec
-    val operand :
-      (Ast.register, Z.t)
-      Instruction_codec.register_or_constant
-      Instruction_codec.shape
-    val from_operand :
-      (Ast.register, Z.t)
-      Instruction_codec.register_or_constant ->
-      Ast.reg_or_const
-    val to_operand :
-      Ast.reg_or_const ->
-      (Ast.register, Z.t)
-      Instruction_codec.register_or_constant
-    val r :
-      Ast.register
-      Instruction_codec.shape
-    val sr :
-      Ast.system_register
-      Instruction_codec.shape
-    val o :
-      (Ast.register, Z.t)
-      Instruction_codec.register_or_constant
-      Instruction_codec.shape
-    val rr :
-      (Ast.register *
-       Ast.register)
-      Instruction_codec.shape
-    val rs :
-      (Ast.register *
-       Ast.system_register)
-      Instruction_codec.shape
-    val sr_r :
-      (Ast.system_register *
-       Ast.register)
-      Instruction_codec.shape
-    val ro :
-      (Ast.register *
-       (Ast.register, Z.t)
-       Instruction_codec.register_or_constant)
-      Instruction_codec.shape
-    val roo :
-      (Ast.register *
-       (Ast.register, Z.t)
-       Instruction_codec.register_or_constant *
-       (Ast.register, Z.t)
-       Instruction_codec.register_or_constant)
-      Instruction_codec.shape
-    val rrr :
-      (Ast.register *
-       Ast.register *
-       Ast.register)
-      Instruction_codec.shape
-    val case :
-      string ->
-      int ->
-      'a Instruction_codec.shape ->
-      ('a -> 'b) ->
-      ('b -> 'a option) -> 'b Instruction_codec.case
-    val unit_case :
-      string ->
-      int -> 'a -> ('a -> bool) -> 'a Instruction_codec.case
-    val cases :
-      Ast.instruction
-      Instruction_codec.case list
-    val table :
-      Ast.instruction Instruction_codec.t
-    val encode :
-      Ast.instruction ->
-      (Z.t, Instruction_codec.error) result
-    val decode :
-      Z.t ->
-      (Ast.instruction,
-       Instruction_codec.error)
-      result
-    val allocations : (string * int * int) list
-    val encode_tag : int -> Z.t -> Z.t
-    val decode_tag : int -> string -> Z.t -> (Z.t, string) result
-    val rx_scalar : Ast.rx_permission -> int
-    val write_scalar : Ast.write_permission -> int
-    val dl_scalar : Ast.deep_local_permission -> int
-    val dro_scalar :
-      Ast.deep_read_only_permission -> int
-    val permission_scalar :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission -> int
-    val permission_of_scalar :
-      int ->
-      (Ast.rx_permission *
-       Ast.write_permission *
-       Ast.deep_local_permission *
-       Ast.deep_read_only_permission)
-      option
-    val payload_at_most : int -> 'a -> Z.t -> (Z.t, 'a) result
-    val decode_permission_payload :
-      Z.t ->
-      (Ast.rx_permission *
-       Ast.write_permission *
-       Ast.deep_local_permission *
-       Ast.deep_read_only_permission, string)
-      result
-    val encode_permission :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission -> Z.t
-    val decode_permission :
-      Z.t ->
-      (Ast.rx_permission *
-       Ast.write_permission *
-       Ast.deep_local_permission *
-       Ast.deep_read_only_permission, string)
-      result
-    val seal_permission_scalar : bool * bool -> int
-    val encode_seal_permission : bool * bool -> Z.t
-    val decode_seal_permission : Z.t -> (bool * bool, string) result
-    val locality_scalar : Ast.locality -> int
-    val encode_locality : Ast.locality -> Z.t
-    val decode_locality :
-      Z.t -> (Ast.locality, string) result
-    val word_type_scalar : Ast.word_type -> int
-    val encode_word_type : Ast.word_type -> Z.t
-    val decode_word_type :
-      Z.t -> (Ast.word_type, string) result
-    val encode_permission_locality :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission ->
-      Ast.locality -> Z.t
-    val decode_permission_locality :
-      Z.t ->
-      ((Ast.rx_permission *
-        Ast.write_permission *
-        Ast.deep_local_permission *
-        Ast.deep_read_only_permission) *
-       Ast.locality, string)
-      result
-    val encode_seal_permission_locality :
-      bool * bool -> Ast.locality -> Z.t
-    val decode_seal_permission_locality :
-      Z.t ->
-      ((bool * bool) * Ast.locality, string) result
-  end
-module Machine :
-  sig
-    module RegMap :
-      sig
-        type key = Ast.register
-        type 'a t
-        val empty : 'a t
-        val add : key -> 'a -> 'a t -> 'a t
-        val add_to_list : key -> 'a -> 'a list t -> 'a list t
-        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
-        val singleton : key -> 'a -> 'a t
-        val remove : key -> 'a t -> 'a t
-        val merge :
-          (key -> 'a option -> 'b option -> 'c option) ->
-          'a t -> 'b t -> 'c t
-        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
-        val cardinal : 'a t -> int
-        val bindings : 'a t -> (key * 'a) list
-        val min_binding : 'a t -> key * 'a
-        val min_binding_opt : 'a t -> (key * 'a) option
-        val max_binding : 'a t -> key * 'a
-        val max_binding_opt : 'a t -> (key * 'a) option
-        val choose : 'a t -> key * 'a
-        val choose_opt : 'a t -> (key * 'a) option
-        val find : key -> 'a t -> 'a
-        val find_opt : key -> 'a t -> 'a option
-        val find_first : (key -> bool) -> 'a t -> key * 'a
-        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val find_last : (key -> bool) -> 'a t -> key * 'a
-        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val iter : (key -> 'a -> unit) -> 'a t -> unit
-        val fold : (key -> 'a -> 'acc -> 'acc) -> 'a t -> 'acc -> 'acc
-        val map : ('a -> 'b) -> 'a t -> 'b t
-        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
-        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
-        val filter_map : (key -> 'a -> 'b option) -> 'a t -> 'b t
-        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
-        val split : key -> 'a t -> 'a t * 'a option * 'a t
-        val is_empty : 'a t -> bool
-        val mem : key -> 'a t -> bool
-        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
-        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
-        val for_all : (key -> 'a -> bool) -> 'a t -> bool
-        val exists : (key -> 'a -> bool) -> 'a t -> bool
-        val to_list : 'a t -> (key * 'a) list
-        val of_list : (key * 'a) list -> 'a t
-        val to_seq : 'a t -> (key * 'a) Seq.t
-        val to_rev_seq : 'a t -> (key * 'a) Seq.t
-        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
-        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
-        val of_seq : (key * 'a) Seq.t -> 'a t
-      end
-    module SRegMap :
-      sig
-        type key = Ast.system_register
-        type 'a t
-        val empty : 'a t
-        val add : key -> 'a -> 'a t -> 'a t
-        val add_to_list : key -> 'a -> 'a list t -> 'a list t
-        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
-        val singleton : key -> 'a -> 'a t
-        val remove : key -> 'a t -> 'a t
-        val merge :
-          (key -> 'a option -> 'b option -> 'c option) ->
-          'a t -> 'b t -> 'c t
-        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
-        val cardinal : 'a t -> int
-        val bindings : 'a t -> (key * 'a) list
-        val min_binding : 'a t -> key * 'a
-        val min_binding_opt : 'a t -> (key * 'a) option
-        val max_binding : 'a t -> key * 'a
-        val max_binding_opt : 'a t -> (key * 'a) option
-        val choose : 'a t -> key * 'a
-        val choose_opt : 'a t -> (key * 'a) option
-        val find : key -> 'a t -> 'a
-        val find_opt : key -> 'a t -> 'a option
-        val find_first : (key -> bool) -> 'a t -> key * 'a
-        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val find_last : (key -> bool) -> 'a t -> key * 'a
-        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val iter : (key -> 'a -> unit) -> 'a t -> unit
-        val fold : (key -> 'a -> 'acc -> 'acc) -> 'a t -> 'acc -> 'acc
-        val map : ('a -> 'b) -> 'a t -> 'b t
-        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
-        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
-        val filter_map : (key -> 'a -> 'b option) -> 'a t -> 'b t
-        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
-        val split : key -> 'a t -> 'a t * 'a option * 'a t
-        val is_empty : 'a t -> bool
-        val mem : key -> 'a t -> bool
-        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
-        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
-        val for_all : (key -> 'a -> bool) -> 'a t -> bool
-        val exists : (key -> 'a -> bool) -> 'a t -> bool
-        val to_list : 'a t -> (key * 'a) list
-        val of_list : (key * 'a) list -> 'a t
-        val to_seq : 'a t -> (key * 'a) Seq.t
-        val to_rev_seq : 'a t -> (key * 'a) Seq.t
-        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
-        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
-        val of_seq : (key * 'a) Seq.t -> 'a t
-      end
-    module MemMap :
-      sig
-        type key = Z.t
-        type 'a t = 'a Map.Make(Z).t
-        val empty : 'a t
-        val add : key -> 'a -> 'a t -> 'a t
-        val add_to_list : key -> 'a -> 'a list t -> 'a list t
-        val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
-        val singleton : key -> 'a -> 'a t
-        val remove : key -> 'a t -> 'a t
-        val merge :
-          (key -> 'a option -> 'b option -> 'c option) ->
-          'a t -> 'b t -> 'c t
-        val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
-        val cardinal : 'a t -> int
-        val bindings : 'a t -> (key * 'a) list
-        val min_binding : 'a t -> key * 'a
-        val min_binding_opt : 'a t -> (key * 'a) option
-        val max_binding : 'a t -> key * 'a
-        val max_binding_opt : 'a t -> (key * 'a) option
-        val choose : 'a t -> key * 'a
-        val choose_opt : 'a t -> (key * 'a) option
-        val find : key -> 'a t -> 'a
-        val find_opt : key -> 'a t -> 'a option
-        val find_first : (key -> bool) -> 'a t -> key * 'a
-        val find_first_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val find_last : (key -> bool) -> 'a t -> key * 'a
-        val find_last_opt : (key -> bool) -> 'a t -> (key * 'a) option
-        val iter : (key -> 'a -> unit) -> 'a t -> unit
-        val fold : (key -> 'a -> 'acc -> 'acc) -> 'a t -> 'acc -> 'acc
-        val map : ('a -> 'b) -> 'a t -> 'b t
-        val mapi : (key -> 'a -> 'b) -> 'a t -> 'b t
-        val filter : (key -> 'a -> bool) -> 'a t -> 'a t
-        val filter_map : (key -> 'a -> 'b option) -> 'a t -> 'b t
-        val partition : (key -> 'a -> bool) -> 'a t -> 'a t * 'a t
-        val split : key -> 'a t -> 'a t * 'a option * 'a t
-        val is_empty : 'a t -> bool
-        val mem : key -> 'a t -> bool
-        val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
-        val compare : ('a -> 'a -> int) -> 'a t -> 'a t -> int
-        val for_all : (key -> 'a -> bool) -> 'a t -> bool
-        val exists : (key -> 'a -> bool) -> 'a t -> bool
-        val to_list : 'a t -> (key * 'a) list
-        val of_list : (key * 'a) list -> 'a t
-        val to_seq : 'a t -> (key * 'a) Seq.t
-        val to_rev_seq : 'a t -> (key * 'a) Seq.t
-        val to_seq_from : key -> 'a t -> (key * 'a) Seq.t
-        val add_seq : (key * 'a) Seq.t -> 'a t -> 'a t
-        val of_seq : (key * 'a) Seq.t -> 'a t
-      end
-    type status =
-        Running
-      | Halted
-      | Failed
-    type t = {
-      config : Runtime_config.t;
-      status : status;
-      registers : Ast.word RegMap.t;
-      system_registers : Ast.word SRegMap.t;
-      memory : Ast.word MemMap.t;
-    }
-    val diagnostic : string -> ('a, Diagnostic.t list) result
-    val ( let* ) :
-      ('a, 'b) result -> ('a -> ('c, 'b) result) -> ('c, 'b) result
-    val arch_root_memory_permission :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission
-    val arch_root_executable_permission :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission
-    val rx_flows :
-      Ast.rx_permission ->
-      Ast.rx_permission -> bool
-    val write_flows :
-      Ast.write_permission ->
-      Ast.write_permission -> bool
-    val deep_local_flows :
-      Ast.deep_local_permission ->
-      Ast.deep_local_permission -> bool
-    val deep_read_only_flows :
-      Ast.deep_read_only_permission ->
-      Ast.deep_read_only_permission -> bool
-    val permission_flows :
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission ->
-      Ast.rx_permission *
-      Ast.write_permission *
-      Ast.deep_local_permission *
-      Ast.deep_read_only_permission -> bool
-    val locality_flows :
-      Ast.locality ->
-      Ast.locality -> bool
-    val seal_permission_flows : bool * bool -> bool * bool -> bool
-    val permission_of_word :
-      Ast.word ->
-      Ast.permission
-    val word_is_derived : Ast.word -> bool
-    val eval :
-      Runtime_config.t ->
-      Assembly_frontend.Expression.t ->
-      (Z.t, Diagnostic.t list) result
-    val lower_register :
-      Ast.register_term ->
-      (Ast.register, Diagnostic.t list)
-      result
-    val lower_permission :
-      Ast.permission_term ->
-      (Ast.permission, Diagnostic.t list)
-      result
-    val lower_seal_permission :
-      Ast.seal_permission_term ->
-      (Ast.seal_permission,
-       Diagnostic.t list)
-      result
-    val lower_locality :
-      Ast.locality_term ->
-      (Ast.locality, Diagnostic.t list)
-      result
-    val lower_word_type :
-      Ast.word_type_term ->
-      (Ast.word_type, Diagnostic.t list)
-      result
-    val lower_constant :
-      Runtime_config.t ->
-      Ast.constant_term ->
-      (Z.t, Diagnostic.t list) result
-    val lower_operand :
-      Runtime_config.t ->
-      Ast.operand_term ->
-      (Ast.reg_or_const,
-       Diagnostic.t list)
-      result
-    val lower_sealable :
-      Runtime_config.t ->
-      Ast.sealable_term ->
-      (Ast.sealable, Diagnostic.t list)
-      result
-    val lower_word :
-      Runtime_config.t ->
-      Ast.word_term ->
-      (Ast.word, Diagnostic.t list)
-      result
-    val lower_instruction :
-      Runtime_config.t ->
-      Ast.instruction_term ->
-      (Ast.instruction,
-       Diagnostic.t list)
-      result
-    val zero_registers : unit -> Ast.word RegMap.t
-    val initial_registers :
-      Runtime_config.t ->
-      Ast.word RegMap.t
-    val read_register :
-      Ast.register ->
-      t -> Ast.word
-    val read_system_register :
-      SRegMap.key -> t -> Ast.word
-    val read_memory :
-      MemMap.key -> t -> Ast.word option
-    val set_register :
-      Ast.register ->
-      Ast.word -> t -> t
-    val set_system_register :
-      SRegMap.key -> Ast.word -> t -> t
-    val set_memory_raw :
-      MemMap.key -> Ast.word -> t -> t
-    val fail : t -> t
-    val lower_program :
-      Runtime_config.t ->
-      Ast.statement list ->
-      (Ast.word MemMap.t,
-       Diagnostic.t list)
-      result
-    val init :
-      Runtime_config.t ->
-      Ast.statement list ->
-      ((RegMap.key * Ast.word_term) list *
-       (SRegMap.key * Ast.word_term) list)
-      option -> (t, Diagnostic.t list) result
-    val value :
-      t ->
-      Ast.reg_or_const ->
-      Ast.word
-    val is_wl :
-      'a * Ast.write_permission * 'b * 'c -> bool
-    val is_dl :
-      'a * 'b * Ast.deep_local_permission * 'c ->
-      bool
-    val is_dro :
-      'a * 'b * 'c * Ast.deep_read_only_permission ->
-      bool
-    val executable :
-      Ast.rx_permission * 'a * 'b * 'c -> bool
-    val can_read :
-      Ast.rx_permission * 'a * 'b * 'c -> bool
-    val can_write :
-      'a * Ast.write_permission * 'b * 'c -> bool
-    val locality_of_sealable :
-      Ast.sealable ->
-      Ast.locality
-    val locality_of_word :
-      Ast.word ->
-      Ast.locality option
-    val deep_localize_sealable :
-      Ast.sealable ->
-      Ast.sealable
-    val deep_localize :
-      Ast.word -> Ast.word
-    val read_only :
-      Ast.word -> Ast.word
-    val loaded_word :
-      'a * 'b * Ast.deep_local_permission *
-      Ast.deep_read_only_permission ->
-      Ast.word -> Ast.word
-    val pc_next : t -> t
-    val write_next :
-      Ast.register ->
-      Ast.word -> t -> t
-    val enter :
-      Ast.word -> Ast.word
-    val valid_pc : t -> bool
-    val authorized_system : t -> bool
-    val word_type :
-      Ast.word ->
-      Ast.word_type
-    val arithmetic :
-      (Z.t -> Z.t -> Z.t option) ->
-      Ast.register ->
-      Ast.reg_or_const ->
-      Ast.reg_or_const -> t -> t
-    val execute : Ast.instruction -> t -> t
-    val step : t -> (t, Machine_backend.execution_error) result
-    val step_n :
-      int -> t -> (t, Machine_backend.execution_error) result
-  end
-module State :
-  sig
-    type t = Machine.t
-    type status =
-        Running
-      | Halted
-      | Failed
-    val status : t -> Machine.status
-    val registers :
-      t ->
-      Ast.word
-      Machine.RegMap.t
-    val system_registers :
-      t ->
-      Ast.word
-      Machine.SRegMap.t
-    val memory :
-      t ->
-      Ast.word
-      Machine.MemMap.t
-    val inspect :
-      Machine.t -> Machine_view.t
-  end
-module View :
-  sig
-    val inspect :
-      Machine.t -> Machine_view.t
-    val word :
-      Ast.word -> Machine_view.word
-  end
+module Ast : sig
+  type register = PC | Reg of int
+  type system_register = MTDC
 
-module Backend : Machine_backend.S with type asm_program = Ast.program and type asm_regfile = Ast.regfile and type asm_word = Ast.word_term and type state = Machine.t
+  val cnull : register
+  val cra : register
+  val csp : register
+  val cgp : register
+  val ctp : register
+  val ct0 : register
+  val ct1 : register
+  val ct2 : register
+  val ct3 : register
+  val ct4 : register
+  val ct5 : register
+  val ct6 : register
+  val cs0 : register
+  val cs1 : register
+  val cs2 : register
+  val cs3 : register
+  val cs4 : register
+  val cs5 : register
+  val cs6 : register
+  val cs7 : register
+  val cs8 : register
+  val cs9 : register
+  val cs10 : register
+  val cs11 : register
+  val ca0 : register
+  val ca1 : register
+  val ca2 : register
+  val ca3 : register
+  val ca4 : register
+  val ca5 : register
+  val ca6 : register
+  val ca7 : register
+
+  type rx_permission = Orx | R | X | XSR
+  type write_permission = Ow | W | WL
+  type deep_local_permission = DL | LG
+  type deep_read_only_permission = DRO | LM
+
+  type permission =
+    rx_permission * write_permission * deep_local_permission * deep_read_only_permission
+
+  type locality = Global | Local
+  type word_type = W_I | W_Cap | W_SealRange | W_Sealed | W_Sentry
+  type seal_permission = bool * bool
+  type reg_or_const = Register of register | Constant of Z.t
+
+  type sealable =
+    | Cap of permission * locality * Z.t * Z.t * Z.t
+    | SealRange of seal_permission * locality * Z.t * Z.t * Z.t
+
+  type word =
+    | I of Z.t
+    | Sealable of sealable
+    | Sentry of permission * locality * Z.t * Z.t * Z.t
+    | Sealed of Z.t * sealable
+
+  type instruction =
+    | Jalr of register * register
+    | Jmp of reg_or_const
+    | Jnz of register * reg_or_const
+    | ReadSR of register * system_register
+    | WriteSR of system_register * register
+    | Move of register * reg_or_const
+    | Load of register * register
+    | Store of register * reg_or_const
+    | Add of register * reg_or_const * reg_or_const
+    | Sub of register * reg_or_const * reg_or_const
+    | Mul of register * reg_or_const * reg_or_const
+    | LAnd of register * reg_or_const * reg_or_const
+    | LOr of register * reg_or_const * reg_or_const
+    | LShiftL of register * reg_or_const * reg_or_const
+    | LShiftR of register * reg_or_const * reg_or_const
+    | Lt of register * reg_or_const * reg_or_const
+    | Lea of register * reg_or_const
+    | Restrict of register * reg_or_const
+    | SubSeg of register * reg_or_const * reg_or_const
+    | GetL of register * register
+    | GetB of register * register
+    | GetE of register * register
+    | GetA of register * register
+    | GetP of register * register
+    | GetOType of register * register
+    | GetWType of register * register
+    | Seal of register * register * register
+    | UnSeal of register * register * register
+    | Fail
+    | Halt
+
+  val null_permission : permission
+  val max_object_type : Z.t
+end
+
+module Asm_ir : sig
+  type expression = Assembly_frontend.Expression.t
+  type register_term = Named of Ast.register | Register_parameter of string
+  type permission_term = Permission_literal of Ast.permission | Permission_parameter of string
+
+  type seal_permission_term =
+    | Seal_permission_literal of Ast.seal_permission
+    | Seal_permission_parameter of string
+
+  type locality_term = Locality_literal of Ast.locality | Locality_parameter of string
+  type word_type_term = Word_type_literal of Ast.word_type | Word_type_parameter of string
+
+  type constant_term =
+    | Expression of expression
+    | Permission of Ast.permission
+    | Seal_permission of Ast.seal_permission
+    | Permission_locality of permission_term * locality_term
+    | Seal_permission_locality of seal_permission_term * locality_term
+    | Word_type of Ast.word_type
+    | Locality of Ast.locality
+    | Value_parameter of string
+
+  type operand_term = Register_term of register_term | Constant_term of constant_term
+
+  type sealable_term =
+    | Cap_term of permission_term * locality_term * expression * expression * expression
+    | Seal_range_term of seal_permission_term * locality_term * expression * expression * expression
+
+  type word_term =
+    | I_term of expression
+    | Sealable_term of sealable_term
+    | Sentry_term of permission_term * locality_term * expression * expression * expression
+    | Sealed_term of expression * sealable_term
+
+  type word = word_term
+
+  type instruction_term =
+    | Jalr_term of register_term * register_term
+    | Jmp_term of operand_term
+    | Jnz_term of register_term * operand_term
+    | ReadSR_term of register_term * Ast.system_register
+    | WriteSR_term of Ast.system_register * register_term
+    | Move_term of register_term * operand_term
+    | Load_term of register_term * register_term
+    | Store_term of register_term * operand_term
+    | Add_term of register_term * operand_term * operand_term
+    | Sub_term of register_term * operand_term * operand_term
+    | Mul_term of register_term * operand_term * operand_term
+    | LAnd_term of register_term * operand_term * operand_term
+    | LOr_term of register_term * operand_term * operand_term
+    | LShiftL_term of register_term * operand_term * operand_term
+    | LShiftR_term of register_term * operand_term * operand_term
+    | Lt_term of register_term * operand_term * operand_term
+    | Lea_term of register_term * operand_term
+    | Restrict_term of register_term * operand_term
+    | SubSeg_term of register_term * operand_term * operand_term
+    | GetL_term of register_term * register_term
+    | GetB_term of register_term * register_term
+    | GetE_term of register_term * register_term
+    | GetA_term of register_term * register_term
+    | GetP_term of register_term * register_term
+    | GetOType_term of register_term * register_term
+    | GetWType_term of register_term * register_term
+    | Seal_term of register_term * register_term * register_term
+    | UnSeal_term of register_term * register_term * register_term
+    | Fail_term
+    | Halt_term
+
+  type statement = Op of instruction_term | Word of word_term
+  type program = statement list
+
+  type regfile_entry =
+    | Register_entry of Ast.register * word_term
+    | System_register_entry of Ast.system_register * word_term
+
+  type regfile = regfile_entry list
+
+  val parse_register_name : string -> Ast.register option
+  val lower_word : Runtime_config.t -> word -> (Ast.word, Diagnostic.t list) result
+
+  val lower_instruction :
+    Runtime_config.t -> instruction_term -> (Ast.instruction, Diagnostic.t list) result
+
+  val lower_program : Runtime_config.t -> program -> (Ast.word list, Diagnostic.t list) result
+
+  val lower_regfile :
+    Runtime_config.t ->
+    regfile ->
+    ( (Ast.register * Ast.word) list * (Ast.system_register * Ast.word) list,
+      Diagnostic.t list )
+    result
+end
+
+module Parser : sig
+  type program = Asm_ir.program
+  type regfile = Asm_ir.regfile
+  type word = Asm_ir.word
+
+  val parse_program : ?filename:string -> string -> (program, Diagnostic.t list) result
+  val parse_regfile : ?filename:string -> string -> (regfile, Diagnostic.t list) result
+  val parse_word : ?filename:string -> string -> (word, Diagnostic.t list) result
+end
+
+module Printer : sig
+  val register : Ast.register -> string
+  val system_register : Ast.system_register -> string
+  val rx_permission : Ast.rx_permission -> string
+  val write_permission : Ast.write_permission -> string
+  val deep_local_permission : Ast.deep_local_permission -> string
+  val deep_read_only_permission : Ast.deep_read_only_permission -> string
+  val permission : Ast.permission -> string
+  val locality : Ast.locality -> string
+  val seal_permission : Ast.seal_permission -> string
+  val word_type : Ast.word_type -> string
+  val sealable : Ast.sealable -> string
+  val word : Ast.word -> string
+end
+
+module Codec : sig
+  val encode : Ast.instruction -> (Z.t, Instruction_codec.error) result
+  val decode : Z.t -> (Ast.instruction, Instruction_codec.error) result
+  val allocations : (string * int * int) list
+  val encode_permission : Ast.permission -> Z.t
+  val decode_permission : Z.t -> (Ast.permission, string) result
+  val encode_seal_permission : Ast.seal_permission -> Z.t
+  val decode_seal_permission : Z.t -> (Ast.seal_permission, string) result
+  val encode_locality : Ast.locality -> Z.t
+  val decode_locality : Z.t -> (Ast.locality, string) result
+  val encode_word_type : Ast.word_type -> Z.t
+  val decode_word_type : Z.t -> (Ast.word_type, string) result
+  val encode_permission_locality : Ast.permission -> Ast.locality -> Z.t
+  val decode_permission_locality : Z.t -> (Ast.permission * Ast.locality, string) result
+  val encode_seal_permission_locality : Ast.seal_permission -> Ast.locality -> Z.t
+  val decode_seal_permission_locality : Z.t -> (Ast.seal_permission * Ast.locality, string) result
+end
+
+module Machine : sig
+  module RegMap : Map.S with type key = Ast.register
+  module SRegMap : Map.S with type key = Ast.system_register
+  module MemMap : Map.S with type key = Z.t
+
+  type status = Running | Halted | Failed
+
+  type t = {
+    config : Runtime_config.t;
+    status : status;
+    registers : Ast.word RegMap.t;
+    system_registers : Ast.word SRegMap.t;
+    memory : Ast.word MemMap.t;
+  }
+
+  val init :
+    Runtime_config.t ->
+    Ast.word list ->
+    ((Ast.register * Ast.word) list * (Ast.system_register * Ast.word) list) option ->
+    (t, Diagnostic.t list) result
+
+  val read_register : Ast.register -> t -> Ast.word
+  val read_system_register : Ast.system_register -> t -> Ast.word
+  val read_memory : Z.t -> t -> Ast.word option
+  val set_register : Ast.register -> Ast.word -> t -> t
+  val set_system_register : Ast.system_register -> Ast.word -> t -> t
+  val set_memory_raw : Z.t -> Ast.word -> t -> t
+  val execute : Ast.instruction -> t -> t
+  val step : t -> (t, Machine_backend.execution_error) result
+  val step_n : int -> t -> (t, Machine_backend.execution_error) result
+end
+
+module State : sig
+  type t = Machine.t
+  type status = Running | Halted | Failed
+
+  val status : t -> Machine.status
+  val registers : t -> Ast.word Machine.RegMap.t
+  val system_registers : t -> Ast.word Machine.SRegMap.t
+  val memory : t -> Ast.word Machine.MemMap.t
+  val inspect : t -> Machine_view.t
+end
+
+module View : sig
+  val inspect : Machine.t -> Machine_view.t
+  val word : Ast.word -> Machine_view.word
+end
+
+module Backend :
+  Machine_backend.S
+    with type asm_program = Asm_ir.program
+     and type asm_regfile = Asm_ir.regfile
+     and type asm_word = Asm_ir.word
+     and type state = Machine.t

@@ -2,7 +2,7 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repository_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 if [ "${1:-}" = "--root" ]; then repository_root=$2; shift 2; fi
 if [ "$#" -ne 0 ]; then echo "Usage: $0 [--root REPOSITORY]" >&2; exit 2; fi
 

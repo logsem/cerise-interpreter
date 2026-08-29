@@ -10,6 +10,7 @@ let fail lexbuf message = raise (Error (location lexbuf, message))
 let word lexbuf =
   let original = Lexing.lexeme lexbuf in
   match String.lowercase_ascii original with
+  | "jalr" -> JALR original
   | "jmp" -> JMP original
   | "jnz" -> JNZ original
   | "move" | "mov" -> MOVE original
@@ -44,6 +45,19 @@ let word lexbuf =
   | "edeinit" -> EDEINIT original
   | "estoreid" -> ESTOREID original
   | "isunique" -> ISUNIQUE original
+  | "readsr" -> READSR original
+  | "writesr" -> WRITESR original
+  | "land" -> LAND original
+  | "lor" -> LOR original
+  | "lshiftl" -> LSHIFTL original
+  | "lshiftr" -> LSHIFTR original
+  | "mtdc" -> SYSTEM_REGISTER original
+  | "cnull" | "cra" | "csp" | "cgp" | "ctp"
+  | "ct0" | "ct1" | "ct2" | "ct3" | "ct4" | "ct5" | "ct6"
+  | "cs0" | "cs1" | "cs2" | "cs3" | "cs4" | "cs5" | "cs6"
+  | "cs7" | "cs8" | "cs9" | "cs10" | "cs11"
+  | "ca0" | "ca1" | "ca2" | "ca3" | "ca4" | "ca5" | "ca6" | "ca7" ->
+      REGISTER original
   | "pc" | "ddc" | "stk" -> REGISTER original
   | name
     when String.length name > 1
@@ -57,6 +71,9 @@ let word lexbuf =
   | "so" | "s" | "u" | "su" -> SEAL_PERMISSION original
   | "global" | "local" | "directed" -> LOCALITY original
   | "int" | "cap" | "sealrange" | "sealed" -> WORD_TYPE original
+  | "sentry" -> WORD_TYPE original
+  | "orx" | "r" | "x" | "xsr" | "ow" | "w" | "wl" | "dl" | "lg" | "dro" | "lm" ->
+      GRIOTTE_PERMISSION original
   | _ -> IDENT original
 
 let directive name =

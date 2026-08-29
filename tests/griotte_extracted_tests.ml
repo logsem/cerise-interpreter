@@ -8,6 +8,78 @@ let ok = function
 let z = Z.of_int
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
+let resolve_file path = if Sys.file_exists path then path else "../../../" ^ path
+
+let read_file path =
+  let path = resolve_file path in
+  let channel = open_in path in
+  Fun.protect
+    ~finally:(fun () -> close_in channel)
+    (fun () -> really_input_string channel (in_channel_length channel))
+
+let extracted_register : Griotte.Ast.register -> Griotte_extracted.Ast.register = function
+  | PC -> PC
+  | Reg number -> Reg number
+
+let extracted_operand : Griotte.Ast.reg_or_const -> Griotte_extracted.Ast.reg_or_const = function
+  | Register register -> Register (extracted_register register)
+  | Constant value -> Constant value
+
+let extracted_permission ((rx, write, deep_local, deep_read_only) : Griotte.Ast.permission) :
+    Griotte_extracted.Ast.permission =
+  let rx = match rx with Orx -> Griotte_extracted.Ast.Orx | R -> R | X -> X | XSR -> XSR in
+  let write = match write with Ow -> Griotte_extracted.Ast.Ow | W -> W | WL -> WL in
+  let deep_local = match deep_local with DL -> Griotte_extracted.Ast.DL | LG -> LG in
+  let deep_read_only = match deep_read_only with DRO -> Griotte_extracted.Ast.DRO | LM -> LM in
+  (rx, write, deep_local, deep_read_only)
+
+let extracted_locality : Griotte.Ast.locality -> Griotte_extracted.Ast.locality = function
+  | Local -> Local
+  | Global -> Global
+
+let extracted_word_type : Griotte.Ast.word_type -> Griotte_extracted.Ast.word_type = function
+  | W_I -> W_I
+  | W_Cap -> W_Cap
+  | W_SealRange -> W_SealRange
+  | W_Sealed -> W_Sealed
+  | W_Sentry -> W_Sentry
+
+let extracted_instruction : Griotte.Ast.instruction -> Griotte_extracted.Ast.instruction =
+  let register = extracted_register and operand = extracted_operand in
+  function
+  | Jalr (a, b) -> Jalr (register a, register b)
+  | Jmp target -> Jmp (operand target)
+  | Jnz (condition, target) -> Jnz (register condition, operand target)
+  | ReadSR (destination, MTDC) -> ReadSR (register destination, MTDC)
+  | WriteSR (MTDC, source) -> WriteSR (MTDC, register source)
+  | Move (destination, source) -> Move (register destination, operand source)
+  | Load (destination, source) -> Load (register destination, register source)
+  | Store (destination, source) -> Store (register destination, operand source)
+  | Add (destination, left, right) -> Add (register destination, operand left, operand right)
+  | Sub (destination, left, right) -> Sub (register destination, operand left, operand right)
+  | Mul (destination, left, right) -> Mul (register destination, operand left, operand right)
+  | LAnd (destination, left, right) -> LAnd (register destination, operand left, operand right)
+  | LOr (destination, left, right) -> LOr (register destination, operand left, operand right)
+  | LShiftL (destination, left, right) -> LShiftL (register destination, operand left, operand right)
+  | LShiftR (destination, left, right) -> LShiftR (register destination, operand left, operand right)
+  | Lt (destination, left, right) -> Lt (register destination, operand left, operand right)
+  | Lea (destination, source) -> Lea (register destination, operand source)
+  | Restrict (destination, source) -> Restrict (register destination, operand source)
+  | SubSeg (destination, left, right) -> SubSeg (register destination, operand left, operand right)
+  | GetL (destination, source) -> GetL (register destination, register source)
+  | GetB (destination, source) -> GetB (register destination, register source)
+  | GetE (destination, source) -> GetE (register destination, register source)
+  | GetA (destination, source) -> GetA (register destination, register source)
+  | GetP (destination, source) -> GetP (register destination, register source)
+  | GetOType (destination, source) -> GetOType (register destination, register source)
+  | GetWType (destination, source) -> GetWType (register destination, register source)
+  | Seal (destination, source, sealing) ->
+      Seal (register destination, register source, register sealing)
+  | UnSeal (destination, source, sealing) ->
+      UnSeal (register destination, register source, register sealing)
+  | Fail -> Fail
+  | Halt -> Halt
+
 let instructions =
   let open Griotte.Ast in
   let a = Reg 1 and b = Reg 2 and r = Register (Reg 3) and c = Constant (z (-7)) in
@@ -81,13 +153,14 @@ let encoding_identity () =
   List.iter
     (fun instruction ->
       let expected = Result.get_ok (Griotte.Codec.encode instruction) in
-      let actual = Result.get_ok (Griotte_extracted.Codec.encode instruction) in
+      let extracted_instruction = extracted_instruction instruction in
+      let actual = Result.get_ok (Griotte_extracted.Codec.encode extracted_instruction) in
       Alcotest.(check string) "fixed numeric encoding" (Z.to_string expected) (Z.to_string actual);
       Alcotest.(check bool)
         "standalone round trip" true
-        (Griotte_extracted.Codec.decode actual = Ok instruction))
+        (Griotte_extracted.Codec.decode actual = Ok extracted_instruction))
     instructions;
-  let open Griotte.Ast in
+  let open Griotte_extracted.Ast in
   Alcotest.(check string)
     "negative Jmp golden" "-767"
     (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jmp (Constant (z (-3)))))));
@@ -97,6 +170,7 @@ let encoding_identity () =
   Alcotest.(check string)
     "Move negative constant golden" "47624"
     (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (z (-7)))))));
+  let open Griotte.Ast in
   let permissions =
     List.concat_map
       (fun rx ->
@@ -110,16 +184,20 @@ let encoding_identity () =
   in
   List.iter
     (fun permission ->
+      let extracted_permission = extracted_permission permission in
       Alcotest.(check string)
         "permission encoding identity"
         (Z.to_string (Griotte.Codec.encode_permission permission))
-        (Z.to_string (Griotte_extracted.Codec.encode_permission permission));
+        (Z.to_string (Griotte_extracted.Codec.encode_permission extracted_permission));
       List.iter
         (fun locality ->
+          let extracted_locality = extracted_locality locality in
           Alcotest.(check string)
             "permission/locality encoding identity"
             (Z.to_string (Griotte.Codec.encode_permission_locality permission locality))
-            (Z.to_string (Griotte_extracted.Codec.encode_permission_locality permission locality)))
+            (Z.to_string
+               (Griotte_extracted.Codec.encode_permission_locality extracted_permission
+                  extracted_locality)))
         [ Local; Global ])
     permissions;
   List.iter
@@ -130,19 +208,22 @@ let encoding_identity () =
         (Z.to_string (Griotte_extracted.Codec.encode_seal_permission seal_permission));
       List.iter
         (fun locality ->
+          let extracted_locality = extracted_locality locality in
           Alcotest.(check string)
             "seal-permission/locality encoding identity"
             (Z.to_string (Griotte.Codec.encode_seal_permission_locality seal_permission locality))
             (Z.to_string
-               (Griotte_extracted.Codec.encode_seal_permission_locality seal_permission locality)))
+               (Griotte_extracted.Codec.encode_seal_permission_locality seal_permission
+                  extracted_locality)))
         [ Local; Global ])
     [ (false, false); (false, true); (true, false); (true, true) ];
   List.iter
     (fun word_type ->
+      let extracted_word_type = extracted_word_type word_type in
       Alcotest.(check string)
         "word-type encoding identity"
         (Z.to_string (Griotte.Codec.encode_word_type word_type))
-        (Z.to_string (Griotte_extracted.Codec.encode_word_type word_type)))
+        (Z.to_string (Griotte_extracted.Codec.encode_word_type extracted_word_type)))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ]
 
 let large_codec_round_trip () =
@@ -150,7 +231,8 @@ let large_codec_round_trip () =
   let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_019) (Z.of_int 0xa6)) in
   let instruction = Move (Reg 1, Constant large_constant) in
   let handwritten = Result.get_ok (Griotte.Codec.encode instruction) in
-  let extracted = Result.get_ok (Griotte_extracted.Codec.encode instruction) in
+  let extracted_instruction = extracted_instruction instruction in
+  let extracted = Result.get_ok (Griotte_extracted.Codec.encode extracted_instruction) in
   Alcotest.(check string)
     "large finite encoding identity" (Z.to_string handwritten) (Z.to_string extracted);
   Alcotest.(check bool)
@@ -158,7 +240,7 @@ let large_codec_round_trip () =
     (Griotte.Codec.decode handwritten = Ok instruction);
   Alcotest.(check bool)
     "large finite independent round trip" true
-    (Griotte_extracted.Codec.decode extracted = Ok instruction)
+    (Griotte_extracted.Codec.decode extracted = Ok extracted_instruction)
 
 let decoder_totality () =
   let rejects value =
@@ -179,6 +261,119 @@ let decoder_totality () =
         (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
         true (rejects (z opcode)))
     (List.init 8 (fun offset -> 0x18 + offset))
+
+let parser_ownership_and_corpus () =
+  let program_files =
+    [
+      "case_studies/counter.s";
+      "case_studies/deep_immutability.s";
+      "case_studies/deep_locality.s";
+      "case_studies/kvs.s";
+      "case_studies/lse.s";
+      "case_studies/mutually_distrustful.s";
+      "case_studies/stack_object.s";
+      "case_studies/vae.s";
+      "switcher/switcher.s";
+      "switcher/switcher_commented.s";
+      "switcher/switcher_example.s";
+      "default/pos/deep_local.s";
+      "default/pos/deep_ro.s";
+      "default/pos/jmper_jalr.s";
+      "default/neg/bad_movsr_noperm.s";
+      "cli_smoke.s";
+    ]
+  in
+  let regfile_files =
+    [
+      "case_studies/counter.reg";
+      "case_studies/deep_immutability.reg";
+      "case_studies/deep_locality.reg";
+      "case_studies/kvs.reg";
+      "case_studies/lse.reg";
+      "case_studies/mutually_distrustful.reg";
+      "case_studies/stack_object.reg";
+      "case_studies/vae.reg";
+      "switcher/switcher.reg";
+    ]
+  in
+  let base = "tests/test_files/griotte/" in
+  List.iter
+    (fun relative ->
+      let path = base ^ relative in
+      match Griotte_extracted.Parser.parse_program ~filename:path (read_file path) with
+      | Ok _ -> ()
+      | Error diagnostics ->
+          Alcotest.failf "extracted parser rejected %s: %s" path
+            (String.concat "; " (List.map Diagnostic.to_string diagnostics)))
+    program_files;
+  List.iter
+    (fun relative ->
+      let path = base ^ relative in
+      match Griotte_extracted.Parser.parse_regfile ~filename:path (read_file path) with
+      | Ok _ -> ()
+      | Error diagnostics ->
+          Alcotest.failf "extracted parser rejected %s: %s" path
+            (String.concat "; " (List.map Diagnostic.to_string diagnostics)))
+    regfile_files;
+  ignore
+    (ok
+       (Griotte_extracted.Parser.parse_program
+          "%macro typed(dst: reg, e: expr, v: value, p: perm, sp: sealperm, l: locality, wt: \
+           wtype) private: mov $dst $v restrict cgp ($p, $l) # ($p, $l, private, $e, 0) # [$sp, \
+           $l, 0, 15, 0] mov ca1 $wt %endmacro %typed(ca0, 8, -2, [R WL LG LM], SU, Local, Sentry) \
+           %typed(ca1, 9, -3, [R W DL DRO], S, Global, Cap) halt"));
+  let original_word =
+    ok
+      (Griotte_extracted.Asm_ir.lower_word config
+         (ok (Griotte_extracted.Parser.parse_word "{3: ([R W DL DRO], Local, 0, 8, 1)}")))
+  in
+  let printed_word = Griotte_extracted.Printer.word original_word in
+  let reparsed_word =
+    ok
+      (Griotte_extracted.Asm_ir.lower_word config
+         (ok (Griotte_extracted.Parser.parse_word printed_word)))
+  in
+  Alcotest.(check bool) "extracted word round trip" true (original_word = reparsed_word);
+  let original_regfile =
+    ok
+      (Griotte_extracted.Asm_ir.lower_regfile config
+         (ok
+            (Griotte_extracted.Parser.parse_regfile
+               "cra := {3: ([R W DL DRO], Local, 0, 8, 1)} mtdc := [SU, Global, 0, 15, 2]")))
+  in
+  let registers, system_registers = original_regfile in
+  let printed_regfile =
+    List.map
+      (fun (register, word) ->
+        Printf.sprintf "%s := %s"
+          (Griotte_extracted.Printer.register register)
+          (Griotte_extracted.Printer.word word))
+      registers
+    @ List.map
+        (fun (register, word) ->
+          Printf.sprintf "%s := %s"
+            (Griotte_extracted.Printer.system_register register)
+            (Griotte_extracted.Printer.word word))
+        system_registers
+    |> String.concat " "
+  in
+  let reparsed_regfile =
+    ok
+      (Griotte_extracted.Asm_ir.lower_regfile config
+         (ok (Griotte_extracted.Parser.parse_regfile printed_regfile)))
+  in
+  Alcotest.(check bool) "extracted regfile round trip" true (original_regfile = reparsed_regfile);
+  match Griotte_extracted.Parser.parse_program ~filename:"extracted-located.griotte" "halt\n@" with
+  | Error (diagnostic :: _) ->
+      Alcotest.(check bool)
+        "extracted lexer failure is located" true
+        (match Diagnostic.location diagnostic with
+        | Some location ->
+            location.source = Some "extracted-located.griotte"
+            && location.line = 2 && location.column = 1
+        | None -> false)
+  | Error [] -> Alcotest.fail "extracted located failure returned no diagnostic"
+  | Ok _ -> Alcotest.fail "extracted parser accepted an invalid character"
 
 let normalize view = { view with Machine_view.backend_name = "griotte" }
 
@@ -323,11 +518,11 @@ let unsupported_arithmetic_rejected () =
           with
           | Error (diagnostic :: _) ->
               Alcotest.(check string)
-                "shared parser diagnostic"
+                "backend-owned parser diagnostic"
                 (Printf.sprintf "Unsupported Griotte instruction `%s`." mnemonic)
                 (Diagnostic.message diagnostic);
               Alcotest.(check bool)
-                "shared parser diagnostic is located" true
+                "backend-owned parser diagnostic is located" true
                 (match Diagnostic.location diagnostic with
                 | Some location ->
                     location.source = Some "unsupported.griotte"
@@ -360,6 +555,11 @@ let () =
             large_codec_round_trip;
           Alcotest.test_case "malformed totality" `Quick decoder_totality;
         ] );
+      ( "parser",
+        [
+          Alcotest.test_case "owned parser, macros, round trips, corpus" `Quick
+            parser_ownership_and_corpus;
+        ] );
       ( "differential",
         [
           Alcotest.test_case "arithmetic, logic, and control" `Quick arithmetic_logic_control;
@@ -368,7 +568,7 @@ let () =
           Alcotest.test_case "system, terminal, malformed" `Quick system_halt_fail_and_malformed;
           Alcotest.test_case "edits and boundaries" `Quick edits_and_boundaries;
           Alcotest.test_case "step_n contract" `Quick step_n_contract;
-          Alcotest.test_case "shared parser rejects unsupported arithmetic" `Quick
+          Alcotest.test_case "independent parsers reject unsupported arithmetic" `Quick
             unsupported_arithmetic_rejected;
         ] );
     ]

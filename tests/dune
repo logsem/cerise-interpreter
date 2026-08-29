@@ -11,14 +11,16 @@
   public_api_compile)
  (deps
   (glob_files test_files/cerisier/pos/*.s)
+  (source_tree test_files/griotte)
   (glob_files test_files/vanilla/pos/*))
  (libraries alcotest cerise))
 
 (rule
  (alias runtest)
  (deps
-  ../scripts/check-griotte-extracted.sh
-  ../scripts/regenerate-griotte-extracted.sh
+  ../lib/griotte_extracted/scripts/check.sh
+  ../lib/griotte_extracted/scripts/regenerate.sh
+  ../lib/griotte_extracted/scripts/regeneration-gate.sh
   ../scripts/regeneration-gate.sh
   ../lib/griotte_extracted/generated/griotte_extracted.ml
   ../lib/griotte_extracted/generated/griotte_extracted.mli)
@@ -77,3 +79,23 @@
   ../lib/assembly/common_parser.mly)
  (action
   (run %{dep:../scripts/cerisier-parser-architecture-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps
+  ../scripts/griotte-parser-architecture-gate.sh
+  ../lib/griotte/ast.ml
+  ../lib/griotte/asm_ir.ml
+  ../lib/griotte/parser.mly
+  ../lib/griotte/parser_api.ml
+  ../lib/griotte/dune
+  ../lib/griotte_extracted/ast.ml
+  ../lib/griotte_extracted/asm_ir.ml
+  ../lib/griotte_extracted/parser.mly
+  ../lib/griotte_extracted/parser_api.ml
+  ../lib/griotte_extracted/dune
+  ../lib/assembly/token_spec.mly
+  ../lib/assembly/lexer.mll
+  ../lib/assembly/common_parser.mly)
+ (action
+  (run %{dep:../scripts/griotte-parser-architecture-gate.sh} --root %{workspace_root})))

@@ -69,131 +69,6 @@ let word_is_derived word =
   permission_flows (permission_of_word word) arch_root_executable_permission
   || permission_flows (permission_of_word word) arch_root_memory_permission
 
-let eval config expression =
-  match Assembly_frontend.Expression.evaluate_runtime config expression with
-  | Ok value -> Ok value
-  | Error message -> diagnostic message
-
-let lower_register = function
-  | Named r -> Ok r
-  | Register_parameter name -> diagnostic (Printf.sprintf "Unexpanded register parameter $%s." name)
-
-let lower_permission = function
-  | Permission_literal p -> Ok p
-  | Permission_parameter name ->
-      diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." name)
-
-let lower_seal_permission = function
-  | Seal_permission_literal p -> Ok p
-  | Seal_permission_parameter name ->
-      diagnostic (Printf.sprintf "Unexpanded seal permission parameter $%s." name)
-
-let lower_locality = function
-  | Locality_literal l -> Ok l
-  | Locality_parameter name -> diagnostic (Printf.sprintf "Unexpanded locality parameter $%s." name)
-
-let lower_word_type = function
-  | Word_type_literal w -> Ok w
-  | Word_type_parameter name ->
-      diagnostic (Printf.sprintf "Unexpanded word-type parameter $%s." name)
-
-let lower_constant config = function
-  | Expression expression -> eval config expression
-  | Permission p -> Ok (Codec.encode_permission p)
-  | Seal_permission p -> Ok (Codec.encode_seal_permission p)
-  | Permission_locality (p, l) ->
-      let* p = lower_permission p in
-      Result.map (Codec.encode_permission_locality p) (lower_locality l)
-  | Seal_permission_locality (p, l) ->
-      let* p = lower_seal_permission p in
-      Result.map (Codec.encode_seal_permission_locality p) (lower_locality l)
-  | Word_type w -> Ok (Codec.encode_word_type w)
-  | Locality l -> Ok (Codec.encode_locality l)
-  | Value_parameter name -> diagnostic (Printf.sprintf "Unexpanded value parameter $%s." name)
-
-let lower_operand config = function
-  | Register_term r -> Result.map (fun r -> Register r) (lower_register r)
-  | Constant_term c -> Result.map (fun c -> Constant c) (lower_constant config c)
-
-let lower_sealable config = function
-  | Cap_term (p, l, b, e, a) ->
-      let* p = lower_permission p in
-      let* l = lower_locality l in
-      let* b = eval config b in
-      let* e = eval config e in
-      Result.map (fun a -> Cap (p, l, b, e, a)) (eval config a)
-  | Seal_range_term (p, l, b, e, a) ->
-      let* p = lower_seal_permission p in
-      let* l = lower_locality l in
-      let* b = eval config b in
-      let* e = eval config e in
-      Result.map (fun a -> SealRange (p, l, b, e, a)) (eval config a)
-
-let lower_word config = function
-  | I_term expression -> Result.map (fun z -> I z) (eval config expression)
-  | Sealable_term s -> Result.map (fun s -> Sealable s) (lower_sealable config s)
-  | Sentry_term (p, l, b, e, a) ->
-      let* p = lower_permission p in
-      let* l = lower_locality l in
-      let* b = eval config b in
-      let* e = eval config e in
-      Result.map (fun a -> Sentry (p, l, b, e, a)) (eval config a)
-  | Sealed_term (otype, s) ->
-      let* otype = eval config otype in
-      Result.map (fun s -> Sealed (otype, s)) (lower_sealable config s)
-
-let lower_instruction config op =
-  let r = lower_register and o = lower_operand config in
-  let rr c a b =
-    let* a = r a in
-    Result.map (fun b -> c (a, b)) (r b)
-  in
-  let ro c a b =
-    let* a = r a in
-    Result.map (fun b -> c (a, b)) (o b)
-  in
-  let roo c a b d =
-    let* a = r a in
-    let* b = o b in
-    Result.map (fun d -> c (a, b, d)) (o d)
-  in
-  let rrr c a b d =
-    let* a = r a in
-    let* b = r b in
-    Result.map (fun d -> c (a, b, d)) (r d)
-  in
-  match op with
-  | Jalr_term (a, b) -> rr (fun (a, b) -> Jalr (a, b)) a b
-  | Jmp_term a -> Result.map (fun a -> Jmp a) (o a)
-  | Jnz_term (a, b) -> ro (fun (a, b) -> Jnz (a, b)) a b
-  | ReadSR_term (a, s) -> Result.map (fun a -> ReadSR (a, s)) (r a)
-  | WriteSR_term (s, a) -> Result.map (fun a -> WriteSR (s, a)) (r a)
-  | Move_term (a, b) -> ro (fun (a, b) -> Move (a, b)) a b
-  | Load_term (a, b) -> rr (fun (a, b) -> Load (a, b)) a b
-  | Store_term (a, b) -> ro (fun (a, b) -> Store (a, b)) a b
-  | Add_term (a, b, c) -> roo (fun (a, b, c) -> Add (a, b, c)) a b c
-  | Sub_term (a, b, c) -> roo (fun (a, b, c) -> Sub (a, b, c)) a b c
-  | Mul_term (a, b, c) -> roo (fun (a, b, c) -> Mul (a, b, c)) a b c
-  | LAnd_term (a, b, c) -> roo (fun (a, b, c) -> LAnd (a, b, c)) a b c
-  | LOr_term (a, b, c) -> roo (fun (a, b, c) -> LOr (a, b, c)) a b c
-  | LShiftL_term (a, b, c) -> roo (fun (a, b, c) -> LShiftL (a, b, c)) a b c
-  | LShiftR_term (a, b, c) -> roo (fun (a, b, c) -> LShiftR (a, b, c)) a b c
-  | Lt_term (a, b, c) -> roo (fun (a, b, c) -> Lt (a, b, c)) a b c
-  | Lea_term (a, b) -> ro (fun (a, b) -> Lea (a, b)) a b
-  | Restrict_term (a, b) -> ro (fun (a, b) -> Restrict (a, b)) a b
-  | SubSeg_term (a, b, c) -> roo (fun (a, b, c) -> SubSeg (a, b, c)) a b c
-  | GetL_term (a, b) -> rr (fun (a, b) -> GetL (a, b)) a b
-  | GetB_term (a, b) -> rr (fun (a, b) -> GetB (a, b)) a b
-  | GetE_term (a, b) -> rr (fun (a, b) -> GetE (a, b)) a b
-  | GetA_term (a, b) -> rr (fun (a, b) -> GetA (a, b)) a b
-  | GetP_term (a, b) -> rr (fun (a, b) -> GetP (a, b)) a b
-  | GetOType_term (a, b) -> rr (fun (a, b) -> GetOType (a, b)) a b
-  | GetWType_term (a, b) -> rr (fun (a, b) -> GetWType (a, b)) a b
-  | Seal_term (a, b, c) -> rrr (fun (a, b, c) -> Seal (a, b, c)) a b c
-  | UnSeal_term (a, b, c) -> rrr (fun (a, b, c) -> UnSeal (a, b, c)) a b c
-  | Fail_term -> Ok Fail
-  | Halt_term -> Ok Halt
-
 let zero_registers () =
   let registers = List.init 32 (fun n -> (Reg n, I Z.zero)) |> List.to_seq |> RegMap.of_seq in
   registers |> RegMap.add PC (I Z.zero) |> RegMap.add cnull (I Z.zero)
@@ -227,58 +102,47 @@ let set_system_register r word state =
 let set_memory_raw address word state = { state with memory = MemMap.add address word state.memory }
 let fail state = { state with status = Failed }
 
-let lower_program config program =
-  let rec loop address memory = function
-    | [] -> Ok memory
-    | statement :: rest ->
-        let* word =
-          match statement with
-          | Word term -> lower_word config term
-          | Op term -> (
-              let* op = lower_instruction config term in
-              match Codec.encode op with
-              | Ok z -> Ok (I z)
-              | Error e -> diagnostic (Instruction_codec.error_message e))
-        in
-        if word_is_derived word then loop Z.(succ address) (MemMap.add address word memory) rest
-        else
-          diagnostic
-            (Printf.sprintf
-               "Initial program word at address %s is not derived from a Griotte architectural \
-                root."
-               (Z.to_string address))
-  in
-  loop Z.zero MemMap.empty program
-
 let init config program regfile =
   let registers =
     match regfile with None -> initial_registers config | Some _ -> zero_registers ()
   in
   let system_registers = SRegMap.singleton MTDC (I Z.zero) in
-  let reg_terms, sreg_terms = Option.value regfile ~default:([], []) in
+  let reg_words, sreg_words = Option.value regfile ~default:([], []) in
   let* registers =
     List.fold_left
-      (fun acc (r, term) ->
+      (fun acc (r, word) ->
         let* regs = acc in
-        let* word = lower_word config term in
         if word_is_derived word then Ok (RegMap.add r word regs)
         else
           diagnostic
             (Printf.sprintf "Initial value for %s is not derived from a Griotte architectural root."
                (Printer.register r)))
-      (Ok registers) reg_terms
+      (Ok registers) reg_words
   in
   let registers = RegMap.add cnull (I Z.zero) registers in
   let* system_registers =
     List.fold_left
-      (fun acc (r, term) ->
+      (fun acc (r, word) ->
         let* regs = acc in
-        let* word = lower_word config term in
         if word_is_derived word then Ok (SRegMap.add r word regs)
         else diagnostic "Initial MTDC value is not derived from a Griotte architectural root.")
-      (Ok system_registers) sreg_terms
+      (Ok system_registers) sreg_words
   in
-  let* memory = lower_program config program in
+  let* memory =
+    List.fold_left
+      (fun result word ->
+        let* address, memory = result in
+        if word_is_derived word then Ok (Z.succ address, MemMap.add address word memory)
+        else
+          diagnostic
+            (Printf.sprintf
+               "Initial program word at address %s is not derived from a Griotte architectural \
+                root."
+               (Z.to_string address)))
+      (Ok (Z.zero, MemMap.empty))
+      program
+    |> Result.map snd
+  in
   Ok { config; status = Running; registers; system_registers; memory }
 
 let value state = function Register r -> read_register r state | Constant z -> I z

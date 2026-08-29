@@ -1,4 +1,4 @@
-open Cerise_griotte_contract.Ast
+open Ast
 
 (* UNTRUSTED ADAPTER CODE.  This is intentionally a small, direct copy of the
    numeric format expected by the Rocq MachineParameters instance, rather than

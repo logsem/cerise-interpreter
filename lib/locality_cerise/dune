@@ -8,6 +8,16 @@
  (merge_into generated_parser)
  (flags
   --strict
+  --unused-token JALR
+  --unused-token READSR
+  --unused-token WRITESR
+  --unused-token LAND
+  --unused-token LOR
+  --unused-token LSHIFTL
+  --unused-token LSHIFTR
+  --unused-token SYSTEM_REGISTER
+  --unused-token GRIOTTE_PERMISSION
+  --unused-precedence-levels
   --unused-token LOADU
   --unused-token STOREU
   --unused-token ISPTR

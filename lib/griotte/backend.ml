@@ -1,5 +1,6 @@
 module Ast = Ast
-module Parser = Parser
+module Asm_ir = Asm_ir
+module Parser = Parser_api
 module Printer = Printer
 module Codec = Codec
 module Machine = Machine
@@ -7,15 +8,25 @@ module Machine = Machine
 let name = "griotte"
 let description = "Handwritten CHERIoT-inspired Griotte capability machine"
 
-type asm_program = Ast.program
-type asm_regfile = Ast.regfile
-type asm_word = Ast.word_term
+type asm_program = Asm_ir.program
+type asm_regfile = Asm_ir.regfile
+type asm_word = Asm_ir.word
 type state = Machine.t
 
 let parse_program = Parser.parse_program
 let parse_regfile = Parser.parse_regfile
 let parse_word = Parser.parse_word
-let init = Machine.init
+
+let init config program regfile =
+  let ( let* ) = Result.bind in
+  let* program = Asm_ir.lower_program config program in
+  let* regfile =
+    match regfile with
+    | None -> Ok None
+    | Some regfile -> Result.map Option.some (Asm_ir.lower_regfile config regfile)
+  in
+  Machine.init config program regfile
+
 let step = Machine.step
 let step_n = Machine.step_n
 
@@ -145,7 +156,7 @@ let register_of_id (id : Machine_view.Register_id.t) =
   match (id.bank, id.key) with
   | System, "pc" -> Ok Ast.PC
   | General, name -> (
-      match Parser.parse_register_name name with
+      match Asm_ir.parse_register_name name with
       | Some r -> Ok r
       | None -> Error [ Diagnostic.error (Printf.sprintf "Unknown Griotte register %S." name) ])
   | _, name ->
@@ -158,12 +169,12 @@ let set_register id term state =
   | System, "mtdc" ->
       Result.map
         (fun w -> Machine.set_system_register Ast.MTDC w state)
-        (Machine.lower_word state.Machine.config term)
+        (Asm_ir.lower_word state.Machine.config term)
   | _ ->
       let* r = register_of_id id in
       Result.map
         (fun w -> Machine.set_register r w state)
-        (Machine.lower_word state.Machine.config term)
+        (Asm_ir.lower_word state.Machine.config term)
 
 let set_memory address term state =
   if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.Machine.config) >= 0
@@ -177,4 +188,4 @@ let set_memory address term state =
   else
     Result.map
       (fun w -> Machine.set_memory_raw address w state)
-      (Machine.lower_word state.Machine.config term)
+      (Asm_ir.lower_word state.Machine.config term)
