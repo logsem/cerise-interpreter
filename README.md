@@ -41,13 +41,17 @@ Rocq-extracted step function:
 ./interpreter --backend extracted program.s
 ```
 
-Griotte is included as a submodule. Initialize it after cloning with:
+The generated OCaml files are committed to this repository. To refresh them
+from the latest Griotte `interpreter-extraction` branch, run:
 
 ```sh
-git submodule update --init --recursive
+make regenerate-extracted
 ```
 
-Run `make regenerate-extracted` to refresh the generated OCaml files.
+This command needs Git, Nix, and network access. It clones Griotte into a
+temporary directory, uses Griotte's Nix extraction package, and removes the
+clone when finished. Set `GRIOTTE_URL` or `GRIOTTE_BRANCH` to refresh from
+another repository or branch.
 
 ## Interactive interpreter
 For an interactive version of the interpreter: `./interpreter -I <file>`

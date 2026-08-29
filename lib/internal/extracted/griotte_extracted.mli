@@ -1,10 +1,4 @@
-(* GENERATED FILE -- DO NOT EDIT. ExtrOcamlBasic maps basic Rocq datatypes to
-   OCaml; otherwise there are no custom extraction mappings, and gmap is
-   stdpp's extracted trie. Extraction erases proofs and refinements, so OCaml
-   can construct out-of-bounds finz and R values. It also erases the laws of
-   MachineParameters: the OCaml-supplied encoding functions and adapter must
-   satisfy those laws and are trusted. Generated Obj.magic casts rely on the
-   extractor and on well-formed inputs. *)
+(* GENERATED FILE -- DO NOT EDIT. *)
 
 
 type __ = Obj.t

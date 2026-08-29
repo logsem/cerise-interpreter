@@ -1,10 +1,4 @@
-(* GENERATED FILE -- DO NOT EDIT. ExtrOcamlBasic maps basic Rocq datatypes to
-   OCaml; otherwise there are no custom extraction mappings, and gmap is
-   stdpp's extracted trie. Extraction erases proofs and refinements, so OCaml
-   can construct out-of-bounds finz and R values. It also erases the laws of
-   MachineParameters: the OCaml-supplied encoding functions and adapter must
-   satisfy those laws and are trusted. Generated Obj.magic casts rely on the
-   extractor and on well-formed inputs. *)
+(* GENERATED FILE -- DO NOT EDIT. *)
 
 
 type __ = Obj.t
@@ -2071,10 +2065,10 @@ let isCorrectPCb = function
 (** val machine_step : machineParameters -> conf -> conf option **)
 
 let machine_step h = function
-| (c0, _UU03c6_) ->
+| (c0, phi) ->
   (match c0 with
    | Executable ->
-     let (p, m) = _UU03c6_ in
+     let (p, m) = phi in
      let (r, _) = p in
      (match lookup0 (gmap_lookup reg_eq_dec reg_countable) PC r with
       | Some pc ->
@@ -2087,12 +2081,12 @@ let machine_step h = function
                             (gmap_lookup (finz_eq_dec memNum)
                               (finz_countable memNum))
                             a m with
-                    | Some wa -> Some (exec h (decodeInstrW h wa) p0 _UU03c6_)
-                    | None -> Some (Failed, _UU03c6_))
-                 | SSealRange (_, _, _, _, _) -> Some (Failed, _UU03c6_))
-              | _ -> Some (Failed, _UU03c6_))
-        else Some (Failed, _UU03c6_)
-      | None -> Some (Failed, _UU03c6_))
+                    | Some wa -> Some (exec h (decodeInstrW h wa) p0 phi)
+                    | None -> Some (Failed, phi))
+                 | SSealRange (_, _, _, _, _) -> Some (Failed, phi))
+              | _ -> Some (Failed, phi))
+        else Some (Failed, phi)
+      | None -> Some (Failed, phi))
    | _ -> None)
 
 (** val reg_empty : reg **)
