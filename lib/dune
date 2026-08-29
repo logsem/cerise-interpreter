@@ -9,6 +9,22 @@
   instruction_codec
   machine_view
   machine_backend
+  vanilla_ast
+  vanilla_parser
+  vanilla_printer
+  vanilla_codec
+  vanilla_machine
+  vanilla_backend
+  vanilla_state
+  vanilla_view
+  locality_cerise_ast
+  locality_cerise_parser
+  locality_cerise_codec
+  locality_cerise_printer
+  locality_cerise_machine
+  locality_cerise_backend
+  locality_cerise_state
+  locality_cerise_view
   interim_legacy_backend
   backend_registry
   machine_session)

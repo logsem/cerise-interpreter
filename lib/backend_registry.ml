@@ -1,9 +1,16 @@
 type entry = { requested_name : string; backend : (module Machine_backend.S) }
 
-let backends =
-  [ { requested_name = "cerise"; backend = (module Interim_legacy_backend : Machine_backend.S) } ]
+let vanilla = (module Vanilla_backend : Machine_backend.S)
+let locality_cerise = (module Locality_cerise_backend : Machine_backend.S)
 
-let default = "cerise"
+let backends =
+  [
+    { requested_name = "vanilla"; backend = vanilla };
+    { requested_name = "cerise"; backend = vanilla };
+    { requested_name = "locality-cerise"; backend = locality_cerise };
+  ]
+
+let default = "vanilla"
 let names () = List.map (fun entry -> entry.requested_name) backends
 
 let find name =

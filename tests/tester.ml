@@ -1,5 +1,6 @@
 open Cerise
-open Cerise.Machine
+module Machine = Cerise.Legacy_machine
+open Machine
 open Cerise.Ast
 
 let make_test_list (dir : string) : string array =

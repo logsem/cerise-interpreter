@@ -6,7 +6,7 @@ module Asm_ir = Cerise_internal.Asm_ir
 module Lexer = Cerise_internal.Lexer
 module Label_resolver = Cerise_internal.Label_resolver
 module Parser = Cerise_internal.Parser
-module Machine = Cerise.Machine
+module Machine = Cerise.Legacy_machine
 module Parameters = Cerise.Parameters
 
 let statement_eq (a : statement) (b : statement) = a = b

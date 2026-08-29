@@ -5,6 +5,7 @@
 
 open Cerise
 open Ast
+module Machine = Cerise.Legacy_machine
 
 module Encode = Cerise_internal.Encode
 

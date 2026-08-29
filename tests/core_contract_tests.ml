@@ -48,7 +48,9 @@ let test_backend_owns_parser () =
           Parameters.flags := profile;
           let selected = Backend_registry.find Backend_registry.default |> Option.get in
           let module Backend = (val selected : Machine_backend.S) in
-          ignore (Backend.parse_program source |> get_ok);
+          Alcotest.(check bool)
+            "vanilla syntax remains fixed" true
+            (Result.is_error (Backend.parse_program source));
           Alcotest.(check string)
             "backend parser does not leak the selected legacy profile" profile.version
             !Parameters.flags.version)
@@ -95,14 +97,16 @@ let test_interleaved_runtime_configs () =
       check_legacy_profile_restored "second inspection restores legacy globals";
       check_z "first view keeps its address limit" (Z.of_int 64) first_view.address_limit;
       check_z "second view keeps its address limit" (Z.of_int 1000) second_view.address_limit;
-      check_z "first PC limit uses its stack split" (Z.of_int 20)
+      check_z "first PC limit uses its address space" (Z.of_int 64)
         (capability_metadata Machine_view.System "pc" first).limit;
-      check_z "second PC limit uses its stack split" (Z.of_int 750)
+      check_z "second PC limit uses its address space" (Z.of_int 1000)
         (capability_metadata Machine_view.System "pc" second).limit;
-      check_z "first stack cursor uses its config" (Z.of_int 20)
-        (capability_metadata Machine_view.System "stk" first).cursor;
-      check_z "second stack cursor uses its config" (Z.of_int 750)
-        (capability_metadata Machine_view.System "stk" second).cursor;
+      Alcotest.(check bool)
+        "vanilla has no stack-role register" true
+        (Machine_view.find_register
+           (register Machine_view.System "stk")
+           (Machine_session.view first)
+        = None);
       let first_after_step = Machine_session.step first |> Result.get_ok in
       check_legacy_profile_restored "first step restores legacy globals";
       check_z "other session stays unstepped" Z.zero
@@ -121,13 +125,14 @@ let test_interleaved_runtime_configs () =
         (Machine_session.view first_after_step).address_limit)
 
 let test_registry_and_shared_frontend () =
-  Alcotest.(check string) "interim default" "cerise" Backend_registry.default;
+  Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default;
   Alcotest.(check (list string))
-    "one deterministic backend" [ "cerise" ] (Backend_registry.names ());
+    "deterministic active backends"
+    [ "vanilla"; "cerise"; "locality-cerise" ]
+    (Backend_registry.names ());
   let selected = Backend_registry.find "cerise" |> Option.get in
   let module Backend = (val selected : Machine_backend.S) in
-  Alcotest.(check string)
-    "registry key is separate from canonical name" "interim-legacy" Backend.name;
+  Alcotest.(check string) "alias selects canonical module" "vanilla" Backend.name;
   let source =
     "%macro put(reg:reg, value:value)\n\
      mov $reg $value\n\
@@ -139,10 +144,10 @@ let test_registry_and_shared_frontend () =
   in
   let session = create ~source () in
   Alcotest.(check string)
-    "requested backend spelling retained" "cerise"
+    "requested backend spelling retained" "vanilla"
     (Machine_session.backend_name session);
   Alcotest.(check string)
-    "requested spelling reaches the view" "cerise" (Machine_session.view session).backend_name;
+    "requested spelling reaches the view" "vanilla" (Machine_session.view session).backend_name;
   let stepped = Machine_session.step session |> Result.get_ok in
   check_z "macro and label resolved before lowering" (Z.of_int 2)
     (int_word (register_word Machine_view.General "r1" stepped));
@@ -160,7 +165,7 @@ let test_registry_and_shared_frontend () =
 let test_view_purity_and_ordering () =
   let session = create ~source:"halt\n# 7" () in
   let view = Machine_session.view session in
-  Alcotest.(check string) "backend metadata" "cerise" view.backend_name;
+  Alcotest.(check string) "backend metadata" "vanilla" view.backend_name;
   Alcotest.(check string)
     "address limit exposed"
     (Z.to_string (Runtime_config.max_addr Runtime_config.default))
@@ -170,7 +175,7 @@ let test_view_purity_and_ordering () =
   Alcotest.(check (list int)) "ascending sparse memory" [ 0; 1 ] addresses;
   let register_labels = List.map (fun register -> register.Machine_view.label) view.registers in
   Alcotest.(check string) "first register" "pc" (List.hd register_labels);
-  Alcotest.(check string) "last register" "stk" (List.hd (List.rev register_labels));
+  Alcotest.(check string) "last register" "r31" (List.hd (List.rev register_labels));
   let missing = Machine_view.memory_at (Z.of_int 20) view |> Option.get in
   check_z "addressable missing memory is backend zero" Z.zero (int_word missing)
 
@@ -227,9 +232,7 @@ let test_text_edits () =
   in
   check_z "memory text edit" (Z.of_int 123) (int_word memory_word);
   let capability =
-    Machine_session.set_register_text
-      (register Machine_view.General "r2")
-      "(RW, GLOBAL, 0, 10, 3)" edited
+    Machine_session.set_register_text (register Machine_view.General "r2") "(RW, 0, 10, 3)" edited
     |> get_ok
     |> register_word Machine_view.General "r2"
   in

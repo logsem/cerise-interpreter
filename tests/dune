@@ -6,5 +6,6 @@
   macro_tests
   baseline_characterization
   core_contract_tests
-  core_architecture_tests)
+  core_architecture_tests
+  active_backend_tests)
  (libraries alcotest cerise cerise_internal))
