@@ -49,14 +49,6 @@ let kind_fits_slot (kind : parameter_kind) (slot : slot_kind) : bool =
       true
   | _ -> false
 
-(* Report whether an expression contains the infinite literal. *)
-let rec expression_contains_inf (expression : expr) : bool =
-  match expression with
-  | IntLit Infinite_z.Inf -> true
-  | IntLit (Infinite_z.Int _) | CurrentAddr | Symbol _ | Label _ | ExprParam _ -> false
-  | AddOp (left, right) | SubOp (left, right) ->
-      expression_contains_inf left || expression_contains_inf right
-
 (* Report whether an expression still contains a macro parameter hole. *)
 let rec expression_contains_parameter (expression : expr) : bool =
   match expression with
@@ -473,9 +465,6 @@ let add_integer_definition (definitions : definition_table) (name : string) (exp
     (location : location) : unit =
   if Hashtbl.mem definitions name then
     fail location "integer definition error: duplicate definition %S" name;
-  if expression_contains_inf expression then
-    fail location
-      "integer definition error: %S must evaluate to a finite integer; `Inf` is not allowed" name;
   if expression_contains_parameter expression then
     fail location "integer definition error: %S cannot contain a macro parameter" name;
   Hashtbl.add definitions name (expression, location)

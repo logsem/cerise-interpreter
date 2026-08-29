@@ -21,8 +21,6 @@ let parse_prog_from_lexbuf (filebuf : Lexing.lexbuf) : (Ast.t, string) Result.t 
       Result.Error
         (Printf.sprintf "Unknown label %S. Define it with `%s:` or correct the label reference."
            label label)
-  | Asm_ir.ExprException message ->
-      Result.Error (message ^ ". Replace `Inf` with a finite integer in this expression.")
   | Asm_ir.WordException _ ->
       Result.Error
         "A word was used where an instruction was expected. Prefix literal data with `#`, or use a \
@@ -60,8 +58,6 @@ let parse_regfile_from_lexbuf (filebuf : Lexing.lexbuf) (stk_addr : Z.t) :
         Machine.RegMap.iter (fun _ w -> Parameters.check_word w) regfile;
         Result.Ok regfile
   with
-  | Irreg.ExprException message ->
-      Result.Error (message ^ ". Replace `Inf` with a finite integer in this value.")
   | Parameters.NotSupported message ->
       Result.Error (message ^ ". Choose a compatible architecture or remove the unsupported value.")
   | Failure message -> Result.Error (failure_message message)

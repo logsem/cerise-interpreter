@@ -40,7 +40,7 @@ let parse_arguments () : cli_mode * string * string =
       ( "--locality",
         Arg.Set_string locality_option,
         "Choose the minimum locality: Global, Local, Directed" );
-      ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory, Inf or integer");
+      ("--mem-size", Arg.Set_string mem_size_option, "Size of the memory as a non-negative integer");
       ("--regfile", Arg.Set_string regfile_name_option, "Initial state of the registers");
     ]
   in
@@ -102,14 +102,17 @@ let parse_arguments () : cli_mode * string * string =
 
   let _ =
     match !mem_size_option with
-    | "inf" | "Inf" -> Parameters.set_max_addr Cerise.Infinite_z.Inf
     | "" -> ()
     | s ->
-        let n = Z.of_string s in
+        let n =
+          try Z.of_string s
+          with Invalid_argument _ ->
+            raise @@ Arg.Help "The --mem-size option requires a non-negative integer."
+        in
         if Z.(n < ~$0) then (
           Printf.eprintf "Size of memory must be positive (%s)" s;
           exit 1)
-        else Parameters.set_max_addr (Infinite_z.Int n)
+        else Parameters.set_max_addr n
   in
 
   let filename_prog =

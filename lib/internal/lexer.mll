@@ -30,8 +30,6 @@ rule token = parse
                                   with Failure _ -> error lexbuf
                                     ("invalid integer '" ^ i
                                      ^ "'; use a value that fits in a machine integer")}
-| ("Inf" | "inf" | "∞") { INF }
-
 (* assembler directives and macro references *)
 | "&CURRENT_ADDR" { CURRENTADDR }
 | "%macro" { MACRO }

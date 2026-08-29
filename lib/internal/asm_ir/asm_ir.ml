@@ -1,6 +1,5 @@
 (* Types and final AST translation for the assembler intermediate representation. *)
 
-exception ExprException of string
 exception UnexpandedMacroException of string
 exception UnresolvedIrException of string
 
@@ -23,7 +22,7 @@ let ddc = Reg 0
 let stk = Reg 31
 
 type expr =
-  | IntLit of Infinite_z.t
+  | IntLit of Z.t
   | CurrentAddr
   | Symbol of string
   | Label of string
@@ -188,15 +187,10 @@ let check_ir_const (c : const_encoded) =
   | PairParam (name, _) -> raise (UnexpandedMacroException ("permission-pair parameter $" ^ name))
   | Wtype _ | ConstExpr _ -> ()
 
-let resolved_expression (expression : expr) : Infinite_z.t =
+let resolved_expression (expression : expr) : Z.t =
   match expression with
   | IntLit value -> value
   | _ -> raise (UnresolvedExpressionException expression)
-
-let resolved_finite_expression (expression : expr) (error : string) : Z.t =
-  match resolved_expression expression with
-  | Int value -> value
-  | Inf -> raise (ExprException error)
 
 let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
   match roc with
@@ -207,7 +201,7 @@ let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
       Ast.Const
         (match c with
         | ConstExpr expression ->
-            resolved_finite_expression expression "Constants expressions cannot be ∞"
+            resolved_expression expression
         | Locality l -> Encode.encode_locality (translate_locality l)
         | Perm p -> Encode.encode_perm (translate_perm p)
         | SealPerm sp -> Encode.encode_seal_perm (translate_seal_perm sp)
@@ -221,23 +215,23 @@ let translate_reg_or_const (roc : reg_or_const) : Ast.reg_or_const =
 let translate_sealable (s : sealable) : Ast.sealable =
   match s with
   | Cap (p, l, b, e, a) ->
-      let b' = resolved_finite_expression b "Lower capability bound cannot be ∞" in
-      let a' = resolved_finite_expression a "Current capability address cannot be ∞" in
+      let b' = resolved_expression b in
+      let a' = resolved_expression a in
       Ast.Cap (translate_perm p, translate_locality l, b', resolved_expression e, a')
   | SealRange (p, l, b, e, a) ->
-      let b' = resolved_finite_expression b "Lower otype bound cannot be ∞" in
-      let e' = resolved_finite_expression e "Upper otype bound cannot be ∞" in
-      let a' = resolved_finite_expression a "Current sealing otype cannot be ∞" in
+      let b' = resolved_expression b in
+      let e' = resolved_expression e in
+      let a' = resolved_expression a in
       Ast.SealRange (translate_seal_perm p, translate_locality l, b', e', a')
 
 let translate_word (w : word) : Ast.statement =
   match w with
   | I e ->
-      let z' = resolved_finite_expression e "Integer machine word cannot be ∞" in
+      let z' = resolved_expression e in
       Ast.Word (Ast.I z')
   | Sealable sb -> Ast.Word (Ast.Sealable (translate_sealable sb))
   | Sealed (o, sb) ->
-      let ot = resolved_finite_expression o "OType of sealed word cannot be ∞" in
+      let ot = resolved_expression o in
       Ast.Word (Ast.Sealed (ot, translate_sealable sb))
 
 let translate_instr (instr : machine_op) : Ast.machine_op =

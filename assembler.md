@@ -84,7 +84,7 @@ Operands are separated by whitespace rather than commas.
 
 ## Expressions and labels
 
-Expressions contain integer literals, labels, `Inf`, parentheses, binary `+` and `-`, and unary `-`.
+Expressions contain integer literals, labels, parentheses, binary `+` and `-`, and unary `-`.
 Use parentheses around compound expressions when they occur as an instruction operand:
 
 ```asm
@@ -95,9 +95,7 @@ end:
 ```
 
 A label marks the address of the next emitted instruction or word. Labels may be referenced before
-their definitions. Labels themselves emit no word. `Inf` is accepted only in positions whose
-architectural representation permits an infinite value; ordinary instruction constants and integer
-words must be finite.
+their definitions. Labels themselves emit no word.
 
 ## Literal words
 
@@ -105,7 +103,7 @@ Prefix literal program data with `#`:
 
 ```asm
 # 42
-# (RWX, GLOBAL, 0, Inf, 0)
+# (RWX, GLOBAL, 0, 1024, 0)
 # [SU, LOCAL, 0, 10, 0]
 # {7: (RO, GLOBAL, 0, 10, 0)}
 ```
@@ -117,8 +115,7 @@ The forms are:
 - `# [sealing-permission, locality, base, end, address]` for a sealing range.
 - `# {otype: sealable}` for a sealed capability or sealing range.
 
-Bounds, addresses, and object types are expressions. Only a capability's upper bound may evaluate to
-`Inf`.
+Bounds, addresses, and object types are finite integer expressions.
 
 ## Current address
 
@@ -153,7 +150,7 @@ Definitions and labels may be referenced before declaration. A definition emits 
 label-based value is computed using addresses after sequence macros have expanded.
 
 Definitions may appear anywhere an integer expression is accepted, including instruction values,
-literal words, bounds, addresses, object types, and `expr` macro arguments. `Inf`, registers,
+literal words, bounds, addresses, object types, and `expr` macro arguments. Registers,
 permissions, localities, word types, duplicate definitions, recursive definition cycles, and names
 reserved by the assembler are rejected. Integer definitions and labels share a namespace, so a file
 may not define both with the same name.
@@ -211,13 +208,13 @@ r3 := {7: (RO, GLOBAL, 0, 10, 0)}
 stk := (RWLX, LOCAL, 0, STK_ADDR, STK_ADDR)
 ```
 
-Register-file expressions support integers, `Inf`, parentheses, `+`, `-`, and the predefined
+Register-file expressions support integers, parentheses, `+`, `-`, and the predefined
 `MAX_ADDR` and `STK_ADDR` values. They do not support labels, `%define`, or sequence macros.
 
 ## Machine profiles
 
 The default profile enables sealing, a stack, directed locality, uninitialized capabilities, and an
-unbounded configured address limit. The command-line `--version` option also provides:
+configured finite address limit. The command-line `--version` option also provides:
 
 | Version | Main restrictions |
 |---|---|

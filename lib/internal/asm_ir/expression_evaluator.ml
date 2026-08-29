@@ -2,11 +2,11 @@
 open Asm_ir
 
 (* Evaluate an expression recursively. Label and symbol nodes indicate a skipped earlier pass. *)
-let rec evaluate_expression (expression : expr) : Infinite_z.t =
+let rec evaluate_expression (expression : expr) : Z.t =
   match expression with
   | IntLit value -> value
-  | AddOp (left, right) -> Infinite_z.(evaluate_expression left + evaluate_expression right)
-  | SubOp (left, right) -> Infinite_z.(evaluate_expression left - evaluate_expression right)
+  | AddOp (left, right) -> Z.(evaluate_expression left + evaluate_expression right)
+  | SubOp (left, right) -> Z.(evaluate_expression left - evaluate_expression right)
   | CurrentAddr | Label _ | Symbol _ | ExprParam _ ->
       raise (UnresolvedExpressionException expression)
 

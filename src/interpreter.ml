@@ -14,9 +14,7 @@ let () =
 
   let stk_addr =
     Z.(
-      if !Parameters.flags.stack then
-        match !Parameters.flags.max_addr with Int z -> z / ~$2 | Inf -> Parameters.max_addr / ~$2
-      else ~$0)
+      if !Parameters.flags.stack then !Parameters.flags.max_addr / ~$2 else ~$0)
   in
 
   (* Parse initial register file *)

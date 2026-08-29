@@ -105,7 +105,7 @@ let string_of_sealable (sb : sealable) : string =
   match sb with
   | Cap (p, g, b, e, a) ->
       Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
-        (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)
@@ -120,7 +120,7 @@ let string_of_ast_sealable (sb : Ast.sealable) : string =
   match sb with
   | Ast.Cap (p, g, b, e, a) ->
       Printf.sprintf "Cap (%s, %s, %s, %s, %s)" (string_of_perm p) (string_of_locality g)
-        (Z.to_string b) (Infinite_z.to_string e) (Z.to_string a)
+        (Z.to_string b) (Z.to_string e) (Z.to_string a)
   | Ast.SealRange (p, g, b, e, a) ->
       Printf.sprintf "SRange [%s, %s, %s, %s, %s]" (string_of_seal_perm p) (string_of_locality g)
         (Z.to_string b) (Z.to_string e) (Z.to_string a)

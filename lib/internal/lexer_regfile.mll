@@ -30,8 +30,6 @@ rule token = parse
                                   with Failure _ -> error lexbuf
                                     ("invalid integer '" ^ i
                                      ^ "'; use a value that fits in a machine integer")}
-| ("Inf" | "inf" | "∞") { INF }
-
 (* registers *)
 | ['p' 'P'] ['c' 'C'] { PC }
 | ['s' 'S'] ['t' 'T'] ['k' 'K'] { STK }

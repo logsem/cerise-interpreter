@@ -33,7 +33,7 @@ let test_current_address_resolution_pass () =
     [
       Lbl "start";
       Move (Reg 1, Const (ConstExpr CurrentAddr));
-      Word (I (AddOp (CurrentAddr, IntLit (Infinite_z.of_int 2))));
+      Word (I (AddOp (CurrentAddr, IntLit (Z.of_int 2))));
       Lbl "ending";
       Halt;
     ]
@@ -41,8 +41,8 @@ let test_current_address_resolution_pass () =
   let expected =
     [
       Lbl "start";
-      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 0))));
-      Word (I (AddOp (IntLit (Infinite_z.of_int 1), IntLit (Infinite_z.of_int 2))));
+      Move (Reg 1, Const (ConstExpr (IntLit (Z.of_int 0))));
+      Word (I (AddOp (IntLit (Z.of_int 1), IntLit (Z.of_int 2))));
       Lbl "ending";
       Halt;
     ]
@@ -78,7 +78,7 @@ let test_label_resolution_pass () =
   let input =
     [
       Lbl "start";
-      Move (Reg 1, Const (ConstExpr (AddOp (Label "ending", IntLit (Infinite_z.of_int 1)))));
+      Move (Reg 1, Const (ConstExpr (AddOp (Label "ending", IntLit (Z.of_int 1)))));
       Word (I (SubOp (Label "ending", Label "start")));
       Lbl "ending";
       Halt;
@@ -88,8 +88,8 @@ let test_label_resolution_pass () =
     [
       Move
         ( Reg 1,
-          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
-      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 0))));
+          Const (ConstExpr (AddOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1)))) );
+      Word (I (SubOp (IntLit (Z.of_int 2), IntLit (Z.of_int 0))));
       Halt;
     ]
   in
@@ -101,14 +101,14 @@ let test_expression_evaluation_pass () =
     [
       Move
         ( Reg 1,
-          Const (ConstExpr (AddOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1)))) );
-      Word (I (SubOp (IntLit (Infinite_z.of_int 2), IntLit (Infinite_z.of_int 1))));
+          Const (ConstExpr (AddOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1)))) );
+      Word (I (SubOp (IntLit (Z.of_int 2), IntLit (Z.of_int 1))));
     ]
   in
   let expected =
     [
-      Move (Reg 1, Const (ConstExpr (IntLit (Infinite_z.of_int 3))));
-      Word (I (IntLit (Infinite_z.of_int 1)));
+      Move (Reg 1, Const (ConstExpr (IntLit (Z.of_int 3))));
+      Word (I (IntLit (Z.of_int 1)));
     ]
   in
   Alcotest.(check bool) "evaluated IR" true (Asm_expression_evaluator.evaluate input = expected)
@@ -144,7 +144,7 @@ let test_definition_in_capability () =
 %define LIMIT 5
 # (RW, GLOBAL, 0, LIMIT, 0)
 |} with
-  | [ Word (Sealable (Cap (RW, Global, base, Infinite_z.Int ending, address))) ] ->
+  | [ Word (Sealable (Cap (RW, Global, base, ending, address))) ] ->
       Alcotest.(check bool)
         "capability expression fields" true
         (Z.equal base Z.zero && Z.equal ending (Z.of_int 5) && Z.equal address Z.zero)
@@ -232,12 +232,12 @@ let test_parameters_in_capability_word () =
   match
     program
       "%macro cap(p: perm, l: locality, e: expr) # ($p, $l, 0, $e, 0) %endmacro %cap(RW, GLOBAL, \
-       Inf)"
+       10)"
   with
-  | [ Word (Sealable (Cap (RW, Global, base, Infinite_z.Inf, address))) ] ->
+  | [ Word (Sealable (Cap (RW, Global, base, ending, address))) ] ->
       Alcotest.(check bool)
         "parameterized capability" true
-        (Z.equal base Z.zero && Z.equal address Z.zero)
+        (Z.equal base Z.zero && Z.equal ending (Z.of_int 10) && Z.equal address Z.zero)
   | _ -> Alcotest.fail "expected one parameterized capability word"
 
 let () =

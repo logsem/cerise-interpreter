@@ -63,9 +63,6 @@ let () =
             (program "jmp r32" [ "unexpected token \"r32\""; "`r0`–`r31`" ]);
           Alcotest.test_case "unknown label" `Quick
             (program "mov r1 missing" [ "Unknown label \"missing\""; "Define it with `missing:`" ]);
-          Alcotest.test_case "invalid expression" `Quick
-            (program "mov r1 Inf"
-               [ "Constants expressions cannot be ∞"; "Replace `Inf` with a finite integer" ]);
           Alcotest.test_case "invalid integer" `Quick
             (program "mov r1 999999999999999999999999999999"
                [ "invalid integer"; "use a value that fits in a machine integer" ]);
@@ -90,9 +87,6 @@ let () =
                  "1 | pc = 0";
                  "|    ^";
                ]);
-          Alcotest.test_case "invalid expression" `Quick
-            (regfile "pc := Inf"
-               [ "Integer machine word cannot be ∞"; "Replace `Inf` with a finite integer" ]);
         ] );
       ( "macros",
         [
@@ -102,9 +96,6 @@ let () =
           Alcotest.test_case "cyclic definition" `Quick
             (program "%define FIRST SECOND\n%define SECOND FIRST\nmov r1 FIRST"
                [ "cyclic definition"; "FIRST" ]);
-          Alcotest.test_case "infinite definition" `Quick
-            (program "%define VALUE Inf\nmov r1 VALUE"
-               [ "must evaluate to a finite integer"; "`Inf` is not allowed" ]);
           Alcotest.test_case "non-integer definition" `Quick
             (program "%define VALUE RW\nmov r1 VALUE"
                [ "unexpected token \"RW\""; "Expected an integer" ]);

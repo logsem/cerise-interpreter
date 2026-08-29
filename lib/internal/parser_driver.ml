@@ -67,7 +67,7 @@ let program_candidates =
   [
     ("an instruction", Parser.HALT);
     ("a register (`pc`, `stk`, `ddc`, or `r0`–`r31`)", Parser.REG 0);
-    ("an integer, `Inf`, or label", Parser.INT 0);
+    ("an integer or label", Parser.INT 0);
     ("a permission such as `RO` or `RWX`", Parser.RO);
     ("a sealing permission (`SO`, `S`, `U`, or `SU`)", Parser.SO);
     ("a locality (`GLOBAL`, `LOCAL`, or `DIRECTED`)", Parser.GLOBAL);
@@ -95,7 +95,7 @@ let program_candidates =
 let regfile_candidates =
   [
     ("a register (`pc`, `stk`, `ddc`, or `r0`–`r31`)", Parser_regfile.REG 0);
-    ("an integer, `Inf`, `MAX_ADDR`, or `STK_ADDR`", Parser_regfile.INT 0);
+    ("an integer, `MAX_ADDR`, or `STK_ADDR`", Parser_regfile.INT 0);
     ("a permission such as `RO` or `RWX`", Parser_regfile.RO);
     ("a sealing permission (`SO`, `S`, `U`, or `SU`)", Parser_regfile.SO);
     ("a locality (`GLOBAL`, `LOCAL`, or `DIRECTED`)", Parser_regfile.GLOBAL);

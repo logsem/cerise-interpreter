@@ -6,7 +6,7 @@ type machineFlags = {
   stack : bool; (* Is there a stack register ? *)
   locality : locality; (* Minimum locality supported *)
   unitialized : bool; (* Are uninitialized capabilities supported ? *)
-  max_addr : Infinite_z.t; (* Maximum memory address (can be infinite) *)
+  max_addr : Z.t; (* Maximum memory address *)
 }
 
 let max_addr = Z.div (Z.of_int32 Int32.max_int) (Z.of_int 4096) (* (2^31 - 1) / 2^12 *)
@@ -18,7 +18,7 @@ let vanilla_cerise : machineFlags =
     stack = false;
     locality = Global;
     unitialized = false;
-    max_addr = Int max_addr;
+    max_addr;
   }
 
 let stack_cerise : machineFlags =
@@ -28,7 +28,7 @@ let stack_cerise : machineFlags =
     stack = true;
     locality = Local;
     unitialized = true;
-    max_addr = Int max_addr;
+    max_addr;
   }
 
 let mcerise : machineFlags =
@@ -38,7 +38,7 @@ let mcerise : machineFlags =
     stack = true;
     locality = Directed;
     unitialized = true;
-    max_addr = Int max_addr;
+    max_addr;
   }
 
 let sealing_cerise : machineFlags =
@@ -48,7 +48,7 @@ let sealing_cerise : machineFlags =
     stack = false;
     locality = Global;
     unitialized = false;
-    max_addr = Int max_addr;
+    max_addr;
   }
 
 let full_cerise : machineFlags =
@@ -58,7 +58,7 @@ let full_cerise : machineFlags =
     stack = true;
     locality = Directed;
     unitialized = true;
-    max_addr = Inf;
+    max_addr;
   }
 
 let custom_cerise : machineFlags =
@@ -68,7 +68,7 @@ let custom_cerise : machineFlags =
     stack = false;
     locality = Global;
     unitialized = false;
-    max_addr = Int max_addr;
+    max_addr;
   }
 
 let default : machineFlags = full_cerise
@@ -150,14 +150,10 @@ let set_max_addr a =
       locality = !flags.locality;
       unitialized = !flags.unitialized;
       max_addr = a;
-      version =
-        (match (!flags.unitialized, a) with
-        | false, Infinite_z.Inf -> Printf.sprintf "%s +Inf" !flags.version
-        | true, Infinite_z.Int z -> Printf.sprintf "%s +Int(%s)" !flags.version (Z.to_string z)
-        | _ -> !flags.version);
+      version = Printf.sprintf "%s +max-addr(%s)" !flags.version (Z.to_string a);
     }
 
-let get_max_addr () : Z.t = match !flags.max_addr with Inf -> max_addr | Int z -> z
+let get_max_addr () : Z.t = !flags.max_addr
 
 exception NotSupported of string
 

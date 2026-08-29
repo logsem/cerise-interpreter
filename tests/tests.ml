@@ -146,7 +146,7 @@ let test_sparse_zeroed_memory () =
   Fun.protect
     ~finally:(fun () -> Parameters.flags := previous_flags)
     (fun () ->
-      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      Parameters.flags := { previous_flags with max_addr = Z.of_int 4 };
       let memory = Machine.init_mem_state Z.zero [] in
       Alcotest.(check int) "empty backing map" 0 (Machine.MemMap.cardinal memory);
       let machine = Machine.init Machine.RegMap.empty memory in
@@ -167,7 +167,7 @@ let test_sparse_program_memory () =
   Fun.protect
     ~finally:(fun () -> Parameters.flags := previous_flags)
     (fun () ->
-      Parameters.flags := { previous_flags with max_addr = Cerise.Infinite_z.Int (Z.of_int 4) };
+      Parameters.flags := { previous_flags with max_addr = Z.of_int 4 };
       let memory = Machine.init_mem_state (Z.of_int 2) [ Word (I (Z.of_int 42)) ] in
       Alcotest.(check int) "only program words are stored" 1 (Machine.MemMap.cardinal memory);
       let machine = Machine.init Machine.RegMap.empty memory in

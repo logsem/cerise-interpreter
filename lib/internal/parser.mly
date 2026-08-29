@@ -2,7 +2,6 @@
 %token PC STK DDC
 %token <int> REG
 %token <int> INT
-%token INF
 %token CURRENTADDR
 %token <string> LABELDEF
 %token <string> LABEL
@@ -212,10 +211,9 @@ raw_expr:
   | e1 = raw_expr; PLUS; e2 = raw_expr { ParsedExpression (AddOp (as_expr e1, as_expr e2)) }
   | e1 = raw_expr; MINUS; e2 = raw_expr { ParsedExpression (SubOp (as_expr e1, as_expr e2)) }
   | MINUS; e = raw_expr %prec UMINUS {
-      ParsedExpression (SubOp (IntLit (Infinite_z.of_int 0), as_expr e))
+      ParsedExpression (SubOp (IntLit (Z.of_int 0), as_expr e))
     }
-  | i = INT { ParsedExpression (IntLit (Infinite_z.of_int i)) }
-  | INF { ParsedExpression (IntLit Infinite_z.Inf) }
+  | i = INT { ParsedExpression (IntLit (Z.of_int i)) }
   | CURRENTADDR { ParsedExpression CurrentAddr }
   | symbol = LABEL { ParsedExpression (Symbol symbol) }
   | name = PARAM { BareParameter name }

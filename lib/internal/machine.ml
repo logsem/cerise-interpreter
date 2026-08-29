@@ -23,7 +23,7 @@ type mchn = exec_state * exec_conf
 let init_reg_state (stk_addr : Z.t) : reg_state =
   let start_heap_addr = ~$0 in
   let max_heap_addr =
-    if !flags.stack then Infinite_z.Int stk_addr else !Parameters.flags.max_addr
+    if !flags.stack then stk_addr else !Parameters.flags.max_addr
   in
   let max_stk_addr = !Parameters.flags.max_addr in
 
@@ -122,7 +122,7 @@ let fetch_decode (conf : exec_conf) : machine_op option =
 let is_pc_valid (conf : exec_conf) : bool =
   match PC @! conf with
   | Sealable (Cap ((RX | RWX | RWLX), _, b, e, a)) ->
-      if b <= a && Infinite_z.z_lt a e then Option.is_some @@ a @? conf else false
+      if b <= a && a < e then Option.is_some @@ a @? conf else false
   | _ -> false
 
 let perm_flowsto (p1 : perm) (p2 : perm) : bool =
@@ -162,10 +162,10 @@ let sealperm_flowsto (p1 : seal_perm) (p2 : seal_perm) : bool =
 let can_write (p : perm) : bool = match p with RW | RWX | RWL | RWLX -> true | _ -> false
 let can_read (p : perm) : bool = match p with RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
 
-let can_read_upto (w : word) : Infinite_z.t =
+let can_read_upto (w : word) : Z.t =
   match w with
-  | Sealable (Cap (p, _, _, e, a)) -> if is_uperm p then Infinite_z.z_min a e else e
-  | _ -> Int Z.zero
+  | Sealable (Cap (p, _, _, e, a)) -> if is_uperm p then Z.min a e else e
+  | _ -> Z.zero
 
 let get_wtype (w : word) : wtype =
   match w with
@@ -201,18 +201,14 @@ let exec_single (conf : exec_conf) : mchn =
             | Sealable (Cap (p, _, b, e, a)) ->
                 if can_read p then
                   match a @? conf with
-                  | Some w when b <= a && Infinite_z.z_lt a e -> !>(upd_reg r1 w conf)
-                  (* case where we actually load a word outside of the already *)
-                  (* mapped memory, in case of infinite memory*)
-                  | None when b <= a && Infinite_z.z_lt a e && !Parameters.flags.max_addr = Inf ->
-                      !>(upd_reg r1 (I Z.zero) conf)
+                  | Some w when b <= a && a < e -> !>(upd_reg r1 w conf)
                   | _ -> fail_state
                 else fail_state
             | _ -> fail_state)
         | Store (r, c) -> (
             let w = get_word conf c in
             match r @! conf with
-            | Sealable (Cap (p, _, b, e, a)) when b <= a && Infinite_z.z_lt a e ->
+            | Sealable (Cap (p, _, b, e, a)) when b <= a && a < e ->
                 if can_write p then
                   match w with
                   (* We consider that a Directed sealing capability is similar to Local *)
@@ -222,7 +218,7 @@ let exec_single (conf : exec_conf) : mchn =
                       if is_WLperm p then !>(upd_mem a w conf) else fail_state
                   | (Sealed (_, sb) | Sealable sb)
                     when get_locality_sealable sb = Directed && is_cap sb ->
-                      if is_WLperm p && Infinite_z.leq_z (can_read_upto w) a then
+                      if is_WLperm p && can_read_upto w <= a then
                         !>(upd_mem a w conf)
                       else fail_state
                   | _ -> !>(upd_mem a w conf)
@@ -313,12 +309,8 @@ let exec_single (conf : exec_conf) : mchn =
                 let w2 = get_word conf c2 in
                 match (w1, w2) with
                 | I z1, I z2 ->
-                    if b <= z1 && Z.(~$0 <= z2) && Infinite_z.z_leq Z.zero e && p <> E then
-                      let w = Sealable (Cap (p, g, z1, Int z2, a)) in
-                      !>(upd_reg r w conf)
-                      (* Special case: SubSeg (p,g,b,+∞,a) z1 (-1) , ie. the upper-bound is still infinity *)
-                    else if b <= z1 && Z.(z2 == ~$(-1)) && Infinite_z.eq Inf e && p <> E then
-                      let w = Sealable (Cap (p, g, z1, Inf, a)) in
+                    if b <= z1 && Z.(~$0 <= z2) && Z.zero <= e && p <> E then
+                      let w = Sealable (Cap (p, g, z1, z2, a)) in
                       !>(upd_reg r w conf)
                     else fail_state
                 | _ -> fail_state)
@@ -391,9 +383,7 @@ let exec_single (conf : exec_conf) : mchn =
         | GetE (r1, r2) -> (
             match r2 @! conf with
             | Sealable (SealRange (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
-            | Sealable (Cap (_, _, _, e, _)) ->
-                let e' : Z.t = match e with Inf -> Z.minus_one | Int z -> z in
-                !>(upd_reg r1 (I e') conf)
+            | Sealable (Cap (_, _, _, e, _)) -> !>(upd_reg r1 (I e) conf)
             | _ -> fail_state)
         | GetA (r1, r2) -> (
             match r2 @! conf with
@@ -439,7 +429,7 @@ let exec_single (conf : exec_conf) : mchn =
                 Z.(
                   if is_uperm p then
                     match get_word conf c with
-                    | I off when b <= a + off && a + off < a && Infinite_z.z_leq a e -> (
+                    | I off when b <= a + off && a + off < a && a <= e -> (
                         match (a + off) @? conf with
                         | Some w -> !>(upd_reg r1 w conf)
                         | _ -> fail_state)
@@ -454,13 +444,13 @@ let exec_single (conf : exec_conf) : mchn =
                 Z.(
                   match r @! conf with
                   | Sealable (Cap (p, g, b, e, a))
-                    when b <= a + off && a + off <= a && Infinite_z.z_leq a e ->
+                    when b <= a + off && a + off <= a && a <= e ->
                       if is_uperm p then
                         match w with
                         | Sealable (Cap (_, g, _, _, _)) when g != Global && not (is_WLperm p) ->
                             fail_state
                         | Sealable (Cap (_, Directed, _, _, _))
-                          when not (Infinite_z.leq_z (can_read_upto w) (a + off)) ->
+                          when can_read_upto w > a + off ->
                             fail_state
                         | _ ->
                             let conf' =
@@ -478,7 +468,7 @@ let exec_single (conf : exec_conf) : mchn =
                 match p with
                 | URW | URWL | URWX | URWLX ->
                     let p' = promote_uperm p in
-                    let e' = Infinite_z.min_z e a in
+                    let e' = Z.min e a in
                     !>(upd_reg r (Sealable (Cap (p', g, b, e', a))) conf)
                 | _ -> fail_state)
             | _ -> fail_state))
