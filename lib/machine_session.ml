@@ -18,14 +18,15 @@ let unknown_backend name =
   let available = String.concat ", " (Backend_registry.names ()) in
   Diagnostic.error (Printf.sprintf "Unknown backend %S. Available backends: %s." name available)
 
-let create_with_backend requested_name config source regfile (module Backend : Machine_backend.S) =
-  match Backend.parse_program source with
+let create_with_backend ?source_filename ?regfile_filename requested_name config source regfile
+    (module Backend : Machine_backend.S) =
+  match Backend.parse_program ?filename:source_filename source with
   | Error _ as error -> error
   | Ok program -> (
       let regfile_result =
         match regfile with
         | None -> Ok None
-        | Some source -> Result.map Option.some (Backend.parse_regfile source)
+        | Some source -> Result.map Option.some (Backend.parse_regfile ?filename:regfile_filename source)
       in
       match regfile_result with
       | Error _ as error -> error
@@ -41,10 +42,18 @@ let create_with_backend requested_name config source regfile (module Backend : M
                      requested_name,
                      state ))))
 
-let create ~backend ~config ~source ~regfile =
+let create_with_filename_options ~source_filename ~regfile_filename ~backend ~config ~source ~regfile =
   match Backend_registry.find backend with
   | None -> Error [ unknown_backend backend ]
-  | Some selected -> create_with_backend backend config source regfile selected
+  | Some selected ->
+      create_with_backend ?source_filename ?regfile_filename backend config source regfile selected
+
+let create ~backend ~config ~source ~regfile =
+  create_with_filename_options ~source_filename:None ~regfile_filename:None ~backend ~config ~source ~regfile
+
+let create_with_filenames ~source_filename ~regfile_filename ~backend ~config ~source ~regfile =
+  create_with_filename_options ~source_filename:(Some source_filename) ~regfile_filename ~backend ~config
+    ~source ~regfile
 
 let backend_name (Session (_, requested_name, _)) = requested_name
 

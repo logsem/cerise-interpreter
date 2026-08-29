@@ -8,5 +8,6 @@
   core_contract_tests
   core_architecture_tests
   active_backend_tests
-  historical_backend_tests)
+  historical_backend_tests
+  cli_ui_fixture_tests)
  (libraries alcotest cerise cerise_internal))

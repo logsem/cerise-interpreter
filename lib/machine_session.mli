@@ -17,6 +17,16 @@ val create :
   regfile:string option ->
   (t, Diagnostic.t list) result
 
+val create_with_filenames :
+  source_filename:string ->
+  regfile_filename:string option ->
+  backend:string ->
+  config:Runtime_config.t ->
+  source:string ->
+  regfile:string option ->
+  (t, Diagnostic.t list) result
+(** Like [create], but attaches filenames to parser diagnostics. *)
+
 val backend_name : t -> string
 val view : t -> Machine_view.t
 val step : t -> (t, execution_error) result

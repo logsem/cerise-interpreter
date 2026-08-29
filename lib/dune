@@ -5,6 +5,7 @@
   cerise
   runtime_config
   diagnostic
+  cli_options
   assembly_frontend
   instruction_codec
   machine_view
@@ -43,5 +44,7 @@
   mcerise_view
   interim_legacy_backend
   backend_registry
-  machine_session)
+  machine_session
+  application_model
+  website_fixture)
  (libraries cerise_internal zarith))
