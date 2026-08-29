@@ -28,33 +28,13 @@ let create ?(source = "halt") ?regfile () =
   |> get_ok
 
 let test_backend_owns_parser () =
-  let source = "getl r1 stk\nseal r2 r0 r0\npromoteU r3\nrestrict r4 (RW, DIRECTED)\nhalt" in
-  let profiles =
-    [
-      Parameters.vanilla_cerise;
-      Parameters.stack_cerise;
-      Parameters.mcerise;
-      Parameters.sealing_cerise;
-      Parameters.full_cerise;
-      Parameters.custom_cerise;
-    ]
-  in
-  let previous = !Parameters.flags in
-  Fun.protect
-    ~finally:(fun () -> Parameters.flags := previous)
-    (fun () ->
-      List.iter
-        (fun profile ->
-          Parameters.flags := profile;
-          let selected = Backend_registry.find Backend_registry.default |> Option.get in
-          let module Backend = (val selected : Machine_backend.S) in
-          Alcotest.(check bool)
-            "vanilla syntax remains fixed" true
-            (Result.is_error (Backend.parse_program source));
-          Alcotest.(check string)
-            "backend parser does not leak the selected legacy profile" profile.version
-            !Parameters.flags.version)
-        profiles)
+  let selected = Backend_registry.find "vanilla" |> Option.get in
+  let module Backend = (val selected : Machine_backend.S) in
+  List.iter
+    (fun source ->
+      Alcotest.(check bool) "vanilla rejects unsupported syntax" true
+        (Result.is_error (Backend.parse_program source)))
+    [ "getl r1 r2 halt"; "promoteU r1 halt"; "restrict r1 (RW, DIRECTED) halt" ]
 
 let capability_metadata bank key session =
   let word = register_word bank key session in
@@ -69,32 +49,18 @@ let test_interleaved_runtime_configs () =
   in
   let source = "mov r3 r1\nhalt" in
   let regfile = Some "r1 := MAX_ADDR\nr2 := STK_ADDR" in
-  let previous = !Parameters.flags in
-  Fun.protect
-    ~finally:(fun () -> Parameters.flags := previous)
-    (fun () ->
-      Parameters.flags := Parameters.vanilla_cerise;
-      let check_legacy_profile_restored message =
-        Alcotest.(check string) message Parameters.vanilla_cerise.version !Parameters.flags.version;
-        check_z (message ^ " (max_addr)") Parameters.vanilla_cerise.max_addr
-          !Parameters.flags.max_addr
-      in
-      let first =
+  let first =
         Machine_session.create ~backend:Backend_registry.default ~config:first_config ~source
           ~regfile
         |> get_ok
       in
-      check_legacy_profile_restored "first creation restores legacy globals";
       let second =
         Machine_session.create ~backend:Backend_registry.default ~config:second_config ~source
           ~regfile
         |> get_ok
       in
-      check_legacy_profile_restored "second creation restores legacy globals";
       let first_view = Machine_session.view first in
-      check_legacy_profile_restored "first inspection restores legacy globals";
       let second_view = Machine_session.view second in
-      check_legacy_profile_restored "second inspection restores legacy globals";
       check_z "first view keeps its address limit" (Z.of_int 64) first_view.address_limit;
       check_z "second view keeps its address limit" (Z.of_int 1000) second_view.address_limit;
       check_z "first PC limit uses its address space" (Z.of_int 64)
@@ -108,11 +74,9 @@ let test_interleaved_runtime_configs () =
            (Machine_session.view first)
         = None);
       let first_after_step = Machine_session.step first |> Result.get_ok in
-      check_legacy_profile_restored "first step restores legacy globals";
       check_z "other session stays unstepped" Z.zero
         (int_word (register_word Machine_view.General "r3" second));
       let second_after_step = Machine_session.step second |> Result.get_ok in
-      check_legacy_profile_restored "second step restores legacy globals";
       check_z "first transition uses first MAX_ADDR" (Z.of_int 64)
         (int_word (register_word Machine_view.General "r3" first_after_step));
       check_z "second transition uses second MAX_ADDR" (Z.of_int 1000)
@@ -122,7 +86,7 @@ let test_interleaved_runtime_configs () =
       check_z "prior second session remains immutable" Z.zero
         (int_word (register_word Machine_view.General "r3" second));
       check_z "first stepped view is not contaminated by second" (Z.of_int 64)
-        (Machine_session.view first_after_step).address_limit)
+        (Machine_session.view first_after_step).address_limit
 
 let test_registry_and_shared_frontend () =
   Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default;

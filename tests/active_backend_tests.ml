@@ -214,7 +214,13 @@ let codec_round_trips () =
       Alcotest.(check bool)
         "codec round trip" true
         (Result.get_ok (Vanilla_codec.decode encoded) = instruction))
-    instructions
+    instructions;
+  let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_003) (Z.of_int 0x35)) in
+  let large_instruction = Move (Reg 1, Constant large_constant) in
+  let encoded = Result.get_ok (Vanilla_codec.encode large_instruction) in
+  Alcotest.(check bool)
+    "large finite vanilla instruction round trip" true
+    (Vanilla_codec.decode encoded = Ok large_instruction)
 
 let parameterized_values_and_total_decoders () =
   let vanilla_source =
@@ -318,9 +324,10 @@ let initial_views_and_alias () =
     "names"
     [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "cerisier"; "griotte"; "griotte-extracted" ]
     (Backend_registry.names ());
-  Alcotest.(check bool)
-    "old name absent" true
-    (Option.is_none (Backend_registry.find "sealing-cerise"));
+  List.iter
+    (fun name -> Alcotest.(check bool) ("old name absent: " ^ name) true
+      (Option.is_none (Backend_registry.find name)))
+    [ "default"; "vanilla-cerise"; "stack-cerise"; "sealing-cerise"; "seal_cerise"; "custom" ];
   let alias = session "cerise" "halt" in
   Alcotest.(check string) "requested alias" "cerise" (Machine_session.backend_name alias);
   let vanilla = Machine_session.view (session "vanilla" "halt") in

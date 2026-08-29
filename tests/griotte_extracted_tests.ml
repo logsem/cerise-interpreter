@@ -88,18 +88,6 @@ let encoding_identity () =
         (Griotte_extracted_codec.decode actual = Ok instruction))
     instructions;
   let open Griotte_ast in
-  let limitations =
-    [
-      Rem (Reg 1, Constant (z (-9)), Register (Reg 2)); Div (Reg 1, Register PC, Constant (z (-3)));
-    ]
-  in
-  List.iter
-    (fun instruction ->
-      Alcotest.(check string)
-        "unsupported constructor still has the canonical program encoding"
-        (Z.to_string (Result.get_ok (Griotte_codec.encode instruction)))
-        (Z.to_string (Result.get_ok (Griotte_extracted_codec.encode instruction))))
-    limitations;
   Alcotest.(check string)
     "negative Jmp golden" "-767"
     (Z.to_string (Result.get_ok (Griotte_extracted_codec.encode (Jmp (Constant (z (-3)))))));
@@ -157,6 +145,21 @@ let encoding_identity () =
         (Z.to_string (Griotte_extracted_codec.encode_word_type word_type)))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ]
 
+let large_codec_round_trip () =
+  let open Griotte_ast in
+  let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_019) (Z.of_int 0xa6)) in
+  let instruction = Move (Reg 1, Constant large_constant) in
+  let handwritten = Result.get_ok (Griotte_codec.encode instruction) in
+  let extracted = Result.get_ok (Griotte_extracted_codec.encode instruction) in
+  Alcotest.(check string)
+    "large finite encoding identity" (Z.to_string handwritten) (Z.to_string extracted);
+  Alcotest.(check bool)
+    "large finite handwritten round trip" true
+    (Griotte_codec.decode handwritten = Ok instruction);
+  Alcotest.(check bool)
+    "large finite independent round trip" true
+    (Griotte_extracted_codec.decode extracted = Ok instruction)
+
 let decoder_totality () =
   let rejects value =
     match Griotte_extracted_codec.decode value with
@@ -169,7 +172,13 @@ let decoder_totality () =
   let nested_negative = Z.logor (z 0x0c) (Z.shift_left (z 14) 8) in
   Alcotest.(check bool) "nested negative tuple" true (rejects nested_negative);
   let huge = Z.shift_left Z.one 20_000 in
-  Alcotest.(check bool) "huge malformed register" true (rejects (Z.shift_left huge 8))
+  Alcotest.(check bool) "huge malformed register" true (rejects (Z.shift_left huge 8));
+  List.iter
+    (fun opcode ->
+      Alcotest.(check bool)
+        (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
+        true (rejects (z opcode)))
+    (List.init 8 (fun offset -> 0x18 + offset))
 
 let normalize view = { view with Machine_view.backend_name = "griotte" }
 
@@ -302,21 +311,32 @@ let edits_and_boundaries () =
        (Machine_session.create ~backend:"griotte-extracted" ~config ~source:"halt"
           ~regfile:(Some "cra := {2000001: ([R W LG LM], Global, 0, 8, 0)}")))
 
-let rem_div_limitation () =
-  let handwritten, extracted = sessions "rem ca0 5 2 halt" in
-  let handwritten = Result.get_ok (Machine_session.step handwritten) in
-  let extracted = Result.get_ok (Machine_session.step extracted) in
-  Alcotest.(check bool)
-    "handwritten Rem continues" true
-    ((Machine_session.view handwritten).status = Running);
-  Alcotest.(check bool)
-    "extracted Rem is explicit Fail" true
-    ((Machine_session.view extracted).status = Failed);
-  let _, extracted = sessions "div ca0 8 2 halt" in
-  let extracted = Result.get_ok (Machine_session.step extracted) in
-  Alcotest.(check bool)
-    "extracted Div is explicit Fail" true
-    ((Machine_session.view extracted).status = Failed)
+let unsupported_arithmetic_rejected () =
+  List.iter
+    (fun backend ->
+      List.iter
+        (fun mnemonic ->
+          let source = "halt\n" ^ mnemonic ^ " ca0 8 2" in
+          match
+            Machine_session.create_with_filenames ~source_filename:"unsupported.griotte"
+              ~regfile_filename:None ~backend ~config ~source ~regfile:None
+          with
+          | Error (diagnostic :: _) ->
+              Alcotest.(check string)
+                "shared parser diagnostic"
+                (Printf.sprintf "Unsupported Griotte instruction `%s`." mnemonic)
+                (Diagnostic.message diagnostic);
+              Alcotest.(check bool)
+                "shared parser diagnostic is located" true
+                (match Diagnostic.location diagnostic with
+                | Some location ->
+                    location.source = Some "unsupported.griotte"
+                    && location.line = 2 && location.column = 1
+                | None -> false)
+          | Error [] -> Alcotest.fail "parser returned an empty diagnostic list"
+          | Ok _ -> Alcotest.failf "%s accepted unsupported instruction %s" backend mnemonic)
+        [ "rem"; "div" ])
+    [ "griotte"; "griotte-extracted" ]
 
 let step_n_contract () =
   let handwritten, extracted = sessions "mov ca0 1 mov ca1 2 halt" in
@@ -336,6 +356,8 @@ let () =
       ( "codec",
         [
           Alcotest.test_case "encoding identity" `Quick encoding_identity;
+          Alcotest.test_case "large finite encoding identity and round trip" `Quick
+            large_codec_round_trip;
           Alcotest.test_case "malformed totality" `Quick decoder_totality;
         ] );
       ( "differential",
@@ -346,6 +368,7 @@ let () =
           Alcotest.test_case "system, terminal, malformed" `Quick system_halt_fail_and_malformed;
           Alcotest.test_case "edits and boundaries" `Quick edits_and_boundaries;
           Alcotest.test_case "step_n contract" `Quick step_n_contract;
-          Alcotest.test_case "documented Rem/Div limitation" `Quick rem_div_limitation;
+          Alcotest.test_case "shared parser rejects unsupported arithmetic" `Quick
+            unsupported_arithmetic_rejected;
         ] );
     ]

@@ -309,6 +309,64 @@ let parity_rules () =
   Alcotest.(check string)
     "historical SubSeg permits enlarged finite limit" "40" (Z.to_string loose.limit)
 
+let einit_configured_region () =
+  let open Cerisier_ast in
+  let b = Z.of_int 4 in
+  let bounded_end = Z.pred (Runtime_config.max_addr config) in
+  let oversized_end = Z.shift_left Z.one 100_000 in
+  let make_state e =
+    let state = ok (Cerisier_machine.init config [] None) in
+    state
+    |> Cerisier_machine.set_register PC
+         (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
+    |> Cerisier_machine.set_register (Reg 31) (I Z.zero)
+    |> Cerisier_machine.set_register (Reg 2) (Sealable (Cap (RX, Global, b, e, Z.of_int 5)))
+    |> Cerisier_machine.set_memory_raw b
+         (Sealable (Cap (RW, Global, Z.of_int 2, Z.of_int 4, Z.of_int 2)))
+    |> Cerisier_machine.set_memory_raw (Z.of_int 3) (I (Z.of_int 99))
+    |> Cerisier_machine.set_memory_raw (Z.of_int 5) (I (Z.of_int 11))
+    |> Cerisier_machine.set_memory_raw (Z.of_int 7) (I (Z.of_int 22))
+  in
+  let execute e = Cerisier_machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
+  let bounded = execute bounded_end
+  and oversized = execute oversized_end
+  and short = execute (Z.of_int 6) in
+  let identity (state : Cerisier_machine.t) =
+    Cerisier_machine.ETableMap.find Z.zero state.enclave_table
+  in
+  let rec expected_region address words =
+    if address > bounded_end then List.rev words
+    else
+      let word =
+        if Z.equal address (Z.of_int 5) then I (Z.of_int 11)
+        else if Z.equal address (Z.of_int 7) then I (Z.of_int 22)
+        else I Z.zero
+      in
+      expected_region (Z.succ address) (word :: words)
+  in
+  let expected_identity = Z.of_int (Hashtbl.hash (b, expected_region (Z.succ b) [])) in
+  Alcotest.(check string)
+    "ascending hash includes sparse holes and excludes the cell below b+1"
+    (Z.to_string expected_identity) (Z.to_string (identity bounded));
+  Alcotest.(check string)
+    "oversized end has the bounded identity"
+    (Z.to_string (identity bounded)) (Z.to_string (identity oversized));
+  Alcotest.(check string)
+    "explicit cell above e does not contribute"
+    (Z.to_string (Z.of_int (Hashtbl.hash (b, [ I (Z.of_int 11); I Z.zero ]))))
+    (Z.to_string (identity short));
+  List.iter
+    (fun (label, requested_end, state) ->
+      match Cerisier_machine.read_register (Reg 1) state with
+      | Sealable (Cap (E, Global, base, limit, cursor)) ->
+          Alcotest.(check string) (label ^ " base") (Z.to_string b) (Z.to_string base);
+          Alcotest.(check string)
+            (label ^ " retains requested end")
+            (Z.to_string requested_end) (Z.to_string limit);
+          Alcotest.(check string) (label ^ " cursor") "5" (Z.to_string cursor)
+      | _ -> Alcotest.fail (label ^ " did not return an E capability"))
+    [ ("bounded", bounded_end, bounded); ("oversized", oversized_end, oversized) ]
+
 let fixture name =
   let local = "test_files/cerisier/pos/" ^ name in
   if Sys.file_exists local then local else "tests/" ^ local
@@ -364,6 +422,7 @@ let () =
         [
           Alcotest.test_case "finite bounds and edits" `Quick finite_bounds_and_edits;
           Alcotest.test_case "historical parity rules" `Quick parity_rules;
+          Alcotest.test_case "EInit configured-memory region" `Quick einit_configured_region;
           Alcotest.test_case "examples and enclave lifecycle" `Quick examples_and_lifecycle;
         ] );
     ]

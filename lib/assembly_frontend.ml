@@ -562,21 +562,24 @@ module Make (Syntax : SYNTAX) = struct
     if !errors = [] then Ok macros else Error (List.rev !errors)
 
   let local_labels (definition : macro_definition) =
-    let labels = Hashtbl.create 8 in
+    let seen = Hashtbl.create 8 in
+    let labels = ref [] in
     let duplicates = ref [] in
     List.iter
       (fun item ->
         match item.node with
         | Label name ->
-            if Hashtbl.mem labels name then
+            if Hashtbl.mem seen name then
               duplicates :=
                 diagnostic_at item.location
                   (Printf.sprintf "Macro %S has duplicate private label %S." definition.name name)
                 :: !duplicates
-            else Hashtbl.add labels name ()
+            else (
+              Hashtbl.add seen name ();
+              labels := name :: !labels)
         | _ -> ())
       definition.body;
-    if !duplicates = [] then Ok labels else Error (List.rev !duplicates)
+    if !duplicates = [] then Ok (List.rev !labels) else Error (List.rev !duplicates)
 
   let bind_arguments (definition : macro_definition) arguments location =
     if List.length definition.parameters <> List.length arguments then
@@ -620,6 +623,29 @@ module Make (Syntax : SYNTAX) = struct
 
   let expand macros items =
     let invocation = ref 0 in
+    let reserved_names = Hashtbl.create 32 in
+    let reserve name = Hashtbl.replace reserved_names name () in
+    List.iter
+      (fun item ->
+        match item.node with
+        | Label name | Definition (name, _) -> reserve name
+        | Macro_definition definition ->
+            List.iter
+              (fun body_item ->
+                match body_item.node with Definition (name, _) -> reserve name | _ -> ())
+              definition.body
+        | Statement _ | Raw_word _ | Macro_call _ -> ())
+      items;
+    let fresh_private_name base =
+      let rec choose suffix =
+        let candidate = if suffix = 0 then base else Printf.sprintf "%s_%d" base suffix in
+        if Hashtbl.mem reserved_names candidate then choose (suffix + 1)
+        else (
+          reserve candidate;
+          candidate)
+      in
+      choose 0
+    in
     let rec expand_items stack items =
       let rec loop expanded = function
         | [] -> Ok (List.rev expanded)
@@ -644,12 +670,13 @@ module Make (Syntax : SYNTAX) = struct
                           match local_labels definition with
                           | Error _ as error -> error
                           | Ok private_labels -> (
-                              let labels = Hashtbl.create (Hashtbl.length private_labels) in
-                              Hashtbl.iter
-                                (fun label () ->
-                                  let fresh =
+                              let labels = Hashtbl.create (List.length private_labels) in
+                              List.iter
+                                (fun label ->
+                                  let base =
                                     Printf.sprintf "__macro_%d_%s_%s" !invocation name label
                                   in
+                                  let fresh = fresh_private_name base in
                                   Hashtbl.add labels label fresh)
                                 private_labels;
                               incr invocation;

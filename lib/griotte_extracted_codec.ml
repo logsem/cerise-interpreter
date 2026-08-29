@@ -22,12 +22,32 @@ let decode_register encoded =
     else if n >= 1 && n <= 32 then Ok (Reg (n - 1))
     else error "invalid Griotte register encoding"
 
-let rec interleave_unsigned x y =
-  if Z.equal x Z.zero && Z.equal y Z.zero then Z.zero
-  else
-    Z.logor
-      (Z.logor (Z.extract x 0 1) (Z.shift_left (Z.extract y 0 1) 1))
-      (Z.shift_left (interleave_unsigned (Z.shift_right x 1) (Z.shift_right y 1)) 2)
+let spread_nibble =
+  Array.init 16 (fun nibble ->
+      nibble land 1
+      lor ((nibble land 2) lsl 1)
+      lor ((nibble land 4) lsl 2)
+      lor ((nibble land 8) lsl 3))
+
+let compact_even_bits =
+  Array.init 256 (fun byte ->
+      byte land 1 lor ((byte lsr 1) land 2) lor ((byte lsr 2) land 4) lor ((byte lsr 3) land 8))
+
+let interleave_unsigned x y =
+  let x = Z.to_bits x in
+  let y = Z.to_bits y in
+  let input_length = max (String.length x) (String.length y) in
+  let interleaved = Bytes.create (input_length * 2) in
+  for input_index = 0 to input_length - 1 do
+    let x_byte = if input_index < String.length x then Char.code x.[input_index] else 0 in
+    let y_byte = if input_index < String.length y then Char.code y.[input_index] else 0 in
+    let output_index = input_index * 2 in
+    Bytes.set interleaved output_index
+      (Char.chr (spread_nibble.(x_byte land 0xf) lor (spread_nibble.(y_byte land 0xf) lsl 1)));
+    Bytes.set interleaved (output_index + 1)
+      (Char.chr (spread_nibble.(x_byte lsr 4) lor (spread_nibble.(y_byte lsr 4) lsl 1)))
+  done;
+  Z.of_bits (Bytes.unsafe_to_string interleaved)
 
 let encode_pair x y =
   let signs =
@@ -39,12 +59,24 @@ let encode_pair x y =
   in
   Z.logor signs (Z.shift_left (interleave_unsigned (Z.abs x) (Z.abs y)) 2)
 
-let rec split_unsigned value =
-  if Z.equal value Z.zero then (Z.zero, Z.zero)
-  else
-    let x, y = split_unsigned (Z.shift_right value 2) in
-    ( Z.logor (Z.extract value 0 1) (Z.shift_left x 1),
-      Z.logor (Z.extract value 1 1) (Z.shift_left y 1) )
+let split_unsigned value =
+  let interleaved = Z.to_bits value in
+  let interleaved_length = String.length interleaved in
+  let output_length = (interleaved_length + 1) / 2 in
+  let x = Bytes.create output_length in
+  let y = Bytes.create output_length in
+  for output_index = 0 to output_length - 1 do
+    let input_index = output_index * 2 in
+    let low = Char.code interleaved.[input_index] in
+    let high =
+      if input_index + 1 < interleaved_length then Char.code interleaved.[input_index + 1] else 0
+    in
+    Bytes.set x output_index
+      (Char.chr (compact_even_bits.(low) lor (compact_even_bits.(high) lsl 4)));
+    Bytes.set y output_index
+      (Char.chr (compact_even_bits.(low lsr 1) lor (compact_even_bits.(high lsr 1) lsl 4)))
+  done;
+  (Z.of_bits (Bytes.unsafe_to_string x), Z.of_bits (Bytes.unsafe_to_string y))
 
 let decode_pair value =
   if Z.sign value < 0 then error "negative tuple payload"
@@ -103,8 +135,6 @@ let encode = function
   | Add (r, a, b) -> encode_roo 0x0c r a b
   | Sub (r, a, b) -> encode_roo 0x10 r a b
   | Mul (r, a, b) -> encode_roo 0x14 r a b
-  | Rem (r, a, b) -> encode_roo 0x18 r a b
-  | Div (r, a, b) -> encode_roo 0x1c r a b
   | Lt (r, a, b) -> encode_roo 0x20 r a b
   | Lea (r, operand) -> encode_ro 0x24 r operand
   | Restrict (r, operand) -> encode_ro 0x26 r operand
@@ -183,8 +213,6 @@ let decode encoded =
     | _ when in_span 0x0c -> decode_roo 0x0c opcode payload (fun r a b -> Add (r, a, b))
     | _ when in_span 0x10 -> decode_roo 0x10 opcode payload (fun r a b -> Sub (r, a, b))
     | _ when in_span 0x14 -> decode_roo 0x14 opcode payload (fun r a b -> Mul (r, a, b))
-    | _ when in_span 0x18 -> decode_roo 0x18 opcode payload (fun r a b -> Rem (r, a, b))
-    | _ when in_span 0x1c -> decode_roo 0x1c opcode payload (fun r a b -> Div (r, a, b))
     | _ when in_span 0x20 -> decode_roo 0x20 opcode payload (fun r a b -> Lt (r, a, b))
     | 0x24 | 0x25 -> decode_ro 0x24 opcode payload (fun r o -> Lea (r, o))
     | 0x26 | 0x27 -> decode_ro 0x26 opcode payload (fun r o -> Restrict (r, o))

@@ -68,21 +68,56 @@ let enum ~name values =
 
 type ('register, 'constant) register_or_constant = Register of 'register | Constant of 'constant
 
-let rec split_unsigned value =
-  if Z.equal value Z.zero then (Z.zero, Z.zero)
-  else
-    let first_bit = Z.extract value 0 1 in
-    let second_bit = Z.extract value 1 1 in
-    let first, second = split_unsigned (Z.shift_right value 2) in
-    (Z.logor first_bit (Z.shift_left first 1), Z.logor second_bit (Z.shift_left second 1))
+let spread_nibble =
+  Array.init 16 (fun nibble ->
+      nibble land 1
+      lor ((nibble land 2) lsl 1)
+      lor ((nibble land 4) lsl 2)
+      lor ((nibble land 8) lsl 3))
 
-let rec interleave_unsigned first second =
-  if Z.equal first Z.zero && Z.equal second Z.zero then Z.zero
-  else
-    let first_bit = Z.extract first 0 1 in
-    let second_bit = Z.shift_left (Z.extract second 0 1) 1 in
-    Z.logor (Z.logor first_bit second_bit)
-      (Z.shift_left (interleave_unsigned (Z.shift_right first 1) (Z.shift_right second 1)) 2)
+let compact_even_bits =
+  Array.init 256 (fun byte ->
+      byte land 1 lor ((byte lsr 1) land 2) lor ((byte lsr 2) land 4) lor ((byte lsr 3) land 8))
+
+let split_unsigned value =
+  let interleaved = Z.to_bits value in
+  let interleaved_length = String.length interleaved in
+  let output_length = (interleaved_length + 1) / 2 in
+  let first = Bytes.create output_length in
+  let second = Bytes.create output_length in
+  for output_index = 0 to output_length - 1 do
+    let input_index = output_index * 2 in
+    let low = Char.code interleaved.[input_index] in
+    let high =
+      if input_index + 1 < interleaved_length then Char.code interleaved.[input_index + 1] else 0
+    in
+    Bytes.set first output_index
+      (Char.chr (compact_even_bits.(low) lor (compact_even_bits.(high) lsl 4)));
+    Bytes.set second output_index
+      (Char.chr (compact_even_bits.(low lsr 1) lor (compact_even_bits.(high lsr 1) lsl 4)))
+  done;
+  (Z.of_bits (Bytes.unsafe_to_string first), Z.of_bits (Bytes.unsafe_to_string second))
+
+let interleave_unsigned first second =
+  let first = Z.to_bits first in
+  let second = Z.to_bits second in
+  let input_length = max (String.length first) (String.length second) in
+  let interleaved = Bytes.create (input_length * 2) in
+  for input_index = 0 to input_length - 1 do
+    let first_byte =
+      if input_index < String.length first then Char.code first.[input_index] else 0
+    in
+    let second_byte =
+      if input_index < String.length second then Char.code second.[input_index] else 0
+    in
+    let output_index = input_index * 2 in
+    Bytes.set interleaved output_index
+      (Char.chr
+         (spread_nibble.(first_byte land 0xf) lor (spread_nibble.(second_byte land 0xf) lsl 1)));
+    Bytes.set interleaved (output_index + 1)
+      (Char.chr (spread_nibble.(first_byte lsr 4) lor (spread_nibble.(second_byte lsr 4) lsl 1)))
+  done;
+  Z.of_bits (Bytes.unsafe_to_string interleaved)
 
 let encode_signed_pair first second =
   let signs =
@@ -251,11 +286,13 @@ let compile cases =
   let starts : (string, int) Hashtbl.t = Hashtbl.create (List.length cases) in
   let errors = ref (duplicate_name_errors cases) in
   let reserve name first span =
-    if first < 0 then errors := Invalid_fixed_opcode { case_name = name; opcode = first } :: !errors
-    else if span <= 0 || first + span > 256 then
+    if first < 0 || first >= Array.length owners then
+      errors := Invalid_fixed_opcode { case_name = name; opcode = first } :: !errors
+    else if span <= 0 || span > Array.length owners - first then
       errors := Opcode_overflow { case_name = name; first_opcode = first; span } :: !errors
     else
-      for opcode = first to first + span - 1 do
+      for offset = 0 to span - 1 do
+        let opcode = first + offset in
         match owners.(opcode) with
         | None -> owners.(opcode) <- Some name
         | Some first_case ->
@@ -272,12 +309,18 @@ let compile cases =
     cases;
   let cursor = ref 0 in
   let rec find_free span candidate =
-    if candidate + span > 256 then None
+    if
+      span <= 0
+      || candidate < 0
+      || candidate > Array.length owners
+      || span > Array.length owners - candidate
+    then None
     else
-      let rec range_is_free opcode =
-        opcode = candidate + span || (Option.is_none owners.(opcode) && range_is_free (opcode + 1))
+      let rec range_is_free opcode remaining =
+        remaining = 0
+        || (Option.is_none owners.(opcode) && range_is_free (opcode + 1) (remaining - 1))
       in
-      if range_is_free candidate then Some candidate else find_free span (candidate + 1)
+      if range_is_free candidate span then Some candidate else find_free span (candidate + 1)
   in
   List.iter
     (fun (Case case) ->

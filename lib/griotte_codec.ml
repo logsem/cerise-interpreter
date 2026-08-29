@@ -74,12 +74,6 @@ let cases =
     case "Mul" 0x14 roo
       (fun (a, b, c) -> Mul (a, from_operand b, from_operand c))
       (function Mul (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Rem" 0x18 roo
-      (fun (a, b, c) -> Rem (a, from_operand b, from_operand c))
-      (function Rem (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Div" 0x1c roo
-      (fun (a, b, c) -> Div (a, from_operand b, from_operand c))
-      (function Div (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
     case "Lt" 0x20 roo
       (fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
       (function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);

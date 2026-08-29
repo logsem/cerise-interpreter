@@ -501,13 +501,15 @@ let rec execute op state =
                          Z.add object_type (Z.of_int 2),
                          object_type ))
                 in
+                let first_address = Z.max Z.zero (Z.succ b) in
+                let last_address = Z.min e (Z.pred (Runtime_config.max_addr state.config)) in
                 let rec region address words =
-                  if address > e then List.rev words
+                  if address > last_address then List.rev words
                   else
                     let word = Option.value (read_memory address state) ~default:(I Z.zero) in
                     region (Z.succ address) (word :: words)
                 in
-                let code_region = region (Z.succ b) [] in
+                let code_region = region first_address [] in
                 let identity = Z.of_int (Hashtbl.hash (b, code_region)) in
                 let state =
                   {

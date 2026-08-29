@@ -41,8 +41,7 @@ architectural constants below.
 | Permission/locality pair | `(RW, GLOBAL)` |
 | Sealing-permission/locality pair | `(S, LOCAL)` |
 
-Some values or instructions are rejected when they are unavailable in the selected machine profile;
-see [Machine profiles](#machine-profiles).
+Some values or instructions are rejected when they are unavailable in the selected backend.
 
 ## Instructions
 
@@ -81,6 +80,9 @@ The metavariables in this table are `r` for a register and `v` for a value.
 | `halt` | enter the halted state |
 
 Operands are separated by whitespace rather than commas.
+
+`rem` and `div` remain supported by backends where applicable, but are unavailable in both
+`griotte` and `griotte-extracted`.
 
 ## Expressions and labels
 
@@ -191,10 +193,12 @@ Labels declared in a macro body are private and are renamed uniquely for each ca
 same body resolve to that private label; references to labels not declared by the body resolve at file
 scope. A private label name may not collide with an integer definition.
 
-Macros are deliberately flat in this version: a macro body cannot contain another macro call,
-`%define`, or `%macro`. Macros cannot replace instruction names or complete statements through a
-parameter. Duplicate names or parameters, unknown calls or parameters, wrong arity, wrong argument
-types, and duplicate private labels are errors.
+Macro bodies may contain calls to declared sequence macros and `%define` directives. Calls nested in
+macro bodies expand recursively (recursive cycles are rejected). Definitions emitted by a macro are
+file-wide and share the label/definition namespace; hygienic private-label allocation avoids those
+names. `%macro` declarations cannot be nested. Macros cannot replace instruction names or complete
+statements through a parameter. Duplicate names or parameters, unknown calls or parameters, wrong
+arity, wrong argument types, and duplicate private labels are errors.
 
 ## Register files
 
@@ -211,19 +215,23 @@ stk := (RWLX, LOCAL, 0, STK_ADDR, STK_ADDR)
 Register-file expressions support integers, parentheses, `+`, `-`, and the predefined
 `MAX_ADDR` and `STK_ADDR` values. They do not support labels, `%define`, or sequence macros.
 
-## Machine profiles
+## Backends
 
-The default profile enables sealing, a stack, directed locality, uninitialized capabilities, and an
-configured finite address limit. The command-line `--version` option also provides:
+The command-line `--backend` option selects an independent backend (default: `vanilla`). The
+available backends are:
 
-| Version | Main restrictions |
+| Backend | Main features |
 |---|---|
-| `vanilla` | no sealing, stack, local/directed locality, or uninitialized permissions |
-| `ucerise` | stack and local capabilities, but no sealing or directed locality |
-| `mcerise` | stack, directed locality, and uninitialized permissions, but no sealing |
-| `seal_cerise` | sealing, but no stack, local/directed locality, or uninitialized permissions |
-| `custom` | configured further through command-line feature flags |
+| `vanilla` | global-only capabilities with sealing; no locality or uninitialized permissions |
+| `cerise` | alias for `vanilla` |
+| `locality-cerise` | global and local capabilities with sealing; no uninitialized permissions |
+| `ucerise` | historical uninitialized capabilities with global and local locality; no sealing |
+| `mcerise` | historical uninitialized capabilities with global, local, and directed locality; no sealing |
+| `cerisier` | historical enclave backend with sealing, uninitialized, and directed capabilities |
+| `griotte` | Griotte capability machine with its own parser and instruction set |
+| `griotte-extracted` | Rocq-extracted Griotte implementation behind a differential adapter |
 
-Parsing is followed by profile validation. Consequently, syntax can be structurally valid but still
-be rejected because an instruction, permission, locality, or word is unsupported by the selected
-profile.
+Each backend parses and validates its own syntax. The common construction-block frontend handles
+expressions, labels, definitions, and typed sequence macros; instruction encodings use backend
+codec tables. Consequently, an instruction, permission, locality, or word can be rejected by the
+selected backend even when it is valid in another one.

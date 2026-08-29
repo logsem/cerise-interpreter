@@ -23,8 +23,6 @@ let expected_allocations =
     ("Add", 0x0c, 4);
     ("Sub", 0x10, 4);
     ("Mul", 0x14, 4);
-    ("Rem", 0x18, 4);
-    ("Div", 0x1c, 4);
     ("Lt", 0x20, 4);
     ("Lea", 0x24, 2);
     ("Restrict", 0x26, 2);
@@ -74,14 +72,6 @@ let instructions =
     Mul (a, rr, c);
     Mul (a, c, rr);
     Mul (a, c, c);
-    Rem (a, rr, rr);
-    Rem (a, rr, c);
-    Rem (a, c, rr);
-    Rem (a, c, c);
-    Div (a, rr, rr);
-    Div (a, rr, c);
-    Div (a, c, rr);
-    Div (a, c, c);
     Lt (a, rr, rr);
     Lt (a, rr, c);
     Lt (a, c, rr);
@@ -151,6 +141,13 @@ let codec () =
       Z.logor (z 0x36) (Z.shift_left Z.one 8);
       Z.logor Z.zero (Z.shift_left (z 99) 8);
     ];
+  List.iter
+    (fun opcode ->
+      Alcotest.(check bool)
+        (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
+        true
+        (Result.is_error (Griotte_codec.decode (z opcode))))
+    (List.init 8 (fun offset -> 0x18 + offset));
   let p = (XSR, WL, LG, LM) in
   Alcotest.(check bool)
     "permission round trip" true
@@ -194,7 +191,7 @@ let codec () =
 let parser () =
   let source =
     "jalr cra csp jmp -2 jnz ca0 2 readsR ca1 MTDC writeSR mtdc ca1 mov ct0 cnull load ct1 cgp \
-     store cgp ct1 add ca0 ca1 1 sub ca0 3 ca1 mul ca0 ca1 2 rem ca0 9 2 div ca0 9 2 land ca0 7 3 \
+     store cgp ct1 add ca0 ca1 1 sub ca0 3 ca1 mul ca0 ca1 2 land ca0 7 3 \
      lor ca0 4 1 lshiftl ca0 1 3 lshiftr ca0 8 2 lt ca0 1 2 lea cgp -1 restrict cgp ([R WL LG LM], \
      Global) subseg cgp 0 8 getl ca0 cgp getb ca0 cgp gete ca0 cgp geta ca0 cgp getp ca0 cgp \
      getotype ca0 cgp getwtype ca0 cgp seal ca0 ca3 cgp unseal ca1 ca3 ca0 fail halt"
@@ -370,8 +367,8 @@ let initialization_and_program_validation () =
 let arithmetic_and_control () =
   let s =
     session
-      "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 rem ca5 ca0 6 div ca6 \
-       ca0 4 land ca7 7 3 lor cs0 4 1 lshiftl cs1 1 4 lshiftr cs2 16 2 lt cs3 ca1 ca0 halt"
+      "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 land ca7 7 3 lor cs0 4 \
+       1 lshiftl cs1 1 4 lshiftr cs2 16 2 lt cs3 ca1 ca0 halt"
     |> run
   in
   List.iter
@@ -380,8 +377,6 @@ let arithmetic_and_control () =
       ("ca2", 26);
       ("ca3", 14);
       ("ca4", 18);
-      ("ca5", 2);
-      ("ca6", 5);
       ("ca7", 3);
       ("cs0", 5);
       ("cs1", 16);

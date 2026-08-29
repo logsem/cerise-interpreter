@@ -56,7 +56,6 @@ let test_cli () =
       [ "--mem-size"; "0"; "program.s" ];
       [ "--mem-size"; "-1"; "program.s" ];
       [ "--mem-size"; "bad"; "program.s" ];
-      [ "--version"; "vanilla"; "program.s" ];
       [ "--sealing"; "program.s" ];
       [ "--no-sealing"; "program.s" ];
       [ "--stack"; "program.s" ];
@@ -64,6 +63,7 @@ let test_cli () =
       [ "--uperms"; "program.s" ];
       [ "--no-uperms"; "program.s" ];
       [ "--locality"; "Global"; "program.s" ];
+      [ "--version"; "vanilla"; "program.s" ];
       [ "--backend"; "default"; "program.s" ];
       [ "--backend"; "vanilla-cerise"; "program.s" ];
       [ "--backend"; "stack-cerise"; "program.s" ];

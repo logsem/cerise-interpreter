@@ -3,11 +3,5 @@
 (library
  (name cerise_internal)
  (package cerise-interpreter)
- (private_modules ir_expression_mapper macro_expander parser_driver)
- (libraries containers menhirLib zarith))
-
-(ocamllex lexer lexer_regfile)
-
-(menhir
- (modules parser parser_regfile)
- (flags --table))
+ (modules griotte_extracted)
+ (libraries zarith))

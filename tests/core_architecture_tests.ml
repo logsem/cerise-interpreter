@@ -259,6 +259,72 @@ let test_hygienic_typed_macros () =
     | Error _ -> true
     | Ok _ -> false)
 
+let test_macro_hygiene_namespace_collisions () =
+  let macro = "%macro address(dst: reg) private: set $dst private %endmacro " in
+  (match
+     Frontend_a.parse_program
+       ("__macro_0_address_private: set r0 __macro_0_address_private " ^ macro
+      ^ "%address(r1)")
+     |> get_ok
+   with
+  | [ Syntax_a.Set (Named "r0", user_label); Set (Named "r1", private_label) ] ->
+      check_z "user collision label" Z.zero (integer user_label);
+      check_z "fresh private label after user label" Z.one (integer private_label)
+  | _ -> Alcotest.fail "label collision changed the expanded program shape");
+  (match
+     Frontend_a.parse_program
+       ("%define __macro_0_address_private 41 " ^ macro
+      ^ "%address(r1) set r2 __macro_0_address_private")
+     |> get_ok
+   with
+  | [ Syntax_a.Set (Named "r1", private_label); Set (Named "r2", user_definition) ] ->
+      check_z "fresh private label after definition" Z.zero (integer private_label);
+      check_z "user collision definition" (Z.of_int 41) (integer user_definition)
+  | _ -> Alcotest.fail "definition collision changed the expanded program shape");
+  (match
+     Frontend_a.parse_program
+       (macro
+      ^ "%macro constants() %define __macro_0_address_private 42 %endmacro "
+      ^ "%macro wrapper() %constants() %endmacro "
+      ^ "%address(r1) %wrapper() set r2 __macro_0_address_private")
+     |> get_ok
+   with
+  | [ Syntax_a.Set (Named "r1", private_label); Set (Named "r2", macro_definition) ] ->
+      check_z "private label avoids nested emitted definition" Z.zero (integer private_label);
+      check_z "nested emitted definition remains usable" (Z.of_int 42) (integer macro_definition)
+  | _ -> Alcotest.fail "macro-body definition collision changed the expanded program shape");
+  let colliding_names =
+    "__macro_0_locate_private: set r0 __macro_0_locate_private "
+    ^ "__macro_0_locate_private_1: set r9 __macro_0_locate_private_1 "
+    ^ "%define __macro_1_locate_private 90 "
+    ^ "%define __macro_1_locate_private_1 91 "
+  in
+  let locating_macro =
+    "%macro locate(dst: reg) private: set $dst private + &CURRENT_ADDR %endmacro "
+  in
+  match
+    Frontend_a.parse_program
+      (colliding_names ^ locating_macro
+     ^ "%locate(r1) %locate(r2) set r3 __macro_1_locate_private_1")
+    |> get_ok
+  with
+  | [
+   Syntax_a.Set (Named "r0", first_user_label);
+   Syntax_a.Set (Named "r9", second_user_label);
+   Syntax_a.Set (Named "r1", first_private);
+   Syntax_a.Set (Named "r2", second_private);
+   Syntax_a.Set (Named "r3", user_definition);
+  ] ->
+      check_z "first user label remains usable" Z.zero (integer first_user_label);
+      check_z "second user label remains usable" Z.one (integer second_user_label);
+      check_z "first suffixed private address and current address" (Z.of_int 4)
+        (integer first_private);
+      check_z "second suffixed private address and current address" (Z.of_int 6)
+        (integer second_private);
+      check_z "suffixed user definition remains usable" (Z.of_int 91)
+        (integer user_definition)
+  | _ -> Alcotest.fail "multiple namespace collisions changed the expanded program shape"
+
 let test_runtime_expressions_and_backend_specific_syntax () =
   let regfile = Frontend_a.parse_regfile "r1 := MAX_ADDR - 1 r2 := STK_ADDR + 2" |> get_ok in
   let config = Runtime_config.create ~max_addr:(Z.of_int 100) ~stack_addr:(Z.of_int 60) () in
@@ -365,12 +431,17 @@ let test_codec_allocation_and_variants () =
   check_round_trip (Signed_pair (Z.of_int (-123456), Z.of_int 987654));
   check_round_trip Pinned;
   List.iter
-    (fun (first, second) ->
-      Alcotest.(check string)
-        "historical signed interleaving"
-        (Z.to_string (Cerise_internal.Encode.encode_int_int first second))
-        (Z.to_string (Instruction_codec.encode_signed_pair first second)))
-    [ (Z.of_int (-5), Z.of_int 8); (Z.of_int 13, Z.of_int (-21)); (Z.zero, Z.zero) ];
+    (fun (first, second, expected) ->
+      let encoded = Instruction_codec.encode_signed_pair first second in
+      Alcotest.(check string) "signed-pair compatibility golden"
+        (Z.to_string expected) (Z.to_string encoded);
+      Alcotest.(check (pair string string)) "signed-pair golden decodes"
+        (Z.to_string first, Z.to_string second)
+        (let left, right = Instruction_codec.decode_signed_pair encoded in
+         Z.to_string left, Z.to_string right))
+    [ (Z.of_int (-5), Z.of_int 8, Z.of_int 581);
+      (Z.of_int 13, Z.of_int (-21), Z.of_int 2510);
+      (Z.zero, Z.zero, Z.zero) ];
   let encoded =
     Instruction_codec.encode codec (Calculate (R2, List.hd operands, List.hd operands))
     |> Result.get_ok
@@ -379,8 +450,37 @@ let test_codec_allocation_and_variants () =
     "opcode occupies low eight bits" true
     (Z.equal (Z.extract encoded 0 8) (Z.of_int 3))
 
+let test_codec_large_signed_pairs () =
+  let bit_count = 100_000 in
+  let positive = Z.logor (Z.shift_left Z.one bit_count) (Z.of_int 0x5a) in
+  let negative = Z.neg (Z.logor (Z.shift_left Z.one (bit_count + 37)) (Z.of_int 0xa5)) in
+  let encoded = Instruction_codec.encode_signed_pair positive negative in
+  let decoded = Instruction_codec.decode_signed_pair encoded in
+  Alcotest.(check (pair string string))
+    "large helper round trip"
+    (Z.to_string positive, Z.to_string negative)
+    (let first, second = decoded in
+     (Z.to_string first, Z.to_string second));
+  check_round_trip (Codec_fixture.Signed_pair (negative, positive))
+
 let test_codec_structured_failures () =
   let module C = Codec_fixture in
+  let compile_without_exception name cases =
+    match Instruction_codec.compile cases with
+    | result -> result
+    | exception exn ->
+        Alcotest.failf "%s raised %s instead of returning a structured error" name
+          (Printexc.to_string exn)
+  in
+  let halt_case ~name ?(allocation = Instruction_codec.Auto) shape =
+    Instruction_codec.case ~name ~allocation shape ~construct:(fun _ -> C.Halt)
+      ~project:(fun _ -> None)
+  in
+  Alcotest.(check bool)
+    "negative encoding" true
+    (match Instruction_codec.decode C.codec Z.minus_one with
+    | Error (Instruction_codec.Negative_encoding value) -> Z.equal value Z.minus_one
+    | _ -> false);
   Alcotest.(check bool)
     "malformed payload" true
     (match Instruction_codec.decode C.codec (Z.shift_left Z.one 8) with
@@ -430,10 +530,64 @@ let test_codec_structured_failures () =
   in
   Alcotest.(check bool)
     "automatic opcode overflow rejected" true
-    (match Instruction_codec.compile automatic_overflow with
+    (match compile_without_exception "automatic exhaustion" automatic_overflow with
     | Error errors ->
         List.exists (function Instruction_codec.Opcode_overflow _ -> true | _ -> false) errors
-    | Ok _ -> false)
+    | Ok _ -> false);
+  List.iter
+    (fun (name, opcode) ->
+      let cases = [ halt_case ~name ~allocation:(Fixed opcode) Instruction_codec.unit ] in
+      Alcotest.(check bool)
+        (name ^ " rejected as an invalid fixed opcode") true
+        (match compile_without_exception name cases with
+        | Error [ Instruction_codec.Invalid_fixed_opcode error ] ->
+            error.case_name = name && error.opcode = opcode
+        | Error _ | Ok _ -> false))
+    [ ("fixed-max-int", max_int); ("fixed-min-int", min_int) ];
+  let boundary_valid =
+    [ halt_case ~name:"boundary-valid" ~allocation:(Fixed 255) Instruction_codec.unit ]
+  in
+  Alcotest.(check (list (triple string int int)))
+    "fixed opcode 255 accepts a unit span"
+    [ ("boundary-valid", 255, 1) ]
+    (match compile_without_exception "boundary-valid" boundary_valid with
+    | Ok codec -> Instruction_codec.allocations codec
+    | Error errors ->
+        Alcotest.failf "boundary-valid returned errors: %s"
+          (String.concat "; " (List.map Instruction_codec.error_message errors)));
+  let boundary_overflow =
+    [
+      halt_case ~name:"boundary-overflow" ~allocation:(Fixed 255)
+        (Instruction_codec.register_or_constant C.register_codec Instruction_codec.zarith);
+    ]
+  in
+  Alcotest.(check bool)
+    "fixed opcode 255 rejects a two-opcode span" true
+    (match compile_without_exception "boundary-overflow" boundary_overflow with
+    | Error [ Instruction_codec.Opcode_overflow error ] ->
+        error.case_name = "boundary-overflow" && error.first_opcode = 255 && error.span = 2
+    | Error _ | Ok _ -> false);
+  let span_2 =
+    Instruction_codec.register_or_constant C.register_codec Instruction_codec.zarith
+  in
+  let span_4 = Instruction_codec.pair span_2 span_2 in
+  let span_16 = Instruction_codec.pair span_4 span_4 in
+  let span_64 = Instruction_codec.pair span_4 span_16 in
+  let span_256 = Instruction_codec.pair span_16 span_16 in
+  let span_16k = Instruction_codec.pair span_256 span_64 in
+  let span_64k = Instruction_codec.pair span_256 span_256 in
+  let span_1g = Instruction_codec.pair span_64k span_16k in
+  let span_4g = Instruction_codec.pair span_64k span_64k in
+  let oversized_shape = Instruction_codec.pair span_4g span_1g in
+  let oversized_span = Instruction_codec.variant_span oversized_shape in
+  let oversized = [ halt_case ~name:"oversized-auto" oversized_shape ] in
+  Alcotest.(check bool)
+    "overflowed composed shape returns structured overflow" true
+    (match compile_without_exception "oversized-auto" oversized with
+    | Error [ Instruction_codec.Opcode_overflow error ] ->
+        error.case_name = "oversized-auto" && error.first_opcode = 0
+        && error.span = oversized_span
+    | Error _ | Ok _ -> false)
 
 let () =
   Alcotest.run "Core architecture"
@@ -443,6 +597,8 @@ let () =
           Alcotest.test_case "expressions labels definitions raw" `Quick
             test_common_frontend_construction;
           Alcotest.test_case "typed hygienic macros" `Quick test_hygienic_typed_macros;
+          Alcotest.test_case "macro hygiene namespace collisions" `Quick
+            test_macro_hygiene_namespace_collisions;
           Alcotest.test_case "different backend syntaxes" `Quick
             test_runtime_expressions_and_backend_specific_syntax;
         ] );
@@ -450,6 +606,8 @@ let () =
         [
           Alcotest.test_case "allocation variants signed round trips" `Quick
             test_codec_allocation_and_variants;
+          Alcotest.test_case "large finite signed-pair round trips" `Quick
+            test_codec_large_signed_pairs;
           Alcotest.test_case "structured validation failures" `Quick test_codec_structured_failures;
         ] );
     ]

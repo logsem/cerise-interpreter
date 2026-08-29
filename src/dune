@@ -2,4 +2,4 @@
  (name interpreter)
  (public_name cerise-interpreter)
  (modules cli_parser interactive_ui interpreter_ui interpreter)
- (libraries cerise notty-community notty-community.unix))
+ (libraries cerise containers notty-community notty-community.unix))

@@ -1,12 +1,7 @@
 (tests
  (names
-  tests
-  tester
-  program_errors
-  macro_tests
-  baseline_characterization
-  core_contract_tests
   core_architecture_tests
+  core_contract_tests
   active_backend_tests
   historical_backend_tests
   cerisier_backend_tests

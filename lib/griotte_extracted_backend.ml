@@ -194,7 +194,6 @@ let instruction_to_e = function
         | Lt _ -> E.Lt0 (r, a, b)
         | SubSeg _ -> E.Subseg (r, a, b)
         | _ -> assert false)
-  | Rem _ | Div _ -> boundary_error "Rem and Div are not constructors of the extracted Griotte ISA"
   | (Lea (r, a) | Restrict (r, a)) as op ->
       let* r = register_to_e r in
       let* a = operand_to_e a in
@@ -332,7 +331,7 @@ let parameters : E.machineParameters =
     decodeInstr =
       (fun encoded ->
         match Xcodec.decode (z_of_e encoded) with
-        | Ok (Ast.Rem _ | Div _) | Error _ -> E.Fail
+        | Error _ -> E.Fail
         | Ok instruction -> Result.value ~default:E.Fail (instruction_to_e instruction));
     encodeInstr =
       (fun instruction ->

@@ -282,14 +282,6 @@ let parse_instruction = function
                 ternary parse_register parse_operand parse_operand
                   (fun a b c -> Mul_term (a, b, c))
                   rest
-            | "rem" ->
-                ternary parse_register parse_operand parse_operand
-                  (fun a b c -> Rem_term (a, b, c))
-                  rest
-            | "div" ->
-                ternary parse_register parse_operand parse_operand
-                  (fun a b c -> Div_term (a, b, c))
-                  rest
             | "land" ->
                 ternary parse_register parse_operand parse_operand
                   (fun a b c -> LAnd_term (a, b, c))
@@ -493,8 +485,6 @@ module Syntax = struct
     | Add_term (r, a, b) -> Add_term (r, map_operand f a, map_operand f b)
     | Sub_term (r, a, b) -> Sub_term (r, map_operand f a, map_operand f b)
     | Mul_term (r, a, b) -> Mul_term (r, map_operand f a, map_operand f b)
-    | Rem_term (r, a, b) -> Rem_term (r, map_operand f a, map_operand f b)
-    | Div_term (r, a, b) -> Div_term (r, map_operand f a, map_operand f b)
     | LAnd_term (r, a, b) -> LAnd_term (r, map_operand f a, map_operand f b)
     | LOr_term (r, a, b) -> LOr_term (r, map_operand f a, map_operand f b)
     | LShiftL_term (r, a, b) -> LShiftL_term (r, map_operand f a, map_operand f b)
@@ -639,8 +629,6 @@ module Syntax = struct
         | Add_term (a, b, c)
         | Sub_term (a, b, c)
         | Mul_term (a, b, c)
-        | Rem_term (a, b, c)
-        | Div_term (a, b, c)
         | LAnd_term (a, b, c)
         | LOr_term (a, b, c)
         | LShiftL_term (a, b, c)
@@ -740,8 +728,6 @@ module Syntax = struct
     | Add_term (r, a, b) -> broo (fun r a b -> Add_term (r, a, b)) args r a b
     | Sub_term (r, a, b) -> broo (fun r a b -> Sub_term (r, a, b)) args r a b
     | Mul_term (r, a, b) -> broo (fun r a b -> Mul_term (r, a, b)) args r a b
-    | Rem_term (r, a, b) -> broo (fun r a b -> Rem_term (r, a, b)) args r a b
-    | Div_term (r, a, b) -> broo (fun r a b -> Div_term (r, a, b)) args r a b
     | LAnd_term (r, a, b) -> broo (fun r a b -> LAnd_term (r, a, b)) args r a b
     | LOr_term (r, a, b) -> broo (fun r a b -> LOr_term (r, a, b)) args r a b
     | LShiftL_term (r, a, b) -> broo (fun r a b -> LShiftL_term (r, a, b)) args r a b

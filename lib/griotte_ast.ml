@@ -69,8 +69,6 @@ type instruction =
   | Add of register * reg_or_const * reg_or_const
   | Sub of register * reg_or_const * reg_or_const
   | Mul of register * reg_or_const * reg_or_const
-  | Rem of register * reg_or_const * reg_or_const
-  | Div of register * reg_or_const * reg_or_const
   | LAnd of register * reg_or_const * reg_or_const
   | LOr of register * reg_or_const * reg_or_const
   | LShiftL of register * reg_or_const * reg_or_const
@@ -136,8 +134,6 @@ type instruction_term =
   | Add_term of register_term * operand_term * operand_term
   | Sub_term of register_term * operand_term * operand_term
   | Mul_term of register_term * operand_term * operand_term
-  | Rem_term of register_term * operand_term * operand_term
-  | Div_term of register_term * operand_term * operand_term
   | LAnd_term of register_term * operand_term * operand_term
   | LOr_term of register_term * operand_term * operand_term
   | LShiftL_term of register_term * operand_term * operand_term

@@ -174,8 +174,6 @@ let lower_instruction config op =
   | Add_term (a, b, c) -> roo (fun (a, b, c) -> Add (a, b, c)) a b c
   | Sub_term (a, b, c) -> roo (fun (a, b, c) -> Sub (a, b, c)) a b c
   | Mul_term (a, b, c) -> roo (fun (a, b, c) -> Mul (a, b, c)) a b c
-  | Rem_term (a, b, c) -> roo (fun (a, b, c) -> Rem (a, b, c)) a b c
-  | Div_term (a, b, c) -> roo (fun (a, b, c) -> Div (a, b, c)) a b c
   | LAnd_term (a, b, c) -> roo (fun (a, b, c) -> LAnd (a, b, c)) a b c
   | LOr_term (a, b, c) -> roo (fun (a, b, c) -> LOr (a, b, c)) a b c
   | LShiftL_term (a, b, c) -> roo (fun (a, b, c) -> LShiftL (a, b, c)) a b c
@@ -419,10 +417,6 @@ let rec execute instruction state =
   | Add (r, a, b) -> arithmetic (fun x y -> Some Z.(x + y)) r a b state
   | Sub (r, a, b) -> arithmetic (fun x y -> Some Z.(x - y)) r a b state
   | Mul (r, a, b) -> arithmetic (fun x y -> Some Z.(x * y)) r a b state
-  | Rem (r, a, b) ->
-      arithmetic (fun x y -> if Z.equal y Z.zero then None else Some Z.(x mod y)) r a b state
-  | Div (r, a, b) ->
-      arithmetic (fun x y -> if Z.equal y Z.zero then None else Some Z.(x / y)) r a b state
   | Lt (r, a, b) -> arithmetic (fun x y -> Some (if Z.lt x y then Z.one else Z.zero)) r a b state
   | LAnd (r, a, b) -> arithmetic (fun x y -> Some (Z.logand x y)) r a b state
   | LOr (r, a, b) -> arithmetic (fun x y -> Some (Z.logor x y)) r a b state

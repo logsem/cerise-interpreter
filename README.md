@@ -22,13 +22,15 @@ Assembly examples in `./tests/test_files` (for the syntax)
 See [assembler.md](assembler.md) for the complete assembly language, register-file, integer
 definition, and sequence-macro reference.
 
-The default version of the interpreter uses a version of Cerise with seals, uninitialized and directed capabilities. 
-For a version of Cerise without those features, use `./interpreter --version vanilla`.
+The interpreter selects a backend with `--backend`; the default is `vanilla`. Available backends are
+`vanilla`, `cerise` (an alias for vanilla), `locality-cerise`, `ucerise`, `mcerise`, `cerisier`,
+`griotte`, and `griotte-extracted`. Each backend owns its AST, parser, printer, machine, and codec.
+All runtimes use finite configured address bounds.
 
 Example:
 
 ```
-./interpreter -I --version vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+./interpreter -I --backend vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
 ```
 
 For more information about the options, `./interpreter --help`.
@@ -87,7 +89,7 @@ nix run #. -- <args>
 ```
 For instance
 ```
-nix run .# -- -I --version vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+nix run .# -- -I --backend vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
 ```
 
 To format
