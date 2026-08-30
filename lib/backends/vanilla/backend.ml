@@ -43,10 +43,13 @@ let init (config : Runtime_config.t) (program : Asm_ir.statement list)
   in
   Ok (Machine.init config program regfile)
 
-let step (state : state) : (state, Machine_backend.execution_error) result = Machine.step state
+let step (config : Runtime_config.t) (state : state) :
+    (state, Machine_backend.execution_error) result =
+  Machine.step config state
 
-let step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
-  Machine.step_n count state
+let step_n (config : Runtime_config.t) (count : int) (state : state) :
+    (state, Machine_backend.execution_error) result =
+  Machine.step_n config count state
 
 let permission_text (permission : Ast.permission) : string = Printer.permission permission
 
@@ -128,7 +131,7 @@ let register_description (backend_value : Ast.register) :
       let label = "r" ^ string_of_int n in
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
-let inspect (state : state) : Machine_view.t =
+let inspect (config : Runtime_config.t) (state : state) : Machine_view.t =
   let registers =
     Machine.RegMap.bindings state.Machine.registers
     |> List.map (fun (r, w) ->
@@ -148,7 +151,7 @@ let inspect (state : state) : Machine_view.t =
     Machine_view.backend_name = name;
     status =
       (match state.Machine.status with Running -> Running | Halted -> Halted | Failed -> Failed);
-    address_limit = Runtime_config.max_addr state.config;
+    address_limit = Runtime_config.max_addr config;
     pc;
     registers;
     enclave_table = None;
@@ -171,16 +174,14 @@ let ( let* ) (type value next error) (result : (value, error) result)
     (continuation : value -> (next, error) result) : (next, error) result =
   Result.bind result continuation
 
-let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) :
-    (state, Diagnostic.t list) result =
+let set_register (config : Runtime_config.t) (id : Machine_view.register_id) (term : asm_word)
+    (state : state) : (state, Diagnostic.t list) result =
   let* r = register_of_id id in
-  Result.map
-    (fun word -> Machine.set_register r word state)
-    (Asm_ir.assemble_word state.config term)
+  Result.map (fun word -> Machine.set_register r word state) (Asm_ir.assemble_word config term)
 
-let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result
-    =
-  if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.config) >= 0 then
+let set_memory (config : Runtime_config.t) (address : Z.t) (term : asm_word) (state : state) :
+    (state, Diagnostic.t list) result =
+  if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr config) >= 0 then
     Error
       [
         Diagnostic.error
@@ -190,4 +191,4 @@ let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagn
   else
     Result.map
       (fun word -> Machine.set_memory_raw address word state)
-      (Asm_ir.assemble_word state.config term)
+      (Asm_ir.assemble_word config term)

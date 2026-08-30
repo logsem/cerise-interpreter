@@ -12,13 +12,7 @@ end)
 module MemMap = Map.Make (Z)
 
 type status = Running | Halted | Failed
-
-type t = {
-  config : Runtime_config.t;
-  status : status;
-  registers : word RegMap.t;
-  memory : word MemMap.t;
-}
+type t = { status : status; registers : word RegMap.t; memory : word MemMap.t }
 
 let init (config : Runtime_config.t) (program : word list) (regfile : (register * word) list option)
     : t =
@@ -38,21 +32,22 @@ let init (config : Runtime_config.t) (program : word list) (regfile : (register 
   let memory =
     List.mapi (fun address word -> (Z.of_int address, word)) program |> List.to_seq |> MemMap.of_seq
   in
-  { config; status = Running; registers; memory }
+  { status = Running; registers; memory }
 
 let read_register (r : register) (state : t) : word = RegMap.find r state.registers
 
-let read_memory (a : Z.t) (state : t) : word option =
+let read_memory (config : Runtime_config.t) (a : Z.t) (state : t) : word option =
   match MemMap.find_opt a state.memory with
   | Some w -> Some w
   (* Uninitialized cells inside the configured finite address space read as zero;
      addresses outside it remain invalid instead of extending memory implicitly. *)
-  | None when Z.sign a >= 0 && Z.compare a (Runtime_config.max_addr state.config) < 0 ->
-      Some (I Z.zero)
+  | None when Z.sign a >= 0 && Z.compare a (Runtime_config.max_addr config) < 0 -> Some (I Z.zero)
   | None -> None
 
 let ( @! ) (register : register) (state : t) : word = read_register register state
-let ( @? ) (address : Z.t) (state : t) : word option = read_memory address state
+
+let ( @? ) (address : Z.t) ((config, state) : Runtime_config.t * t) : word option =
+  read_memory config address state
 
 let set_register (r : register) (w : word) (state : t) : t =
   { state with registers = RegMap.add r w state.registers }
@@ -111,14 +106,14 @@ let locality_flows (requested : locality) (current : locality) : bool =
   | Local, Local | Local, Global | Global, Global -> true
   | _ -> false
 
-let has_valid_program_counter (state : t) : bool =
+let has_valid_program_counter (config : Runtime_config.t) (state : t) : bool =
   match PC @! state with
   | Cap (Cap (p, _, b, e, a)) when is_executable_permission p ->
-      b <= a && a < e && Option.is_some (a @? state)
+      b <= a && a < e && Option.is_some (a @? (config, state))
   | _ -> false
 
 (** Instruction execution preserves persistence by returning a fresh state. *)
-let rec execute (instruction : instruction) (state : t) : t =
+let rec execute (config : Runtime_config.t) (instruction : instruction) (state : t) : t =
   let read (r : register) : word = r @! state
   and operand_value (operand : reg_or_const) : word = evaluate_operand state operand in
   match instruction with
@@ -128,7 +123,9 @@ let rec execute (instruction : instruction) (state : t) : t =
   | Load (d, r) -> (
       match read r with
       | Cap (Cap (p, _, b, e, a)) when can_read_memory p && b <= a && a < e -> (
-          match a @? state with Some w -> !>(set_register d w state) | None -> mark_failed state)
+          match a @? (config, state) with
+          | Some w -> !>(set_register d w state)
+          | None -> mark_failed state)
       | _ -> mark_failed state)
   | Store (r, o) -> (
       match read r with
@@ -146,7 +143,7 @@ let rec execute (instruction : instruction) (state : t) : t =
       | Cap (Cap (E, l, b, e, a)) -> set_register PC (Cap (Cap (RX, l, b, e, a))) state
       | w -> set_register PC w state)
   | Jnz (r, t) -> (
-      match read t with I z when Z.equal z Z.zero -> !>state | _ -> execute (Jmp r) state)
+      match read t with I z when Z.equal z Z.zero -> !>state | _ -> execute config (Jmp r) state)
   | Add (r, a, b) | Sub (r, a, b) | Lt (r, a, b) -> (
       match (operand_value a, operand_value b) with
       | I x, I y ->
@@ -204,7 +201,7 @@ let rec execute (instruction : instruction) (state : t) : t =
       match (read r, operand_value o) with
       | Cap (Cap (p, _, b, e, a)), I off
         when is_uninitialized_permission p && b <= Z.add a off && Z.add a off < a && a <= e -> (
-          match Z.add a off @? state with
+          match Z.add a off @? (config, state) with
           | Some w -> !>(set_register d w state)
           | None -> mark_failed state)
       | _ -> mark_failed state)
@@ -229,28 +226,29 @@ let rec execute (instruction : instruction) (state : t) : t =
           !>(set_register r (Cap (Cap (promote_permission p, l, b, Z.min e a, a))) state)
       | _ -> mark_failed state)
 
-let step (state : t) : (t, Machine_backend.execution_error) result =
+let step (config : Runtime_config.t) (state : t) : (t, Machine_backend.execution_error) result =
   if state.status <> Running then
     Error
       (Machine_backend.Stopped
          (if state.status = Halted then Machine_view.Halted else Machine_view.Failed))
-  else if not (has_valid_program_counter state) then Ok (mark_failed state)
+  else if not (has_valid_program_counter config state) then Ok (mark_failed state)
   else
     match PC @! state with
     | Cap (Cap (_, _, _, _, a)) -> (
-        match a @? state with
+        match a @? (config, state) with
         | Some (I z) -> (
             match Codec.decode z with
-            | Ok instruction -> Ok (execute instruction state)
+            | Ok instruction -> Ok (execute config instruction state)
             | Error _ -> Ok (mark_failed state))
         | _ -> Ok (mark_failed state))
     | _ -> Ok (mark_failed state)
 
-let rec step_n (n : int) (state : t) : (t, Machine_backend.execution_error) result =
+let rec step_n (config : Runtime_config.t) (n : int) (state : t) :
+    (t, Machine_backend.execution_error) result =
   if n < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if n = 0 then Ok state
   else
-    match step state with
-    | Ok next -> step_n (n - 1) next
+    match step config state with
+    | Ok next -> step_n config (n - 1) next
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as e -> e

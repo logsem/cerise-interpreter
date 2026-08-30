@@ -20,7 +20,6 @@ module MemMap = Map.Make (Z)
 type status = Running | Halted | Failed
 
 type t = {
-  config : Runtime_config.t;
   status : status;
   registers : word RegMap.t;
   system_registers : word SRegMap.t;
@@ -127,15 +126,17 @@ let read_register (r : register) (state : t) : word =
 let read_system_register (r : system_register) (state : t) : word =
   SRegMap.find r state.system_registers
 
-let read_memory (address : Z.t) (state : t) : word option =
+let read_memory (config : Runtime_config.t) (address : Z.t) (state : t) : word option =
   match MemMap.find_opt address state.memory with
   | Some word -> Some word
-  | None when Z.sign address >= 0 && Z.compare address (Runtime_config.max_addr state.config) < 0 ->
+  | None when Z.sign address >= 0 && Z.compare address (Runtime_config.max_addr config) < 0 ->
       Some (I Z.zero)
   | None -> None
 
 let ( @! ) (register : register) (state : t) : word = read_register register state
-let ( @? ) (address : Z.t) (state : t) : word option = read_memory address state
+
+let ( @? ) (address : Z.t) ((config, state) : Runtime_config.t * t) : word option =
+  read_memory config address state
 
 let set_register (r : register) (word : word) (state : t) : t =
   match r with
@@ -193,7 +194,7 @@ let init (config : Runtime_config.t) (program : word list)
       program
     |> Result.map snd
   in
-  Ok { config; status = Running; registers; system_registers; memory }
+  Ok { status = Running; registers; system_registers; memory }
 
 let value (state : t) (value : reg_or_const) : word =
   match value with Register r -> r @! state | Constant z -> I z
@@ -247,10 +248,10 @@ let ( !> ) (state : t) : t = pc_next state
 let enter (value : word) : word =
   match value with Sentry (p, l, b, e, a) -> Sealable (Cap (p, l, b, e, a)) | word -> word
 
-let valid_pc (state : t) : bool =
+let valid_pc (config : Runtime_config.t) (state : t) : bool =
   match PC @! state with
   | Sealable (Cap (p, _, b, e, a)) when executable p ->
-      b <= a && a < e && Option.is_some (a @? state)
+      b <= a && a < e && Option.is_some (a @? (config, state))
   | _ -> false
 
 let authorized_system (state : t) : bool =
@@ -273,7 +274,7 @@ let arithmetic (result : Z.t -> Z.t -> Z.t option) (r : register) (a : reg_or_co
 
 (* Instruction execution. Invalid capability uses become the architectural Failed
    state; only caller misuse such as a negative step count is a backend error. *)
-let rec execute (instruction : instruction) (state : t) : t =
+let rec execute (config : Runtime_config.t) (instruction : instruction) (state : t) : t =
   let register_value (register : register) : word = register @! state
   and operand_value (operand : reg_or_const) : word = value state operand in
   match instruction with
@@ -294,7 +295,7 @@ let rec execute (instruction : instruction) (state : t) : t =
   | Jnz (test, offset) -> (
       match register_value test with
       | I z when Z.equal z Z.zero -> !>state
-      | _ -> execute (Jmp offset) state)
+      | _ -> execute config (Jmp offset) state)
   | ReadSR (destination, system_register) ->
       if authorized_system state then
         !>(set_register destination (read_system_register system_register state) state)
@@ -307,7 +308,7 @@ let rec execute (instruction : instruction) (state : t) : t =
   | Load (dst, src) -> (
       match register_value src with
       | Sealable (Cap (p, _, b, e, a)) when can_read p && b <= a && a < e -> (
-          match a @? state with
+          match a @? (config, state) with
           | Some w -> !>(set_register dst (loaded_word p w) state)
           | None -> fail state)
       | _ -> fail state)
@@ -410,28 +411,29 @@ let rec execute (instruction : instruction) (state : t) : t =
           !>(set_register dst (Sealable sealable) state)
       | _ -> fail state)
 
-let step (state : t) : (t, Machine_backend.execution_error) result =
+let step (config : Runtime_config.t) (state : t) : (t, Machine_backend.execution_error) result =
   if state.status <> Running then
     Error
       (Machine_backend.Stopped
          (if state.status = Halted then Machine_view.Halted else Machine_view.Failed))
-  else if not (valid_pc state) then Ok (fail state)
+  else if not (valid_pc config state) then Ok (fail state)
   else
     match PC @! state with
     | Sealable (Cap (_, _, _, _, address)) -> (
-        match address @? state with
+        match address @? (config, state) with
         | Some (I encoded) -> (
             match Codec.decode encoded with
-            | Ok op -> Ok (execute op state)
+            | Ok op -> Ok (execute config op state)
             | Error _ -> Ok (fail state))
         | _ -> Ok (fail state))
     | _ -> Ok (fail state)
 
-let rec step_n (count : int) (state : t) : (t, Machine_backend.execution_error) result =
+let rec step_n (config : Runtime_config.t) (count : int) (state : t) :
+    (t, Machine_backend.execution_error) result =
   if count < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if count = 0 then Ok state
   else
-    match step state with
-    | Ok next -> step_n (count - 1) next
+    match step config state with
+    | Ok next -> step_n config (count - 1) next
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as error -> error

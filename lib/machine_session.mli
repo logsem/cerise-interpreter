@@ -10,6 +10,10 @@ type stop_reason =
 
 type run_result = { session : t; reason : stop_reason; steps : int }
 
+(** A session is the sole long-lived owner of its immutable runtime configuration. Backend machine
+    states contain only dynamic semantic state, and every session operation automatically reuses the
+    configuration supplied at creation. *)
+
 val create :
   backend:string ->
   config:Runtime_config.t ->

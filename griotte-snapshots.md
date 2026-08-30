@@ -37,7 +37,7 @@ covered by that corpus; they are not known intentional differences.
 - `Jalr` whose destination is `PC` has a different update order.  Handwritten
   Griotte writes the destination link before installing the jump target;
   extracted Griotte installs the target before writing the destination link.
-- Failed extracted steps retain the original configuration transactionally.
+- Failed extracted steps retain the original machine snapshot transactionally.
   Some handwritten failures after a partial PC/destination update retain that
   partial mutation instead.
 

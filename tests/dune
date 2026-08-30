@@ -16,6 +16,20 @@
   (source_tree test_files/default)
   (source_tree test_files/griotte)
   (source_tree test_files/verified)
+  ../lib/backends/vanilla/machine.ml
+  ../lib/backends/vanilla/vanilla.mli
+  ../lib/backends/locality_cerise/machine.ml
+  ../lib/backends/locality_cerise/locality_cerise.mli
+  ../lib/backends/ucerise/machine.ml
+  ../lib/backends/ucerise/ucerise.mli
+  ../lib/backends/mcerise/machine.ml
+  ../lib/backends/mcerise/mcerise.mli
+  ../lib/backends/cerisier/machine.ml
+  ../lib/backends/cerisier/cerisier.mli
+  ../lib/backends/griotte/machine.ml
+  ../lib/backends/griotte/griotte.mli
+  ../lib/backends/griotte_extracted/state.ml
+  ../lib/backends/griotte_extracted/backend.ml
   test_files/malloc_test.s
   test_files/test_linking_res.s
   (glob_files test_files/vanilla/pos/*))
@@ -30,5 +44,7 @@
   ../lib/backends/griotte_extracted/generated/griotte_extracted.ml
   ../lib/backends/griotte_extracted/generated/griotte_extracted.mli)
  (action
-  (run %{dep:../lib/backends/griotte_extracted/scripts/regeneration-gate.sh}
-   --root %{workspace_root})))
+  (run
+   %{dep:../lib/backends/griotte_extracted/scripts/regeneration-gate.sh}
+   --root
+   %{workspace_root})))

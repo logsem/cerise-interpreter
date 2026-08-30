@@ -24,9 +24,10 @@ The executable is intentionally thin. Data flows through it as follows:
    runtime configuration and initializes the machine's semantic `Ast.word` values. In short, the
    execution pipeline is `parse → macro expansion → symbol resolution → concrete assembly →
    execution`.
-5. `Machine_session` existentially packages the selected backend module with its private state.
-   Calls to `step`, `step_n`, text edits, and `view` always unpack and repack that same backend, so
-   backend-specific state and word types never leak into shared clients.
+5. `Machine_session` existentially packages the selected backend module, its private state, and the
+   immutable runtime configuration. Calls to `step`, `step_n`, text edits, and `view` always unpack
+   and repack that same backend and configuration, so backend-specific state and word types never
+   leak into shared clients and no machine state needs to retain execution context.
 6. In batch mode, `src/interpreter_ui.ml` uses `Machine_session.run`, obtains the final
    `Machine_view.t`, and prints its stable line-oriented representation. In interactive mode,
    `Application_model` adds history, selection, and two finite memory viewports;
@@ -66,9 +67,11 @@ independent.
    `Instruction_codec.case` per `Ast.instruction` constructor. Preserve historical fixed allocations
    where the ISA requires them. Expose `encode`, `decode`, and `allocations`, plus scalar encodings
    needed by instructions such as `restrict`, `getp`, or `getwtype`.
-7. **Implement `machine.ml`.** Store the runtime configuration in the state, initialize registers
-   and finite sparse memory, implement transitions, and decode fetched integer words with the
-   backend codec. Preserve stopped-state and error behavior in `step` and `step_n`.
+7. **Implement `machine.ml`.** Keep its state limited to dynamic semantic state. Use the runtime
+   configuration to initialize registers and finite sparse memory, then discard it; accept the
+   configuration first in `read_memory`, `execute`, `step`, `step_n`, and any exposed `run`, and
+   thread it through bounds-sensitive helpers. Preserve stopped-state and error behavior in `step`
+   and `step_n`.
 8. **Adapt through `backend.ml`.** Implement `Machine_backend.S`: parser delegation, concrete
    assembly and initialization, stepping, word/register mapping, `inspect`, and checked text edits.
    `inspect` should return registers in stable order and enough structured metadata for renderers;
@@ -133,6 +136,11 @@ Start with `Machine_session`, not a concrete backend. It is the stable execution
 - `set_register_text` and `set_memory_text` parse edits with the owning backend;
 - `view` returns the renderer-independent `Machine_view.t`.
 
+The session owns the runtime configuration as execution context and automatically supplies the
+same immutable value to every backend operation. Low-level callers of a concrete `Machine` module
+must provide the configuration first and consistently reuse the value passed to `Machine.init`;
+mixing configurations changes bounds-sensitive semantics and is unsupported.
+
 Build reusable renderers from `Machine_view` fields. Use `register.id` for edits, `role` for PC and
 stack behavior, `semantic_kind` and structured capability/sealing records for styling, `edit_text`
 for round-trippable edits, and `short_text`/`detail_text` for display. Honor `missing_cell`: sparse
@@ -152,14 +160,17 @@ application model if its history and viewport behavior fit.
 
 ## Machine conventions and invariants
 
-The six handwritten machines use historical private notation from the original interpreter:
+The six handwritten machines use historical private notation from the original
+interpreter:
 
 - `register @! state` delegates to `read_register`;
-- `address @? state` delegates to `read_memory`;
+- `address @? (config, state)` delegates to `read_memory config`;
 - `!> state` delegates to `pc_next` or `advance_program_counter`.
 
 There are deliberately no setter operators. Write-and-advance transitions spell out their ordering:
-`!> (set_register destination word state)` or `!> (set_memory_raw address word state)`. This matters
+`!> (set_register destination word state)` or `!> (set_memory_raw address word state)`. The paired
+right operand of `@?` makes its execution context explicit without storing it in the state. This
+matters
 when the destination is `PC`, when a backend has a hard-wired zero register, and when advancing an
 invalid PC changes status. Jumps and other control transfers that install a new PC intentionally do
 not use `!>`. Keep the named read/write functions as the public backend API; the operators remain

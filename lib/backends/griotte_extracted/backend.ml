@@ -431,7 +431,7 @@ let parameters : E.machineParameters =
         | Error _ -> raise Boundary_decode);
   }
 
-type state = { config : Runtime_config.t; raw : E.conf; snapshot : State.t }
+type state = { raw : E.conf; snapshot : State.t }
 
 let map_bindings_to_e (bindings : ('a * Ast.word) list) (empty : 'b)
     (insert : 'b -> 'c -> E.word -> 'b) (key_convert : 'a -> ('c, string) result) :
@@ -473,7 +473,9 @@ let fold_extracted (bindings : ('a * E.word) list) (empty : 'b) (add : 'c -> Ast
       Ok (add key word map))
     (Ok empty) bindings
 
-let snapshot_of_raw (config : Runtime_config.t) ((flag, conf) : E.confFlag * E.execConf) :
+(** Conversion is configuration-free today, but retains the explicit execution context parameter so
+    future bounds-sensitive conversion cannot recover it from adapter state. *)
+let snapshot_of_raw (_config : Runtime_config.t) ((flag, conf) : E.confFlag * E.execConf) :
     (State.t, string) result =
   try
     let* registers =
@@ -497,7 +499,7 @@ let snapshot_of_raw (config : Runtime_config.t) ((flag, conf) : E.confFlag * E.e
       | Halted -> State.Halted
       | Failed -> State.Failed
     in
-    Ok { State.config; status; registers; system_registers; memory }
+    Ok { State.status; registers; system_registers; memory }
   with _ -> boundary_error "exception while converting an extracted configuration"
 
 let fail_state (state : state) : state =
@@ -520,7 +522,7 @@ let init (config : Runtime_config.t) (program : Asm_ir.statement list)
     let* snapshot = State.init config program regfile in
     match raw_of_snapshot snapshot with
     | Error message -> diagnostic ("Cannot represent initial extracted Griotte state: " ^ message)
-    | Ok raw -> Ok { config; raw; snapshot }
+    | Ok raw -> Ok { raw; snapshot }
 
 let parse_program ?(filename : string option) (source : string) :
     (asm_program, Diagnostic.t list) result =
@@ -534,9 +536,11 @@ let parse_word ?(filename : string option) (source : string) : (asm_word, Diagno
     =
   Parser.parse_word ?filename source
 
-let inspect (state : state) : Machine_view.t = View.inspect ~backend_name:name state.snapshot
+let inspect (config : Runtime_config.t) (state : state) : Machine_view.t =
+  View.inspect ~backend_name:name config state.snapshot
 
-let step (state : state) : (state, Machine_backend.execution_error) result =
+let step (config : Runtime_config.t) (state : state) :
+    (state, Machine_backend.execution_error) result =
   match state.snapshot.status with
   | State.Halted -> Error (Machine_backend.Stopped Machine_view.Halted)
   | Failed -> Error (Machine_backend.Stopped Machine_view.Failed)
@@ -545,25 +549,27 @@ let step (state : state) : (state, Machine_backend.execution_error) result =
       match try E.machine_step parameters (E.Executable, conf) with _ -> None with
       | None -> Ok (fail_state state)
       | Some raw -> (
-          match snapshot_of_raw state.config raw with
-          | Ok snapshot -> Ok { state with raw; snapshot }
+          match snapshot_of_raw config raw with
+          | Ok snapshot -> Ok { raw; snapshot }
           | Error _ -> Ok (fail_state state)))
 
-let rec step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
+let rec step_n (config : Runtime_config.t) (count : int) (state : state) :
+    (state, Machine_backend.execution_error) result =
   if count < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if count = 0 then Ok state
   else
-    match step state with
-    | Ok next -> step_n (count - 1) next
+    match step config state with
+    | Ok next -> step_n config (count - 1) next
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as error -> error
 
-let assemble_edit (state : state) (term : asm_word) : (Ast.word, Diagnostic.t list) result =
-  Asm_ir.assemble_word state.config term
+let assemble_edit (config : Runtime_config.t) (term : asm_word) :
+    (Ast.word, Diagnostic.t list) result =
+  Asm_ir.assemble_word config term
 
-let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) :
-    (state, Diagnostic.t list) result =
-  let* word = assemble_edit state term in
+let set_register (config : Runtime_config.t) (id : Machine_view.register_id) (term : asm_word)
+    (state : state) : (state, Diagnostic.t list) result =
+  let* word = assemble_edit config term in
   match (id.Machine_view.Register_id.bank, id.key) with
   | System, "mtdc" -> (
       match word_to_e word with
@@ -572,7 +578,7 @@ let set_register (id : Machine_view.register_id) (term : asm_word) (state : stat
           let flag, conf = state.raw in
           let raw = (flag, E.update_sreg conf E.MTDC extracted) in
           let snapshot = State.set_system_register Ast.MTDC word state.snapshot in
-          Ok { state with raw; snapshot })
+          Ok { raw; snapshot })
   | _ -> (
       let* register = View.register_of_id id in
       let word = match register with Ast.Reg 0 -> Ast.I Z.zero | _ -> word in
@@ -583,16 +589,16 @@ let set_register (id : Machine_view.register_id) (term : asm_word) (state : stat
           let flag, conf = state.raw in
           let raw = (flag, E.update_reg conf extracted_register extracted_word) in
           let snapshot = State.set_register register word state.snapshot in
-          Ok { state with raw; snapshot })
+          Ok { raw; snapshot })
 
-let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result
-    =
-  if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.config) >= 0 then
+let set_memory (config : Runtime_config.t) (address : Z.t) (term : asm_word) (state : state) :
+    (state, Diagnostic.t list) result =
+  if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr config) >= 0 then
     diagnostic
       (Printf.sprintf "Memory address %s is outside the configured address space."
          (Z.to_string address))
   else
-    let* word = assemble_edit state term in
+    let* word = assemble_edit config term in
     match (finz_to_e "memory address" address, word_to_e word) with
     | Error message, _ | _, Error message ->
         diagnostic ("Cannot represent extracted Griotte memory edit: " ^ message)
@@ -600,4 +606,4 @@ let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagn
         let flag, conf = state.raw in
         let raw = (flag, E.update_mem conf address' word') in
         let snapshot = State.set_memory_raw address word state.snapshot in
-        Ok { state with raw; snapshot }
+        Ok { raw; snapshot }

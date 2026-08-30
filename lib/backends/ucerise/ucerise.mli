@@ -121,22 +121,16 @@ module Machine : sig
   module MemMap : Map.S with type key = Z.t
 
   type status = Running | Halted | Failed
-
-  type t = {
-    config : Runtime_config.t;
-    status : status;
-    registers : Ast.word RegMap.t;
-    memory : Ast.word MemMap.t;
-  }
+  type t = { status : status; registers : Ast.word RegMap.t; memory : Ast.word MemMap.t }
 
   val init : Runtime_config.t -> Ast.word list -> (Ast.register * Ast.word) list option -> t
   val read_register : Ast.register -> t -> Ast.word
-  val read_memory : Z.t -> t -> Ast.word option
+  val read_memory : Runtime_config.t -> Z.t -> t -> Ast.word option
   val set_register : Ast.register -> Ast.word -> t -> t
   val set_memory_raw : Z.t -> Ast.word -> t -> t
-  val execute : Ast.instruction -> t -> t
-  val step : t -> (t, Machine_backend.execution_error) result
-  val step_n : int -> t -> (t, Machine_backend.execution_error) result
+  val execute : Runtime_config.t -> Ast.instruction -> t -> t
+  val step : Runtime_config.t -> t -> (t, Machine_backend.execution_error) result
+  val step_n : Runtime_config.t -> int -> t -> (t, Machine_backend.execution_error) result
 end
 
 module Parser : sig

@@ -1,6 +1,7 @@
 open Cerise
 
-let get_ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
+let get_ok (matched_value : ('a, Diagnostic.t list) result) : 'a =
+  match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.failf "unexpected diagnostics: %s"
@@ -11,9 +12,11 @@ let int_word (word : Machine_view.word) : Z.t =
   | Some value -> value
   | None -> Alcotest.failf "expected integer word, got %s" word.detail_text
 
-let register (bank : Machine_view.register_bank) (key : string) : Machine_view.register_id = { Machine_view.Register_id.bank; key }
+let register (bank : Machine_view.register_bank) (key : string) : Machine_view.register_id =
+  { Machine_view.Register_id.bank; key }
 
-let register_word (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.word =
+let register_word (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) :
+    Machine_view.word =
   let view = Machine_session.view session in
   match Machine_view.find_register (register bank key) view with
   | Some register -> register.word
@@ -22,10 +25,9 @@ let register_word (bank : Machine_view.register_bank) (key : string) (session : 
 let check_z (message : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) message (Z.to_string expected) (Z.to_string actual)
 
-let create ?(source : string = "halt") ?regfile:(regfile : string option) (() : unit) :
-    Machine_session.t =
-  Machine_session.create ~backend:Backend_registry.default_backend_name ~config:Runtime_config.default ~source
-    ~regfile
+let create ?(source : string = "halt") ?(regfile : string option) (() : unit) : Machine_session.t =
+  Machine_session.create ~backend:Backend_registry.default_backend_name
+    ~config:Runtime_config.default ~source ~regfile
   |> get_ok
 
 let test_backend_owns_parser (() : unit) : unit =
@@ -33,11 +35,13 @@ let test_backend_owns_parser (() : unit) : unit =
   let module Backend = (val selected : Machine_backend.S) in
   List.iter
     (fun source ->
-      Alcotest.(check bool) "vanilla rejects unsupported syntax" true
+      Alcotest.(check bool)
+        "vanilla rejects unsupported syntax" true
         (Result.is_error (Backend.parse_program source)))
     [ "getl r1 r2 halt"; "promoteU r1 halt"; "restrict r1 (RW, DIRECTED) halt" ]
 
-let capability_metadata (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.capability =
+let capability_metadata (bank : Machine_view.register_bank) (key : string)
+    (session : Machine_session.t) : Machine_view.capability =
   let word = register_word bank key session in
   match word.capability with
   | Some capability -> capability
@@ -48,52 +52,113 @@ let test_interleaved_runtime_configs (() : unit) : unit =
   let second_config =
     Runtime_config.create ~max_addr:(Z.of_int 1000) ~stack_addr:(Z.of_int 750) ()
   in
-  let source = "mov r3 r1\nhalt" in
-  let regfile = Some "r1 := MAX_ADDR\nr2 := STK_ADDR" in
+  let source = "mov r3 r1\nload r6 r5\nhalt" in
+  let regfile = Some "r1 := MAX_ADDR\nr2 := STK_ADDR\nr5 := (RW, 0, MAX_ADDR, MAX_ADDR - 1)" in
   let first =
-        Machine_session.create ~backend:Backend_registry.default_backend_name ~config:first_config ~source
-          ~regfile
-        |> get_ok
-      in
-      let second =
-        Machine_session.create ~backend:Backend_registry.default_backend_name ~config:second_config ~source
-          ~regfile
-        |> get_ok
-      in
-      let first_view = Machine_session.view first in
-      let second_view = Machine_session.view second in
-      check_z "first view keeps its address limit" (Z.of_int 64) first_view.address_limit;
-      check_z "second view keeps its address limit" (Z.of_int 1000) second_view.address_limit;
-      check_z "first PC limit uses its address space" (Z.of_int 64)
-        (capability_metadata Machine_view.System "pc" first).limit;
-      check_z "second PC limit uses its address space" (Z.of_int 1000)
-        (capability_metadata Machine_view.System "pc" second).limit;
-      Alcotest.(check bool)
-        "vanilla has no stack-role register" true
-        (Machine_view.find_register
-           (register Machine_view.System "stk")
-           (Machine_session.view first)
-        = None);
-      let first_after_step = Machine_session.step first |> Result.get_ok in
-      check_z "other session stays unstepped" Z.zero
-        (int_word (register_word Machine_view.General "r3" second));
-      let second_after_step = Machine_session.step second |> Result.get_ok in
-      check_z "first transition uses first MAX_ADDR" (Z.of_int 64)
-        (int_word (register_word Machine_view.General "r3" first_after_step));
-      check_z "second transition uses second MAX_ADDR" (Z.of_int 1000)
-        (int_word (register_word Machine_view.General "r3" second_after_step));
-      check_z "prior first session remains immutable" Z.zero
-        (int_word (register_word Machine_view.General "r3" first));
-      check_z "prior second session remains immutable" Z.zero
-        (int_word (register_word Machine_view.General "r3" second));
-      check_z "first stepped view is not contaminated by second" (Z.of_int 64)
-        (Machine_session.view first_after_step).address_limit
+    Machine_session.create ~backend:Backend_registry.default_backend_name ~config:first_config
+      ~source ~regfile
+    |> get_ok
+  in
+  let second =
+    Machine_session.create ~backend:Backend_registry.default_backend_name ~config:second_config
+      ~source ~regfile
+    |> get_ok
+  in
+  let first_view = Machine_session.view first in
+  let second_view = Machine_session.view second in
+  check_z "first view keeps its address limit" (Z.of_int 64) first_view.address_limit;
+  check_z "second view keeps its address limit" (Z.of_int 1000) second_view.address_limit;
+  check_z "first PC limit uses its address space" (Z.of_int 64)
+    (capability_metadata Machine_view.System "pc" first).limit;
+  check_z "second PC limit uses its address space" (Z.of_int 1000)
+    (capability_metadata Machine_view.System "pc" second).limit;
+  Alcotest.(check bool)
+    "vanilla has no stack-role register" true
+    (Machine_view.find_register (register Machine_view.System "stk") (Machine_session.view first)
+    = None);
+  let first_after_step = Machine_session.step first |> Result.get_ok in
+  check_z "other session stays unstepped" Z.zero
+    (int_word (register_word Machine_view.General "r3" second));
+  let second_after_step = Machine_session.step second |> Result.get_ok in
+  check_z "first transition uses first MAX_ADDR" (Z.of_int 64)
+    (int_word (register_word Machine_view.General "r3" first_after_step));
+  check_z "second transition uses second MAX_ADDR" (Z.of_int 1000)
+    (int_word (register_word Machine_view.General "r3" second_after_step));
+  check_z "prior first session remains immutable" Z.zero
+    (int_word (register_word Machine_view.General "r3" first));
+  check_z "prior second session remains immutable" Z.zero
+    (int_word (register_word Machine_view.General "r3" second));
+  check_z "first stepped view is not contaminated by second" (Z.of_int 64)
+    (Machine_session.view first_after_step).address_limit;
+  let first_after_memory_step = Machine_session.step first_after_step |> Result.get_ok in
+  let second_after_memory_step = Machine_session.step second_after_step |> Result.get_ok in
+  check_z "first step reads its last sparse cell" Z.zero
+    (int_word (register_word Machine_view.General "r6" first_after_memory_step));
+  check_z "second step reads its last sparse cell" Z.zero
+    (int_word (register_word Machine_view.General "r6" second_after_memory_step));
+  Alcotest.(check bool)
+    "bounds-sensitive steps remain running" true
+    ((Machine_session.view first_after_memory_step).status = Machine_view.Running
+    && (Machine_session.view second_after_memory_step).status = Machine_view.Running);
+  let first_edited =
+    Machine_session.set_register_text
+      (register Machine_view.General "r4")
+      "MAX_ADDR" first_after_memory_step
+    |> get_ok
+  in
+  let second_edited =
+    Machine_session.set_register_text
+      (register Machine_view.General "r4")
+      "STK_ADDR" second_after_memory_step
+    |> get_ok
+  in
+  check_z "first edit reuses first MAX_ADDR" (Z.of_int 64)
+    (int_word (register_word Machine_view.General "r4" first_edited));
+  check_z "second edit reuses second STK_ADDR" (Z.of_int 750)
+    (int_word (register_word Machine_view.General "r4" second_edited));
+  let first_memory =
+    Machine_session.set_memory_text (Z.of_int 63) "MAX_ADDR" first_edited |> get_ok
+  in
+  let second_memory =
+    Machine_session.set_memory_text (Z.of_int 999) "MAX_ADDR" second_edited |> get_ok
+  in
+  check_z "first memory edit assembles with first config" (Z.of_int 64)
+    (Machine_view.find_memory_word (Z.of_int 63) (Machine_session.view first_memory)
+    |> Option.get |> int_word);
+  check_z "second memory edit assembles with second config" (Z.of_int 1000)
+    (Machine_view.find_memory_word (Z.of_int 999) (Machine_session.view second_memory)
+    |> Option.get |> int_word);
+  Alcotest.(check bool)
+    "first sparse bound remains finite" true
+    (Machine_view.find_memory_word (Z.of_int 62) (Machine_session.view first_memory)
+     |> Option.is_some
+    && Machine_view.find_memory_word (Z.of_int 64) (Machine_session.view first_memory) = None);
+  Alcotest.(check bool)
+    "second sparse bound remains finite" true
+    (Machine_view.find_memory_word (Z.of_int 998) (Machine_session.view second_memory)
+     |> Option.is_some
+    && Machine_view.find_memory_word (Z.of_int 1000) (Machine_session.view second_memory) = None);
+  Alcotest.(check bool)
+    "first out-of-range edit rejected" true
+    (Machine_session.set_memory_text (Z.of_int 64) "0" first_memory |> Result.is_error);
+  Alcotest.(check bool)
+    "second out-of-range edit rejected" true
+    (Machine_session.set_memory_text (Z.of_int 1000) "0" second_memory |> Result.is_error)
 
 let test_registry_and_shared_frontend (() : unit) : unit =
   Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default_backend_name;
   Alcotest.(check (list string))
     "deterministic active backends"
-    [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "cerisier"; "griotte"; "griotte-extracted" ]
+    [
+      "vanilla";
+      "cerise";
+      "locality-cerise";
+      "ucerise";
+      "mcerise";
+      "cerisier";
+      "griotte";
+      "griotte-extracted";
+    ]
     (Backend_registry.available_backend_names ());
   let selected = Backend_registry.find_backend "cerise" |> Option.get in
   let module Backend = (val selected : Machine_backend.S) in
@@ -221,7 +286,9 @@ let test_diagnostics (() : unit) : unit =
     | _ -> false);
   Alcotest.(check bool)
     "parse diagnostic carries a source position" true
-    (let selected = Backend_registry.find_backend Backend_registry.default_backend_name |> Option.get in
+    (let selected =
+       Backend_registry.find_backend Backend_registry.default_backend_name |> Option.get
+     in
      let module Backend = (val selected : Machine_backend.S) in
      match Backend.parse_program ~filename:"broken.s" "mov r1" with
      | Error (diagnostic :: _) -> Option.is_some (Diagnostic.location diagnostic)

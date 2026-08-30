@@ -18,12 +18,16 @@ module type S = sig
   val init :
     Runtime_config.t -> asm_program -> asm_regfile option -> (state, Diagnostic.t list) result
 
-  val step : state -> (state, execution_error) result
-  val step_n : int -> state -> (state, execution_error) result
-  val inspect : state -> Machine_view.t
+  val step : Runtime_config.t -> state -> (state, execution_error) result
+  val step_n : Runtime_config.t -> int -> state -> (state, execution_error) result
+  val inspect : Runtime_config.t -> state -> Machine_view.t
 
   val set_register :
-    Machine_view.Register_id.t -> asm_word -> state -> (state, Diagnostic.t list) result
+    Runtime_config.t ->
+    Machine_view.Register_id.t ->
+    asm_word ->
+    state ->
+    (state, Diagnostic.t list) result
 
-  val set_memory : Z.t -> asm_word -> state -> (state, Diagnostic.t list) result
+  val set_memory : Runtime_config.t -> Z.t -> asm_word -> state -> (state, Diagnostic.t list) result
 end

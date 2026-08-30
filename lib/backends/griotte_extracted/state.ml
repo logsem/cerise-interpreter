@@ -20,7 +20,6 @@ module MemMap = Map.Make (Z)
 type status = Running | Halted | Failed
 
 type t = {
-  config : Runtime_config.t;
   status : status;
   registers : word RegMap.t;
   system_registers : word SRegMap.t;
@@ -154,4 +153,4 @@ let init (config : Runtime_config.t) (program : word list)
       program
     |> Result.map snd
   in
-  Ok { config; status = Running; registers; system_registers; memory }
+  Ok { status = Running; registers; system_registers; memory }

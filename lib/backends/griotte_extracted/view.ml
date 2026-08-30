@@ -127,7 +127,8 @@ let register_description (register : register) :
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.Stack_pointer)
   | Reg _ -> ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
-let inspect ~(backend_name : string) (state : State.t) : Machine_view.t =
+let inspect ~(backend_name : string) (config : Runtime_config.t) (state : State.t) : Machine_view.t
+    =
   let registers =
     State.RegMap.bindings state.State.registers
     |> List.map (fun (register, value) ->
@@ -159,7 +160,7 @@ let inspect ~(backend_name : string) (state : State.t) : Machine_view.t =
     Machine_view.backend_name;
     status =
       (match state.State.status with Running -> Running | Halted -> Halted | Failed -> Failed);
-    address_limit = Runtime_config.max_addr state.config;
+    address_limit = Runtime_config.max_addr config;
     pc;
     registers;
     enclave_table = None;

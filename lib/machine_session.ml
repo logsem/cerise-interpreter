@@ -1,12 +1,15 @@
-(** Existential sessions keep backend-specific state and words hidden from shared clients.
+(** Existential sessions keep configuration, backend-specific state, and words hidden from shared
+    clients.
 
     Creation delegates parsing and initialization to the selected backend. Later operations unpack
-    that same backend module, transform its state, and repack it with the requested CLI alias. *)
+    that same backend module, reuse the session-owned execution configuration, transform its state,
+    and repack it with the requested CLI alias. *)
 
 type t =
   | Session :
       (module Machine_backend.S with type state = 'state and type asm_word = 'word)
       * string
+      * Runtime_config.t
       * 'state
       -> t
 
@@ -49,6 +52,7 @@ let create_with_backend ?(source_filename : string option) ?(regfile_filename : 
                        with type state = Backend.state
                         and type asm_word = Backend.asm_word),
                      requested_name,
+                     config,
                      state ))))
 
 let create_with_filename_options ~(source_filename : string option)
@@ -70,19 +74,22 @@ let create_with_filenames ~(source_filename : string) ~(regfile_filename : strin
   create_with_filename_options ~source_filename:(Some source_filename) ~regfile_filename ~backend
     ~config ~source ~regfile
 
-let backend_name (Session (_, requested_name, _) : t) : string = requested_name
+let backend_name (Session (_, requested_name, _, _) : t) : string = requested_name
 
-let view (Session ((module Backend), requested_name, state) : t) : Machine_view.t =
-  { (Backend.inspect state) with backend_name = requested_name }
+let view (Session ((module Backend), requested_name, config, state) : t) : Machine_view.t =
+  { (Backend.inspect config state) with backend_name = requested_name }
 
-let step (Session ((module Backend), requested_name, state) : t) : (t, execution_error) result =
-  Result.map (fun state -> Session ((module Backend), requested_name, state)) (Backend.step state)
-
-let step_n (count : int) (Session ((module Backend), requested_name, state) : t) :
+let step (Session ((module Backend), requested_name, config, state) : t) :
     (t, execution_error) result =
   Result.map
-    (fun state -> Session ((module Backend), requested_name, state))
-    (Backend.step_n count state)
+    (fun state -> Session ((module Backend), requested_name, config, state))
+    (Backend.step config state)
+
+let step_n (count : int) (Session ((module Backend), requested_name, config, state) : t) :
+    (t, execution_error) result =
+  Result.map
+    (fun state -> Session ((module Backend), requested_name, config, state))
+    (Backend.step_n config count state)
 
 let matching_breakpoint (breakpoints : Z.t list) (program_counter : Z.t option) : Z.t option =
   match program_counter with
@@ -117,19 +124,21 @@ let run ?(breakpoints : Z.t list = []) ?(max_steps : int option) (session : t) :
   | _ -> loop 0 session
 
 let set_register_text (id : Machine_view.register_id) (source : string)
-    (Session ((module Backend), requested_name, state) : t) : (t, Diagnostic.t list) result =
+    (Session ((module Backend), requested_name, config, state) : t) : (t, Diagnostic.t list) result
+    =
   match Backend.parse_word source with
   | Error _ as error -> error
   | Ok word ->
       Result.map
-        (fun state -> Session ((module Backend), requested_name, state))
-        (Backend.set_register id word state)
+        (fun state -> Session ((module Backend), requested_name, config, state))
+        (Backend.set_register config id word state)
 
 let set_memory_text (address : Z.t) (source : string)
-    (Session ((module Backend), requested_name, state) : t) : (t, Diagnostic.t list) result =
+    (Session ((module Backend), requested_name, config, state) : t) : (t, Diagnostic.t list) result
+    =
   match Backend.parse_word source with
   | Error _ as error -> error
   | Ok word ->
       Result.map
-        (fun state -> Session ((module Backend), requested_name, state))
-        (Backend.set_memory address word state)
+        (fun state -> Session ((module Backend), requested_name, config, state))
+        (Backend.set_memory config address word state)

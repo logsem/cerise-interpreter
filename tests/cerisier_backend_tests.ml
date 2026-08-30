@@ -132,7 +132,7 @@ let machine_hash_word (value : Cerisier.Ast.word) : Z.t =
   let state =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) value
-    |> Machine.execute (Ast.Hash (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.Hash (Ast.Reg 1, Ast.Reg 2))
   in
   match Machine.read_register (Ast.Reg 1) state with
   | Ast.I hash -> hash
@@ -144,7 +144,7 @@ let machine_hash_concat (left : Z.t) (right : Z.t) : Z.t =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) (Ast.I left)
     |> Machine.set_register (Ast.Reg 3) (Ast.I right)
-    |> Machine.execute
+    |> Machine.execute config
          (Ast.HashConcat (Ast.Reg 1, Ast.Register (Ast.Reg 2), Ast.Register (Ast.Reg 3)))
   in
   match Machine.read_register (Ast.Reg 1) state with
@@ -158,7 +158,7 @@ let machine_address_hash (address : int) : Z.t =
     |> Machine.set_register (Ast.Reg 1)
          (Ast.Sealable (Ast.Cap (Ast.RX, z address, z (address + 1), z address)))
     |> Machine.set_register (Ast.Reg 2) (Ast.Sealable (Ast.Cap (Ast.RW, z 20, z 22, z 20)))
-    |> Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.EInit (Ast.Reg 1, Ast.Reg 2))
   in
   Machine.ETableMap.find Z.zero initialized.enclave_table
 
@@ -204,7 +204,7 @@ let hashing () =
   let failed =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) (Ast.I h1)
-    |> Machine.execute
+    |> Machine.execute config
          (Ast.HashConcat (Ast.Reg 1, Ast.Register (Ast.Reg 2), Ast.Constant Z.minus_one))
   in
   Alcotest.(check bool) "hashconcat rejects negative fragments" true (failed.status = Machine.Failed)
@@ -215,20 +215,20 @@ let uniqueness () =
   let unique =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) candidate
-    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
   in
   check_word "unique capability" (Ast.I Z.one) (Machine.read_register (Ast.Reg 1) unique);
   let overlapping =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) (Ast.Sealed (z 9, Ast.Cap (Ast.RW, z 20, z 30, z 20)))
     |> Machine.set_memory_raw (z 80) (Ast.Sealable (Ast.Cap (Ast.RO, z 29, z 35, z 29)))
-    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
   in
   check_word "sealed overlap" (Ast.I Z.zero) (Machine.read_register (Ast.Reg 1) overlapping);
   let failed =
     base_state ()
     |> Machine.set_register (Ast.Reg 2) (Ast.I Z.zero)
-    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
   in
   Alcotest.(check bool) "non-capability rejected" true (failed.status = Machine.Failed)
 
@@ -243,7 +243,7 @@ let einit_state () =
 
 let attestation () =
   let open Cerisier in
-  let initialized = Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) (einit_state ()) in
+  let initialized = Machine.execute config (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) (einit_state ()) in
   Alcotest.(check bool) "einit running" true (initialized.status = Machine.Running);
   check_word "entry capability"
     (Ast.Sealable (Ast.Cap (Ast.E, z 10, z 14, z 11)))
@@ -251,9 +251,9 @@ let attestation () =
   check_word "data register cleared" (Ast.I Z.zero) (Machine.read_register (Ast.Reg 2) initialized);
   check_word "data capability installed"
     (Ast.Sealable (Ast.Cap (Ast.RW, z 20, z 24, z 21)))
-    (Option.get (Machine.read_memory (z 10) initialized));
+    (Option.get (Machine.read_memory config (z 10) initialized));
   let keys = Ast.Sealable (Ast.SealRange ((true, true), Z.zero, z 2, Z.zero)) in
-  check_word "seal keys installed" keys (Option.get (Machine.read_memory (z 20) initialized));
+  check_word "seal keys installed" keys (Option.get (Machine.read_memory config (z 20) initialized));
   Alcotest.(check string) "counter incremented" "1" (Z.to_string initialized.enclave_counter);
   let expected_identity = Z.of_string "680564733841876926926749214868285861499" in
   let code_hash =
@@ -275,7 +275,7 @@ let attestation () =
     |> Machine.set_memory_raw (z 31) (Ast.I (z 201))
     |> Machine.set_memory_raw (z 32) (Ast.I (z 202))
     |> Machine.set_memory_raw (z 33) (Ast.I (z 203))
-    |> Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2))
+    |> Machine.execute config (Ast.EInit (Ast.Reg 1, Ast.Reg 2))
   in
   Alcotest.(check (list string))
     "ordered table entries" [ "0"; "1" ]
@@ -286,28 +286,28 @@ let attestation () =
     (Z.to_string twice_initialized.enclave_counter);
   check_word "second seal-key allocation"
     (Ast.Sealable (Ast.SealRange ((true, true), z 2, z 4, z 2)))
-    (Option.get (Machine.read_memory (z 40) twice_initialized));
+    (Option.get (Machine.read_memory config (z 40) twice_initialized));
   let stored =
     initialized
     |> Machine.set_register (Ast.Reg 3) (Ast.I Z.one)
-    |> Machine.execute (Ast.EStoreId (Ast.Reg 4, Ast.Reg 3))
+    |> Machine.execute config (Ast.EStoreId (Ast.Reg 4, Ast.Reg 3))
   in
   check_word "odd otype maps down" (Ast.I expected_identity)
     (Machine.read_register (Ast.Reg 4) stored);
   let deinitialized =
     initialized
     |> Machine.set_register (Ast.Reg 3) keys
-    |> Machine.execute (Ast.EDeInit (Ast.Reg 3))
+    |> Machine.execute config (Ast.EDeInit (Ast.Reg 3))
   in
   Alcotest.(check int) "entry removed" 0 (Machine.ETableMap.cardinal deinitialized.enclave_table);
   Alcotest.(check string) "counter monotonic" "1" (Z.to_string deinitialized.enclave_counter);
-  let missing = deinitialized |> Machine.execute (Ast.EDeInit (Ast.Reg 3)) in
+  let missing = deinitialized |> Machine.execute config (Ast.EDeInit (Ast.Reg 3)) in
   Alcotest.(check bool) "missing entry fails" true (missing.status = Machine.Failed);
   let bad_before =
     einit_state ()
     |> Machine.set_memory_raw (z 12) (Ast.Sealable (Ast.Cap (Ast.RO, z 40, z 41, z 40)))
   in
-  let bad_after = Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) bad_before in
+  let bad_after = Machine.execute config (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) bad_before in
   Alcotest.(check bool) "non-integer code fails" true (bad_after.status = Machine.Failed);
   Alcotest.(check bool)
     "failed einit preserves registers" true
@@ -331,7 +331,7 @@ let initialization_and_view () =
         (Cerisier.Printer.word (Cerisier.Machine.read_register cerisier_register cerisier)))
     ((Vanilla.Ast.PC, Cerisier.Ast.PC)
     :: List.init 32 (fun n -> (Vanilla.Ast.Reg n, Cerisier.Ast.Reg n)));
-  let view = Cerisier.Backend.inspect cerisier in
+  let view = Cerisier.Backend.inspect config cerisier in
   Alcotest.(check bool) "table exposed" true (Option.is_some view.enclave_table);
   let r31 = Machine_view.find_register { bank = Machine_view.General; key = "r31" } view in
   Alcotest.(check bool) "r31 ordinary register" true (Option.is_some r31);
