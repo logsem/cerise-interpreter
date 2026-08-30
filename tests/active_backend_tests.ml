@@ -425,6 +425,45 @@ let checked_in_vanilla_corpus (() : unit) : unit =
        (Vanilla.Parser.parse_regfile ~filename:"cap_machine_lecture_exercise.reg"
           (read_file (base ^ "cap_machine_lecture_exercise.reg"))))
 
+let restored_catalog_examples (() : unit) : unit =
+  let config =
+    Runtime_config.create ~max_addr:(Z.of_int 4096) ~stack_addr:(Z.of_int 2048) ()
+  in
+  let run (backend : string) (source_path : string) (regfile_path : string option) : unit =
+    let regfile = Option.map read_file regfile_path in
+    let initial =
+      Machine_session.create_with_filenames ~source_filename:source_path
+        ~regfile_filename:regfile_path ~backend ~config ~source:(read_file source_path) ~regfile
+      |> ok
+    in
+    let result = Machine_session.run ~max_steps:100_000 initial in
+    Alcotest.(check bool)
+      ("catalog example halts: " ^ source_path) true
+      (result.reason = Machine_session.Halted)
+  in
+  List.iter
+    (fun name -> run "locality-cerise" ("test_files/default/pos/" ^ name) None)
+    [ "get_otype.s"; "get_wtype.s"; "seal_unseal.s"; "sealing_counter.s" ];
+  run "mcerise" "test_files/default/pos/test_locality_flow.s" None;
+  List.iter
+    (fun name -> run "locality-cerise" ("test_files/" ^ name) None)
+    [ "malloc_test.s"; "test_linking_res.s" ];
+  List.iter
+    (fun (backend, name) ->
+      let base = "test_files/verified/" ^ name in
+      run backend (base ^ ".s") (Some (base ^ ".reg")))
+    [
+      ("locality-cerise", "encapsulated_counter");
+      ("locality-cerise", "interval_object");
+      ("locality-cerise", "local_state_encapsulation");
+      ("locality-cerise", "buffer_sharing");
+      ("locality-cerise", "read_only_sharing");
+      ("locality-cerise", "dynamic_sealing");
+      ("ucerise", "awkward_revocation");
+      ("mcerise", "downward_lse");
+      ("mcerise", "stack_object");
+    ]
+
 let () =
   Alcotest.run "active backends"
     [
@@ -444,5 +483,6 @@ let () =
           Alcotest.test_case "active macro hygiene and resolution" `Quick
             active_macro_hygiene_and_resolution;
           Alcotest.test_case "checked-in vanilla syntax corpus" `Quick checked_in_vanilla_corpus;
+          Alcotest.test_case "restored catalog examples" `Quick restored_catalog_examples;
         ] );
     ]
