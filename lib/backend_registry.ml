@@ -1,12 +1,12 @@
 type entry = { requested_name : string; backend : (module Machine_backend.S) }
 
-let vanilla = (module Vanilla.Backend : Machine_backend.S)
-let locality_cerise = (module Locality_cerise.Backend : Machine_backend.S)
-let ucerise = (module Ucerise.Backend : Machine_backend.S)
-let mcerise = (module Mcerise.Backend : Machine_backend.S)
-let cerisier = (module Cerisier.Backend : Machine_backend.S)
-let griotte = (module Griotte.Backend : Machine_backend.S)
-let griotte_extracted = (module Griotte_extracted.Backend : Machine_backend.S)
+let vanilla = (module Backends.Vanilla.Backend : Machine_backend.S)
+let locality_cerise = (module Backends.Locality_cerise.Backend : Machine_backend.S)
+let ucerise = (module Backends.Ucerise.Backend : Machine_backend.S)
+let mcerise = (module Backends.Mcerise.Backend : Machine_backend.S)
+let cerisier = (module Backends.Cerisier.Backend : Machine_backend.S)
+let griotte = (module Backends.Griotte.Backend : Machine_backend.S)
+let griotte_extracted = (module Backends.Griotte_extracted.Backend : Machine_backend.S)
 
 let backends =
   [

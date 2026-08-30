@@ -1,5 +1,0 @@
-(library
- (name cerise_griotte_extracted_generated)
- (package cerise-interpreter)
- (wrapped true)
- (libraries zarith))

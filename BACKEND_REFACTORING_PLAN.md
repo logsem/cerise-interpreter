@@ -65,21 +65,21 @@ codecs, machine semantics, CLI, linear history, and source-only ownership of Not
 
 ### Backend layout
 
-Use private wrapped implementation libraries in:
+Use qualified backend groups in the main public library:
 
 ```text
-lib/vanilla/
-lib/locality_cerise/
-lib/ucerise/
-lib/mcerise/
-lib/cerisier/
-lib/griotte/
-lib/griotte_extracted/
+lib/backends/vanilla/
+lib/backends/locality_cerise/
+lib/backends/ucerise/
+lib/backends/mcerise/
+lib/backends/cerisier/
+lib/backends/griotte/
+lib/backends/griotte_extracted/
 ```
 
 `cerise` remains a registry alias for vanilla and therefore has no implementation directory.
 
-The public library provides sealed façade modules:
+The public library aliases the sealed backend groups as:
 
 ```text
 Cerise.Vanilla
@@ -92,8 +92,8 @@ Cerise.Griotte_extracted
 ```
 
 Each exposes its own `Ast`, `Asm_ir`, `Parser`, `Printer`, `Codec`, `Machine`, and
-`Backend` modules as applicable. Private library module names must not escape installed
-interfaces.
+`Backend` modules as applicable. Internal qualified paths and generated parser modules must not
+escape installed interfaces.
 
 Remove flat names such as `Cerise.Vanilla_ast`; there are no compatibility aliases.
 `Cerise.Machine` remains an alias for `Cerise.Vanilla.Machine`.
@@ -121,7 +121,7 @@ Remove flat names such as `Cerise.Vanilla_ast`; there are no compatibility alias
   all backend keywords; tokenization alone does not imply acceptance.
 - Define one shared partial `common_parser.mly` for expressions, labels, definitions, macros,
   calls, placement, regfiles, comments, and whitespace-insensitive construction syntax.
-- Each backend supplies its own `parser.mly` fragment for exact instructions, values,
+- Each backend supplies its own `grammar.mly` fragment for exact instructions, values,
   permissions, localities, and macro-argument kinds. Dune feeds the shared fragment into each
   backend's Menhir `merge_into` build.
 - Each generated parser has separate program, regfile, and word entry points and reports
@@ -223,7 +223,7 @@ uses a merge commit.
 
 - Model: `gpt-5.6-sol`; reasoning: `high`.
 - Move every implementation into its backend directory and private library.
-- Add sealed public façade modules and update registry/tests to the clean namespaced API.
+- Add sealed qualified backend groups and update registry/tests to the clean namespaced API.
 - Do not change parsing, semantics, or encodings yet.
 - Gate: full suite, `@install`, and an external-client compile using the new namespaces; old flat
   modules are unavailable.

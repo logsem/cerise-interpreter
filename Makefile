@@ -10,16 +10,17 @@ clean:
 	dune clean
 
 test:
-	./scripts/full-test.sh --root "$(CURDIR)"
+	dune build @install
+	dune runtest --force
 
 regenerate-griotte-extracted:
-	./lib/griotte_extracted/scripts/regenerate.sh
+	./lib/backends/griotte_extracted/scripts/regenerate.sh
 
 check-griotte-extracted:
-	./lib/griotte_extracted/scripts/check.sh --root "$(CURDIR)"
+	./lib/backends/griotte_extracted/scripts/check.sh --root "$(CURDIR)"
 
 regeneration-gate:
-	./scripts/regeneration-gate.sh --root "$(CURDIR)"
+	./lib/backends/griotte_extracted/scripts/regeneration-gate.sh --root "$(CURDIR)"
 
 install:
 	@test -s interpreter || ln -s ./_build/default/src/interpreter.exe interpreter

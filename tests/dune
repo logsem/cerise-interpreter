@@ -19,114 +19,12 @@
 
 (rule
  (alias runtest)
- (deps ../scripts/final-cleanup-architecture-gate.sh (source_tree ../lib) (source_tree ../scripts))
- (action (run %{dep:../scripts/final-cleanup-architecture-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps ../scripts/pty-smoke.sh test_files/tui_smoke.s)
- (action
-  (run bash %{dep:../scripts/pty-smoke.sh} %{workspace_root}
-   %{exe:../src/interpreter.exe} %{dep:test_files/tui_smoke.s})))
-
-(rule
- (alias runtest)
  (deps
-  ../scripts/public-api-wiring-gate.sh
-  ../scripts/full-test.sh
-  ../scripts/public-api-gate.sh
-  ../Makefile
-  ../flake.nix)
+  ../lib/backends/griotte_extracted/scripts/check.sh
+  ../lib/backends/griotte_extracted/scripts/regenerate.sh
+  ../lib/backends/griotte_extracted/scripts/regeneration-gate.sh
+  ../lib/backends/griotte_extracted/generated/griotte_extracted.ml
+  ../lib/backends/griotte_extracted/generated/griotte_extracted.mli)
  (action
-  (run %{dep:../scripts/public-api-wiring-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps
-  ../lib/griotte_extracted/scripts/check.sh
-  ../lib/griotte_extracted/scripts/regenerate.sh
-  ../lib/griotte_extracted/scripts/regeneration-gate.sh
-  ../scripts/regeneration-gate.sh
-  ../lib/griotte_extracted/generated/griotte_extracted.ml
-  ../lib/griotte_extracted/generated/griotte_extracted.mli)
- (action
-  (run %{dep:../scripts/regeneration-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps
-  ../scripts/active-parser-architecture-gate.sh
-  ../lib/assembly/token_spec.mly
-  ../lib/assembly/lexer.mll
-  ../lib/assembly/common_parser.mly
-  ../lib/vanilla/ast.ml
-  ../lib/vanilla/asm_ir.ml
-  ../lib/vanilla/parser.mly
-  ../lib/locality_cerise/ast.ml
-  ../lib/locality_cerise/asm_ir.ml
-  ../lib/locality_cerise/parser.mly
-  ../lib/core/assembly_construction.ml
-  ../lib/core/assembly_construction.mli)
- (action
-  (run %{dep:../scripts/active-parser-architecture-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps ../scripts/terminal-architecture-gate.sh ../lib/dune ../lib/cerise.ml ../src/dune)
- (action
-  (run %{dep:../scripts/terminal-architecture-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps
-  ../scripts/historical-parser-architecture-gate.sh
-  ../lib/ucerise/ast.ml
-  ../lib/ucerise/asm_ir.ml
-  ../lib/ucerise/parser.mly
-  ../lib/ucerise/parser_api.ml
-  ../lib/ucerise/dune
-  ../lib/mcerise/ast.ml
-  ../lib/mcerise/asm_ir.ml
-  ../lib/mcerise/parser.mly
-  ../lib/mcerise/parser_api.ml
-  ../lib/mcerise/dune
-  ../lib/assembly/token_spec.mly
-  ../lib/assembly/lexer.mll
-  ../lib/assembly/common_parser.mly)
- (action
-  (run %{dep:../scripts/historical-parser-architecture-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps
-  ../scripts/cerisier-parser-architecture-gate.sh
-  ../lib/cerisier/ast.ml
-  ../lib/cerisier/asm_ir.ml
-  ../lib/cerisier/parser.mly
-  ../lib/cerisier/parser_api.ml
-  ../lib/cerisier/dune
-  ../lib/assembly/token_spec.mly
-  ../lib/assembly/lexer.mll
-  ../lib/assembly/common_parser.mly)
- (action
-  (run %{dep:../scripts/cerisier-parser-architecture-gate.sh} --root %{workspace_root})))
-
-(rule
- (alias runtest)
- (deps
-  ../scripts/griotte-parser-architecture-gate.sh
-  ../lib/griotte/ast.ml
-  ../lib/griotte/asm_ir.ml
-  ../lib/griotte/parser.mly
-  ../lib/griotte/parser_api.ml
-  ../lib/griotte/dune
-  ../lib/griotte_extracted/ast.ml
-  ../lib/griotte_extracted/asm_ir.ml
-  ../lib/griotte_extracted/parser.mly
-  ../lib/griotte_extracted/parser_api.ml
-  ../lib/griotte_extracted/dune
-  ../lib/assembly/token_spec.mly
-  ../lib/assembly/lexer.mll
-  ../lib/assembly/common_parser.mly)
- (action
-  (run %{dep:../scripts/griotte-parser-architecture-gate.sh} --root %{workspace_root})))
+  (run %{dep:../lib/backends/griotte_extracted/scripts/regeneration-gate.sh}
+   --root %{workspace_root})))

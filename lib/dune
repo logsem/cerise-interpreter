@@ -1,30 +1,11 @@
+(include_subdirs qualified)
+
 (library
  (name cerise)
  (public_name cerise-interpreter)
- (modules
-  cerise
-  runtime_config
-  diagnostic
-  instruction_codec
-  machine_view
-  machine_backend
-  vanilla
-  locality_cerise
-  ucerise
-  mcerise
-  cerisier
-  griotte
-  griotte_extracted
-  backend_registry
-  machine_session
-  )
  (libraries
   cerise_core
-  cerise_vanilla_private
-  cerise_locality_cerise_private
-  cerise_ucerise_private
-  cerise_mcerise_private
-  cerise_cerisier_private
-  cerise_griotte_private
-  cerise_griotte_extracted_private
-  zarith))
+  cerise_griotte_extracted_generated
+  menhirLib
+  zarith)
+ (flags (:standard -open Cerise_core)))

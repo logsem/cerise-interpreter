@@ -1,0 +1,29 @@
+(copy_files ../../assembly/*.mly)
+
+(copy_files ../../assembly/lexer.mll)
+
+(ocamllex lexer)
+
+(menhir
+ (modules token_spec common_parser grammar)
+ (merge_into griotte_extracted_parser_engine)
+ (flags
+  --strict
+  --unused-token
+  INVOKE
+  --unused-token
+  LOADU
+  --unused-token
+  STOREU
+  --unused-token
+  ISPTR
+  --unused-token
+  PROMOTEU
+  --unused-token
+  EINIT
+  --unused-token
+  EDEINIT
+  --unused-token
+  ESTOREID
+  --unused-token
+  ISUNIQUE))

@@ -26,13 +26,12 @@
                 (inDirectory "src")
                 (inDirectory "lib")
                 (inDirectory "tests")
-                (inDirectory "scripts")
               ];
             };
 
           nativeBuildInputs = [ pkgs.bash pkgs.gnumake pkgs.python3 pkgs.ripgrep pkgs.util-linux menhir ];
           postPatch = ''
-            patchShebangs scripts lib/griotte_extracted/scripts
+            patchShebangs lib/backends/griotte_extracted/scripts
           '';
           buildInputs = [ containers menhirLib notty-community zarith ];
           checkInputs = [ alcotest ];

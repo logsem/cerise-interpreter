@@ -1,0 +1,30 @@
+(copy_files ../../assembly/*.mly)
+(copy_files ../../assembly/lexer.mll)
+
+(ocamllex lexer)
+
+(menhir
+ (modules token_spec common_parser grammar)
+ (merge_into vanilla_parser_engine)
+ (flags
+  --strict
+  --unused-token JALR
+  --unused-token READSR
+  --unused-token WRITESR
+  --unused-token LAND
+  --unused-token LOR
+  --unused-token LSHIFTL
+  --unused-token LSHIFTR
+  --unused-token SYSTEM_REGISTER
+  --unused-token GRIOTTE_PERMISSION
+  --unused-precedence-levels
+  --unused-token GETL
+  --unused-token LOCALITY
+  --unused-token LOADU
+  --unused-token STOREU
+  --unused-token ISPTR
+  --unused-token PROMOTEU
+  --unused-token EINIT
+  --unused-token EDEINIT
+  --unused-token ESTOREID
+  --unused-token ISUNIQUE))
