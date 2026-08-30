@@ -238,7 +238,7 @@ available backends are:
 | `mcerise` | historical uninitialized capabilities with global, local, and directed locality; no sealing |
 | `cerisier` | historical enclave backend with sealing, uninitialized, and directed capabilities |
 | `griotte` | Griotte capability machine with its own parser and instruction set |
-| `griotte-extracted` | Rocq-extracted Griotte implementation behind a differential adapter |
+| `griotte-extracted` | Rocq-extracted Griotte independent sibling snapshot |
 
 Each backend parses and validates its own syntax. The shared generated-parser construction layer handles
 expressions, labels, definitions, and typed sequence macros; instruction encodings use backend
@@ -264,6 +264,8 @@ StoreU PromoteU EInit EDeInit EStoreId IsUnique Fail Halt`.
 Both Griotte backends have exactly `Jalr Jmp Jnz ReadSR WriteSR Move Load Store Add Sub Mul LAnd
 LOr LShiftL LShiftR Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType GetWType Seal UnSeal
 Fail Halt`. They reject `Rem` and `Div`, and preserve the fixed opcode gaps in their codec tables.
+They are independent sibling snapshots, so this shared ISA/codec contract does not require universal
+semantic identity; see [Griotte sibling snapshots](griotte-snapshots.md) when selecting a backend.
 
 Backend value shapes are independent. Vanilla capabilities are exactly `(permission, base, end,
 address)` and are global-only; locality-Cerise capabilities are `(permission, locality, base, end,

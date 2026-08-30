@@ -20,3 +20,9 @@ tables are backend-owned and provide the exact ISA encodings.
 trusted only at the checked-in regeneration boundary: use `make regenerate-griotte-extracted` or
 the wrapper `scripts/regeneration-gate.sh`, which delegates to
 `lib/griotte_extracted/scripts/` and verifies byte identity and provenance.
+
+`Griotte` and `Griotte_extracted` are independent sibling snapshots with independent parsers and
+the same documented ISA/opcode constraints; they are not required to be semantically identical.
+Their per-step differential tests protect an explicitly shared subset, rather than universally
+authorizing either backend. See [Griotte sibling snapshots](griotte-snapshots.md) for the accepted
+differences and backend-selection guidance.

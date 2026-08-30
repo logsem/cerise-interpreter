@@ -130,8 +130,11 @@ Mul Rem Div Invoke GetOType GetWType Seal UnSeal
 - uCerise has `Global | Local`; mCerise additionally has `Directed`. Their duplicated ASTs and
   semantics remain intentionally independent.
 - Cerisier remains a finite-`Z.t` historical implementation.
-- Handwritten and extracted Griotte remain independent sibling backends; both reject `Rem` and
-  `Div`, preserve their opcode gaps, and remain differentially equivalent.
+- Handwritten and extracted Griotte remain independent sibling snapshots. Both reject `Rem` and
+  `Div` and preserve their opcode gaps, but semantic identity is not required. Their per-step
+  differential suite is a regression corpus for the explicitly shared subset, not proof or a
+  release gate of universal equivalence; retain its shared-subset checks. See
+  `griotte-snapshots.md` for the accepted intentional differences.
 - Existing automatic/fixed instruction-codec tables and golden encodings remain unchanged.
 
 ### Terminal application
@@ -234,7 +237,8 @@ uses a merge commit.
   sibling directories.
 - Keep extracted/generated sources and regeneration scripts within the extracted backend boundary.
 - Gate: examples, rejection of `Rem`/`Div`, opcode gaps, regeneration twice with no diff,
-  per-step differential equivalence, and full suite.
+  per-step shared-subset differential checks, and full suite. These checks do not require or
+  establish universal semantic equivalence between the sibling snapshots.
 
 ### T6 — CLI relocation and Notty restoration
 
