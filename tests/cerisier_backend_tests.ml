@@ -41,35 +41,61 @@ let parser_matrix () =
           "%macro enclave(dst: reg, src: reg, n: expr) einit $dst $src lea $dst $n %endmacro \
            %enclave(r1, r2, 2) halt"));
   List.iter
-    (fun source ->
-      Alcotest.(check bool)
-        ("reject " ^ source) true
-        (Result.is_error (Cerisier.Parser.parse_program source)))
+    (fun source -> ignore (ok (Cerisier.Parser.parse_program source)))
     [
-      "isptr r1 r2";
-      "jmper r1";
-      "movsr r1 r2";
-      "move r1 inf";
-      "move r1 infinity";
-      "# inf";
-      "# infinity";
       "inf: halt";
       "infinity: halt";
       "%define inf 3 halt";
       "%define infinity 3 halt";
+      "%define inf 3 move r1 inf halt";
+      "%define infinity 3 move r1 infinity halt";
     ];
-  Alcotest.(check bool)
-    "word rejects inf" true
-    (Result.is_error (Cerisier.Parser.parse_word "(RW, GLOBAL, 0, inf, 0)"));
-  Alcotest.(check bool)
-    "word rejects infinity" true
-    (Result.is_error (Cerisier.Parser.parse_word "(RW, GLOBAL, 0, infinity, 0)"));
-  Alcotest.(check bool)
-    "regfile rejects inf" true
-    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, inf, 0)"));
-  Alcotest.(check bool)
-    "regfile rejects infinity" true
-    (Result.is_error (Cerisier.Parser.parse_regfile "r1 := (RW, GLOBAL, 0, infinity, 0)"));
+  List.iter
+    (fun source ->
+      Alcotest.(check bool)
+        ("reject " ^ source) true
+        (Result.is_error (Cerisier.Parser.parse_program source)))
+    [ "isptr r1 r2"; "jmper r1"; "movsr r1 r2" ];
+  List.iter
+    (fun (name, source) ->
+      match Cerisier.Parser.parse_program source with
+      | Error [ diagnostic ] ->
+          Alcotest.(check string)
+            (name ^ " is resolved as an ordinary identifier")
+            (Printf.sprintf "Unknown label or integer definition %S." name)
+            (Diagnostic.message diagnostic)
+      | Error diagnostics ->
+          Alcotest.failf "expected one resolution diagnostic for %s, got %d" name
+            (List.length diagnostics)
+      | Ok _ -> Alcotest.failf "expected unresolved identifier %s to fail" name)
+    [
+      ("inf", "move r1 inf");
+      ("infinity", "move r1 infinity");
+      ("inf", "# (RW, GLOBAL, 0, inf, 0)");
+      ("infinity", "# (RW, GLOBAL, 0, infinity, 0)");
+    ];
+  List.iter
+    (fun name ->
+      let check_unresolved label = function
+        | Error [ diagnostic ] ->
+            Alcotest.(check string)
+              label
+              (Printf.sprintf "an unresolved symbol %S remains" name)
+              (Diagnostic.message diagnostic)
+        | Error diagnostics ->
+            Alcotest.failf "expected one unresolved-symbol diagnostic for %s, got %d" name
+              (List.length diagnostics)
+        | Ok _ -> Alcotest.failf "expected unresolved identifier %s to fail lowering" name
+      in
+      let word_source = Printf.sprintf "(RW, GLOBAL, 0, %s, 0)" name in
+      let word = ok (Cerisier.Parser.parse_word word_source) in
+      check_unresolved (name ^ " word remains unresolved")
+        (Cerisier.Asm_ir.lower_word config word);
+      let regfile_source = Printf.sprintf "r1 := %s" word_source in
+      let regfile = ok (Cerisier.Parser.parse_regfile regfile_source) in
+      check_unresolved (name ^ " regfile remains unresolved")
+        (Cerisier.Asm_ir.lower_regfile config regfile))
+    [ "inf"; "infinity" ];
   let located =
     match Cerisier.Parser.parse_program ~filename:"located.s" "halt\n@" with
     | Error (diagnostic :: _) -> (
