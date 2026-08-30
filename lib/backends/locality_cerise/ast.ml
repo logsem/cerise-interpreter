@@ -1,4 +1,9 @@
-type register = PC | Reg of int
+type register =
+  | PC
+  | Reg of int
+      (** Concrete locality-aware machine vocabulary shared by the assembler, codec, interpreter,
+          and printer. *)
+
 type permission = O | E | RO | RX | RW | RWX | RWL | RWLX
 type locality = Global | Local
 type seal_permission = bool * bool

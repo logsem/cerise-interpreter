@@ -2,7 +2,11 @@ module Ast = Ast
 module Asm_ir = Asm_ir
 module Parser = Parser
 module Printer = Printer
+
 module Codec = Codec
+(** Adapts Locality Cerise to the uniform machine backend and view interfaces consumed by sessions
+    and the terminal application. *)
+
 module Machine = Machine
 
 let name = "locality-cerise"
@@ -13,16 +17,24 @@ type asm_regfile = Asm_ir.regfile
 type asm_word = Asm_ir.word
 type state = Machine.t
 
-let parse_program ?filename:(filename : string option) (source : string) :
-    (asm_program, Diagnostic.t list) result = Parser.parse_program ?filename source
-let parse_regfile ?filename:(filename : string option) (source : string) :
-    (asm_regfile, Diagnostic.t list) result = Parser.parse_regfile ?filename source
-let parse_word ?filename:(filename : string option) (source : string) :
-    (asm_word, Diagnostic.t list) result = Parser.parse_word ?filename source
-let init (config : Runtime_config.t) (program : Asm_ir.statement list) (regfile : (Ast.register * asm_word) list option) : (state, Diagnostic.t list) result =
+let parse_program ?(filename : string option) (source : string) :
+    (asm_program, Diagnostic.t list) result =
+  Parser.parse_program ?filename source
+
+let parse_regfile ?(filename : string option) (source : string) :
+    (asm_regfile, Diagnostic.t list) result =
+  Parser.parse_regfile ?filename source
+
+let parse_word ?(filename : string option) (source : string) : (asm_word, Diagnostic.t list) result
+    =
+  Parser.parse_word ?filename source
+
+let init (config : Runtime_config.t) (program : Asm_ir.statement list)
+    (regfile : (Ast.register * asm_word) list option) : (state, Diagnostic.t list) result =
   let ( let* ) (type value next error) (result : (value, error) result)
-          (continuation : value -> (next, error) result) : (next, error) result =
-    Result.bind result continuation in
+      (continuation : value -> (next, error) result) : (next, error) result =
+    Result.bind result continuation
+  in
   let* program = Asm_ir.lower_program config program in
   let* regfile =
     match regfile with
@@ -30,9 +42,12 @@ let init (config : Runtime_config.t) (program : Asm_ir.statement list) (regfile 
     | Some entries -> Result.map Option.some (Asm_ir.lower_regfile config entries)
   in
   Ok (Machine.init config program regfile)
+
 let step (state : state) : (state, Machine_backend.execution_error) result = Machine.step state
+
 let step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
   Machine.step_n count state
+
 let permission_text (permission : Ast.permission) : string = Printer.permission permission
 
 let view_word (word : Ast.word) : Machine_view.word =
@@ -40,12 +55,12 @@ let view_word (word : Ast.word) : Machine_view.word =
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
   let decoded_instruction =
     match word with
-    | Ast.I encoded ->
-        Result.to_option (Codec.decode encoded)
-        |> Option.map Printer.instruction
+    | Ast.I encoded -> Result.to_option (Codec.decode encoded) |> Option.map Printer.instruction
     | _ -> None
   in
-  let base (kind : Machine_view.semantic_kind) (integer : Z.t option) (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option) (sealing : Machine_view.sealing option) : Machine_view.word =
+  let base (kind : Machine_view.semantic_kind) (integer : Z.t option)
+      (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option)
+      (sealing : Machine_view.sealing option) : Machine_view.word =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -60,7 +75,8 @@ let view_word (word : Ast.word) : Machine_view.word =
       annotations = [];
     }
   in
-  let capability (matched_value : Ast.sealable) : Machine_view.capability option = match matched_value with
+  let capability (backend_value : Ast.sealable) : Machine_view.capability option =
+    match backend_value with
     | Ast.Cap (p, l, b, e, a) ->
         Some
           {
@@ -72,7 +88,9 @@ let view_word (word : Ast.word) : Machine_view.word =
           }
     | SealRange _ -> None
   in
-  let sealing ?object_type:(object_type : Z.t option) ~sealed:(sealed : bool) (matched_value : Ast.sealable) : Machine_view.sealing option = match matched_value with
+  let sealing ?(object_type : Z.t option) ~(sealed : bool) (backend_value : Ast.sealable) :
+      Machine_view.sealing option =
+    match backend_value with
     | Ast.Cap _ ->
         if sealed then
           Some { Machine_view.object_type; can_seal = None; can_unseal = None; is_sealed = true }
@@ -81,7 +99,8 @@ let view_word (word : Ast.word) : Machine_view.word =
         Some
           { Machine_view.object_type; can_seal = Some s; can_unseal = Some u; is_sealed = sealed }
   in
-  let seal_range (matched_value : Ast.sealable) : Machine_view.seal_range option = match matched_value with
+  let seal_range (backend_value : Ast.sealable) : Machine_view.seal_range option =
+    match backend_value with
     | Ast.SealRange (_, l, b, e, a) ->
         Some { Machine_view.base = b; limit = e; cursor = a; locality = Some (Printer.locality l) }
     | Cap _ -> None
@@ -90,11 +109,15 @@ let view_word (word : Ast.word) : Machine_view.word =
   | Ast.I z -> base Integer (Some z) None None None
   | Sealable (Cap (Ast.E, _, _, _, _) as c) -> base Sentry None (capability c) None None
   | Sealable (Cap _ as c) -> base Capability None (capability c) None None
-  | Sealable (SealRange _ as s) -> base Seal_range None None (seal_range s) (sealing ~sealed:false s)
+  | Sealable (SealRange _ as s) ->
+      base Seal_range None None (seal_range s) (sealing ~sealed:false s)
   | Sealed (o, s) ->
-      base Sealed_capability None (capability s) (seal_range s) (sealing ~object_type:o ~sealed:true s)
+      base Sealed_capability None (capability s) (seal_range s)
+        (sealing ~object_type:o ~sealed:true s)
 
-let register_description (matched_value : Ast.register) : Machine_view.register_id * string * Machine_view.register_role = match matched_value with
+let register_description (backend_value : Ast.register) :
+    Machine_view.register_id * string * Machine_view.register_role =
+  match backend_value with
   | Ast.PC ->
       ({ Machine_view.Register_id.bank = System; key = "pc" }, "pc", Machine_view.Program_counter)
   | Reg 0 ->
@@ -149,14 +172,16 @@ let register_of_id (id : Machine_view.Register_id.t) : (Ast.register, Diagnostic
       Error [ Diagnostic.error (Printf.sprintf "Register %S does not belong to that bank." name) ]
 
 let ( let* ) (type value next error) (result : (value, error) result)
-        (continuation : value -> (next, error) result) : (next, error) result =
+    (continuation : value -> (next, error) result) : (next, error) result =
   Result.bind result continuation
 
-let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
+let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) :
+    (state, Diagnostic.t list) result =
   let* r = register_of_id id in
   Result.map (fun word -> Machine.set_register r word state) (Asm_ir.lower_word state.config term)
 
-let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
+let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result
+    =
   if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.config) >= 0 then
     Error
       [

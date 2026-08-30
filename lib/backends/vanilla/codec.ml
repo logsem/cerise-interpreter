@@ -1,3 +1,6 @@
+(** Bidirectional instruction and scalar encodings for the Vanilla backend. Constructor tables are
+    compiled once and shared by encoding and decoding. *)
+
 open Ast
 
 let register_codec =
@@ -15,94 +18,98 @@ let register_codec =
 
 let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
 
-let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with
-  | Instruction_codec.Register r -> Register r
+let from_operand (codec_value : (register, Z.t) Instruction_codec.register_or_constant) :
+    reg_or_const =
+  match codec_value with
+  | Instruction_codec.Register register_encoding -> Register register_encoding
   | Instruction_codec.Constant z -> Constant z
 
-let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with
-  | Register r -> Instruction_codec.Register r
+let to_operand (codec_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant
+    =
+  match codec_value with
+  | Register register_encoding -> Instruction_codec.Register register_encoding
   | Constant z -> Instruction_codec.Constant z
 
-let r = Instruction_codec.register register_codec
-let rr = Instruction_codec.pair r r
-let ro = Instruction_codec.pair r operand
-let roo = Instruction_codec.triple r operand operand
-let rrr = Instruction_codec.triple r r r
+let register_encoding = Instruction_codec.register register_codec
+let two_registers = Instruction_codec.pair register_encoding register_encoding
+let register_and_operand = Instruction_codec.pair register_encoding operand
+let register_and_two_operands = Instruction_codec.triple register_encoding operand operand
+let three_registers = Instruction_codec.triple register_encoding register_encoding register_encoding
 
-let unit_case (name : string) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
+let unit_case (name : string) (construct : 'a) (project : 'a -> bool) : 'a Instruction_codec.case =
   Instruction_codec.case ~name Instruction_codec.unit
     ~construct:(fun () -> construct)
     ~project:(fun x -> if project x then Some () else None)
 
 let cases =
   [
-    Instruction_codec.case ~name:"Jmp" r
+    Instruction_codec.case ~name:"Jmp" register_encoding
       ~construct:(fun x -> Jmp x)
       ~project:(function Jmp x -> Some x | _ -> None);
-    Instruction_codec.case ~name:"Jnz" rr
+    Instruction_codec.case ~name:"Jnz" two_registers
       ~construct:(fun (a, b) -> Jnz (a, b))
       ~project:(function Jnz (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Move" ro
+    Instruction_codec.case ~name:"Move" register_and_operand
       ~construct:(fun (a, b) -> Move (a, from_operand b))
       ~project:(function Move (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Load" rr
+    Instruction_codec.case ~name:"Load" two_registers
       ~construct:(fun (a, b) -> Load (a, b))
       ~project:(function Load (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Store" ro
+    Instruction_codec.case ~name:"Store" register_and_operand
       ~construct:(fun (a, b) -> Store (a, from_operand b))
       ~project:(function Store (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Add" roo
+    Instruction_codec.case ~name:"Add" register_and_two_operands
       ~construct:(fun (a, b, c) -> Add (a, from_operand b, from_operand c))
       ~project:(function Add (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Sub" roo
+    Instruction_codec.case ~name:"Sub" register_and_two_operands
       ~construct:(fun (a, b, c) -> Sub (a, from_operand b, from_operand c))
       ~project:(function Sub (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Mul" roo
+    Instruction_codec.case ~name:"Mul" register_and_two_operands
       ~construct:(fun (a, b, c) -> Mul (a, from_operand b, from_operand c))
       ~project:(function Mul (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Rem" roo
+    Instruction_codec.case ~name:"Rem" register_and_two_operands
       ~construct:(fun (a, b, c) -> Rem (a, from_operand b, from_operand c))
       ~project:(function Rem (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Div" roo
+    Instruction_codec.case ~name:"Div" register_and_two_operands
       ~construct:(fun (a, b, c) -> Div (a, from_operand b, from_operand c))
       ~project:(function Div (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Lt" roo
+    Instruction_codec.case ~name:"Lt" register_and_two_operands
       ~construct:(fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
       ~project:(function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Lea" ro
+    Instruction_codec.case ~name:"Lea" register_and_operand
       ~construct:(fun (a, b) -> Lea (a, from_operand b))
       ~project:(function Lea (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Restrict" ro
+    Instruction_codec.case ~name:"Restrict" register_and_operand
       ~construct:(fun (a, b) -> Restrict (a, from_operand b))
       ~project:(function Restrict (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"SubSeg" roo
+    Instruction_codec.case ~name:"SubSeg" register_and_two_operands
       ~construct:(fun (a, b, c) -> SubSeg (a, from_operand b, from_operand c))
       ~project:(function SubSeg (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"GetB" rr
+    Instruction_codec.case ~name:"GetB" two_registers
       ~construct:(fun (a, b) -> GetB (a, b))
       ~project:(function GetB (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetE" rr
+    Instruction_codec.case ~name:"GetE" two_registers
       ~construct:(fun (a, b) -> GetE (a, b))
       ~project:(function GetE (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetA" rr
+    Instruction_codec.case ~name:"GetA" two_registers
       ~construct:(fun (a, b) -> GetA (a, b))
       ~project:(function GetA (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetP" rr
+    Instruction_codec.case ~name:"GetP" two_registers
       ~construct:(fun (a, b) -> GetP (a, b))
       ~project:(function GetP (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetOType" rr
+    Instruction_codec.case ~name:"GetOType" two_registers
       ~construct:(fun (a, b) -> GetOType (a, b))
       ~project:(function GetOType (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetWType" rr
+    Instruction_codec.case ~name:"GetWType" two_registers
       ~construct:(fun (a, b) -> GetWType (a, b))
       ~project:(function GetWType (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Seal" rrr
+    Instruction_codec.case ~name:"Seal" three_registers
       ~construct:(fun (a, b, c) -> Seal (a, b, c))
       ~project:(function Seal (a, b, c) -> Some (a, b, c) | _ -> None);
-    Instruction_codec.case ~name:"UnSeal" rrr
+    Instruction_codec.case ~name:"UnSeal" three_registers
       ~construct:(fun (a, b, c) -> UnSeal (a, b, c))
       ~project:(function UnSeal (a, b, c) -> Some (a, b, c) | _ -> None);
-    Instruction_codec.case ~name:"Invoke" rr
+    Instruction_codec.case ~name:"Invoke" two_registers
       ~construct:(fun (a, b) -> Invoke (a, b))
       ~project:(function Invoke (a, b) -> Some (a, b) | _ -> None);
     unit_case "Fail" Fail (function Fail -> true | _ -> false);
@@ -118,7 +125,10 @@ let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
 let allocations = Instruction_codec.allocations table
 let encode_tag (tag : int) (scalar : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left scalar 3)
-let permission_scalar (matched_value : permission) : int = match matched_value with O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
+
+let permission_scalar (codec_value : permission) : int =
+  match codec_value with O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
+
 let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
 
 let decode_permission (z : Z.t) : (permission, string) result =
@@ -148,7 +158,8 @@ let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
     | payload when Z.equal payload (Z.of_int 3) -> Ok (true, true)
     | _ -> Error "unknown seal permission"
 
-let encode_word_type (matched_value : word_type) : Z.t = match matched_value with
+let encode_word_type (codec_value : word_type) : Z.t =
+  match codec_value with
   | Integer -> encode_tag 3 Z.zero
   | Capability -> encode_tag 3 Z.one
   | Seal_range -> encode_tag 3 (Z.of_int 2)

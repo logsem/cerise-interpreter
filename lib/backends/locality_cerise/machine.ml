@@ -1,3 +1,6 @@
+(** The executable Locality Cerise machine owns register and memory state and applies one
+    locality-aware capability transition at a time. *)
+
 open Ast
 
 module RegMap = Map.Make (struct
@@ -18,7 +21,8 @@ type t = {
   memory : word MemMap.t;
 }
 
-let init (config : Runtime_config.t) (program : word list) (regfile : (register * word) list option) : t =
+let init (config : Runtime_config.t) (program : word list) (regfile : (register * word) list option)
+    : t =
   let max_addr = Runtime_config.max_addr config and stack_addr = Runtime_config.stack_addr config in
   let registers = List.init 32 (fun n -> (Reg n, I Z.zero)) |> List.to_seq |> RegMap.of_seq in
   let registers =
@@ -31,12 +35,12 @@ let init (config : Runtime_config.t) (program : word list) (regfile : (register 
     match regfile with
     | None -> registers
     | Some entries ->
-        List.fold_left (fun registers (register, word) -> RegMap.add register word registers)
+        List.fold_left
+          (fun registers (register, word) -> RegMap.add register word registers)
           registers entries
   in
   let memory =
-    List.mapi (fun address word -> (Z.of_int address, word)) program
-    |> List.to_seq |> MemMap.of_seq
+    List.mapi (fun address word -> (Z.of_int address, word)) program |> List.to_seq |> MemMap.of_seq
   in
   { config; status = Running; registers; memory }
 
@@ -45,12 +49,17 @@ let read_register (r : register) (state : t) : word = RegMap.find r state.regist
 let read_memory (a : Z.t) (state : t) : word option =
   match MemMap.find_opt a state.memory with
   | Some w -> Some w
+  (* Sparse memory represents every finite in-range, unwritten address as zero;
+     out-of-range addresses remain absent so capability checks can fail. *)
   | None when Z.sign a >= 0 && Z.compare a (Runtime_config.max_addr state.config) < 0 ->
       Some (I Z.zero)
   | None -> None
 
-let set_register (r : register) (word : word) (state : t) : t = { state with registers = RegMap.add r word state.registers }
-let set_memory_raw (a : Z.t) (word : word) (state : t) : t = { state with memory = MemMap.add a word state.memory }
+let set_register (r : register) (word : word) (state : t) : t =
+  { state with registers = RegMap.add r word state.registers }
+
+let set_memory_raw (a : Z.t) (word : word) (state : t) : t =
+  { state with memory = MemMap.add a word state.memory }
 
 let pc_next (state : t) : t =
   match read_register PC state with
@@ -62,7 +71,9 @@ let pc_next (state : t) : t =
   | _ -> { state with status = Failed }
 
 let fail (state : t) : t = { state with status = Failed }
-let word_of_operand (state : t) (matched_value : reg_or_const) : word = match matched_value with Register r -> read_register r state | Constant z -> I z
+
+let word_of_operand (state : t) (operand_or_word : reg_or_const) : word =
+  match operand_or_word with Register r -> read_register r state | Constant z -> I z
 
 let permission_flows (requested : permission) (current : permission) : bool =
   match requested with
@@ -75,20 +86,33 @@ let permission_flows (requested : permission) (current : permission) : bool =
   | RWL -> ( match current with RWL | RWLX -> true | _ -> false)
   | RWLX -> current = RWLX
 
-let seal_permission_flows ((s, u) : bool * bool) ((s', u') : bool * bool) : bool = ((not s) || s') && ((not u) || u')
-let can_read (matched_value : permission) : bool = match matched_value with RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
-let can_write (matched_value : permission) : bool = match matched_value with RW | RWX | RWL | RWLX -> true | _ -> false
-let can_store_local (matched_value : permission) : bool = match matched_value with RWL | RWLX -> true | _ -> false
-let is_exec (matched_value : permission) : bool = match matched_value with RX | RWX | RWLX -> true | _ -> false
+let seal_permission_flows ((s, u) : bool * bool) ((s', u') : bool * bool) : bool =
+  ((not s) || s') && ((not u) || u')
 
-let word_type (matched_value : word) : word_type = match matched_value with
+let can_read (operand_or_word : permission) : bool =
+  match operand_or_word with RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
+
+let can_write (operand_or_word : permission) : bool =
+  match operand_or_word with RW | RWX | RWL | RWLX -> true | _ -> false
+
+let can_store_local (operand_or_word : permission) : bool =
+  match operand_or_word with RWL | RWLX -> true | _ -> false
+
+let is_exec (operand_or_word : permission) : bool =
+  match operand_or_word with RX | RWX | RWLX -> true | _ -> false
+
+let word_type (operand_or_word : word) : word_type =
+  match operand_or_word with
   | I _ -> Integer
   | Sealable (Cap _) -> Capability
   | Sealable (SealRange _) -> Seal_range
   | Sealed _ -> Sealed
 
-let bounds (matched_value : sealable) : Z.t * Z.t * Z.t = match matched_value with Cap (_, _, b, e, a) | SealRange (_, _, b, e, a) -> (b, e, a)
-let locality (matched_value : sealable) : locality = match matched_value with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
+let bounds (operand_or_word : sealable) : Z.t * Z.t * Z.t =
+  match operand_or_word with Cap (_, _, b, e, a) | SealRange (_, _, b, e, a) -> (b, e, a)
+
+let locality (operand_or_word : sealable) : locality =
+  match operand_or_word with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
 
 let with_cursor (s : sealable) (cursor : Z.t) : sealable =
   match s with
@@ -108,21 +132,21 @@ let valid_pc (state : t) : bool =
 
 let write_next (r : register) (w : word) (state : t) : t = pc_next (set_register r w state)
 
-let rec execute (op : instruction) (state : t) : t =
-  let get = read_register and value = word_of_operand state in
-  match op with
+let rec execute (instruction : instruction) (state : t) : t =
+  let read = read_register and resolve_operand = word_of_operand state in
+  match instruction with
   | Fail -> fail state
   | Halt -> { state with status = Halted }
-  | Move (r, o) -> write_next r (value o) state
+  | Move (r, o) -> write_next r (resolve_operand o) state
   | Load (dst, src) -> (
-      match get src state with
+      match read src state with
       | Sealable (Cap (p, _, b, e, a)) when can_read p && b <= a && a < e -> (
           match read_memory a state with Some w -> write_next dst w state | None -> fail state)
       | _ -> fail state)
   | Store (dst, o) -> (
-      match get dst state with
+      match read dst state with
       | Sealable (Cap (p, _, b, e, a)) when can_write p && b <= a && a < e ->
-          let w = value o in
+          let w = resolve_operand o in
           if
             (match w with Sealable s | Sealed (_, s) -> locality s = Local | _ -> false)
             && not (can_store_local p)
@@ -130,19 +154,19 @@ let rec execute (op : instruction) (state : t) : t =
           else pc_next (set_memory_raw a w state)
       | _ -> fail state)
   | Jmp r -> (
-      match get r state with
+      match read r state with
       | Sealable (Cap (E, l, b, e, a)) -> set_register PC (Sealable (Cap (RX, l, b, e, a))) state
       | w -> set_register PC w state)
   | Jnz (r, test) -> (
-      match get test state with
+      match read test state with
       | I z when Z.equal z Z.zero -> pc_next state
       | _ -> execute (Jmp r) state)
   | Add (r, a, b) | Sub (r, a, b) | Mul (r, a, b) | Rem (r, a, b) | Div (r, a, b) | Lt (r, a, b)
     -> (
-      match (value a, value b) with
+      match (resolve_operand a, resolve_operand b) with
       | I x, I y -> (
           let result =
-            match op with
+            match instruction with
             | Add _ -> Some Z.(x + y)
             | Sub _ -> Some Z.(x - y)
             | Mul _ -> Some Z.(x * y)
@@ -154,7 +178,7 @@ let rec execute (op : instruction) (state : t) : t =
           match result with Some z -> write_next r (I z) state | None -> fail state)
       | _ -> fail state)
   | Lea (r, o) -> (
-      match (get r state, value o) with
+      match (read r state, resolve_operand o) with
       | Sealable s, I z -> (
           match s with
           | Cap (E, _, _, _, _) -> fail state
@@ -168,7 +192,7 @@ let rec execute (op : instruction) (state : t) : t =
                 state)
       | _ -> fail state)
   | Restrict (r, o) -> (
-      match (get r state, value o) with
+      match (read r state, resolve_operand o) with
       | Sealable (Cap (p, l, b, e, a)), I z -> (
           match Codec.decode_permission_locality z with
           | Ok (p', l') when permission_flows p' p && (l' = l || (l = Local && l' = Global)) ->
@@ -181,7 +205,7 @@ let rec execute (op : instruction) (state : t) : t =
           | _ -> fail state)
       | _ -> fail state)
   | SubSeg (r, o1, o2) -> (
-      match (get r state, value o1, value o2) with
+      match (read r state, resolve_operand o1, resolve_operand o2) with
       | Sealable (Cap (E, _, _, _, _)), _, _ -> fail state
       | Sealable s, I b', I e' ->
           let b, e, _ = bounds s in
@@ -190,54 +214,51 @@ let rec execute (op : instruction) (state : t) : t =
           else fail state
       | _ -> fail state)
   | GetB (r, s) -> (
-      match get s state with
+      match read s state with
       | Sealable sb ->
           let b, _, _ = bounds sb in
           write_next r (I b) state
       | _ -> fail state)
   | GetE (r, s) -> (
-      match get s state with
+      match read s state with
       | Sealable sb ->
           let _, e, _ = bounds sb in
           write_next r (I e) state
       | _ -> fail state)
   | GetA (r, s) -> (
-      match get s state with
+      match read s state with
       | Sealable sb ->
           let _, _, a = bounds sb in
           write_next r (I a) state
       | _ -> fail state)
   | GetP (r, s) -> (
-      match get s state with
-      | Sealable (Cap (p, _, _, _, _)) ->
-          write_next r (I (Codec.encode_permission p)) state
+      match read s state with
+      | Sealable (Cap (p, _, _, _, _)) -> write_next r (I (Codec.encode_permission p)) state
       | Sealable (SealRange (p, _, _, _, _)) ->
           write_next r (I (Codec.encode_seal_permission p)) state
       | _ -> fail state)
   | GetL (r, s) -> (
-      match get s state with
-      | Sealable sb | Sealed (_, sb) ->
-          write_next r (I (Codec.encode_locality (locality sb))) state
+      match read s state with
+      | Sealable sb | Sealed (_, sb) -> write_next r (I (Codec.encode_locality (locality sb))) state
       | _ -> fail state)
   | GetOType (r, s) -> (
-      match get s state with
+      match read s state with
       | Sealed (o, _) -> write_next r (I o) state
       | _ -> write_next r (I Z.minus_one) state)
-  | GetWType (r, s) ->
-      write_next r (I (Codec.encode_word_type (word_type (get s state)))) state
+  | GetWType (r, s) -> write_next r (I (Codec.encode_word_type (word_type (read s state)))) state
   | Seal (dst, seal, value_reg) -> (
-      match (get seal state, get value_reg state) with
+      match (read seal state, read value_reg state) with
       | Sealable (SealRange ((true, _), _, b, e, a)), Sealable sb when b <= a && a < e ->
           write_next dst (Sealed (a, sb)) state
       | _ -> fail state)
   | UnSeal (dst, seal, value_reg) -> (
-      match (get seal state, get value_reg state) with
+      match (read seal state, read value_reg state) with
       | Sealable (SealRange ((_, true), _, b, e, a)), Sealed (o, sb)
         when b <= a && a < e && Z.equal a o ->
           write_next dst (Sealable sb) state
       | _ -> fail state)
   | Invoke (code, data) -> (
-      match (get code state, get data state) with
+      match (read code state, read data state) with
       | Sealed (o, Cap (p, l, b, e, a)), Sealed (o', sb) when Z.equal o o' && is_exec p -> (
           match sb with
           | Cap (p', _, _, _, _) when not (is_exec p') ->
@@ -258,7 +279,7 @@ let step (state : t) : (t, Machine_backend.execution_error) result =
             match read_memory a state with
             | Some (I encoded) -> (
                 match Codec.decode encoded with
-                | Ok op -> Ok (execute op state)
+                | Ok instruction -> Ok (execute instruction state)
                 | Error _ -> Ok (fail state))
             | _ -> Ok (fail state))
         | _ -> Ok (fail state))
@@ -271,7 +292,6 @@ let rec step_n (count : int) (state : t) : (t, Machine_backend.execution_error) 
     | Ok next -> step_n (count - 1) next
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as e -> e
-
 
 let rec run (state : t) : t =
   match step state with

@@ -1,4 +1,9 @@
-type register = PC | Reg of int
+type register =
+  | PC
+  | Reg of int
+      (** Concrete machine vocabulary shared by the Vanilla assembler, codec, interpreter, and
+          printer. *)
+
 type permission = O | E | RO | RX | RW | RWX
 type seal_permission = bool * bool
 type word_type = Integer | Capability | Seal_range | Sealed

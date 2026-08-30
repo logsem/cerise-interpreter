@@ -1,6 +1,9 @@
+(** Canonical textual rendering for Locality Cerise values and instructions. *)
+
 open Ast
 
-let permission (matched_value : permission) : string = match matched_value with
+let permission (rendered_value : permission) : string =
+  match rendered_value with
   | O -> "O"
   | E -> "E"
   | RO -> "RO"
@@ -10,15 +13,18 @@ let permission (matched_value : permission) : string = match matched_value with
   | RWL -> "RWL"
   | RWLX -> "RWLX"
 
-let locality (matched_value : locality) : string = match matched_value with Global -> "GLOBAL" | Local -> "LOCAL"
+let locality (rendered_value : locality) : string =
+  match rendered_value with Global -> "GLOBAL" | Local -> "LOCAL"
 
-let seal_permission (matched_value : bool * bool) : string = match matched_value with
+let seal_permission (rendered_value : bool * bool) : string =
+  match rendered_value with
   | false, false -> "SO"
   | true, false -> "S"
   | false, true -> "U"
   | true, true -> "SU"
 
-let sealable (matched_value : sealable) : string = match matched_value with
+let sealable (rendered_value : sealable) : string =
+  match rendered_value with
   | Cap (p, l, b, e, a) ->
       Printf.sprintf "(%s, %s, %s, %s, %s)" (permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
@@ -26,15 +32,20 @@ let sealable (matched_value : sealable) : string = match matched_value with
       Printf.sprintf "[%s, %s, %s, %s, %s]" (seal_permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
 
-let word (matched_value : word) : string = match matched_value with
+let word (rendered_value : word) : string =
+  match rendered_value with
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sealed (o, s) -> Printf.sprintf "{%s: %s}" (Z.to_string o) (sealable s)
 
-let register (matched_value : register) : string = match matched_value with PC -> "pc" | Reg n -> "r" ^ string_of_int n
-let operand (matched_value : reg_or_const) : string = match matched_value with Register r -> register r | Constant z -> Z.to_string z
+let register (rendered_value : register) : string =
+  match rendered_value with PC -> "pc" | Reg n -> "r" ^ string_of_int n
 
-let instruction (matched_value : instruction) : string = match matched_value with
+let operand (rendered_value : reg_or_const) : string =
+  match rendered_value with Register r -> register r | Constant z -> Z.to_string z
+
+let instruction (rendered_value : instruction) : string =
+  match rendered_value with
   | Jmp r -> Printf.sprintf "jmp %s" (register r)
   | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (register b)
   | Move (a, b) -> Printf.sprintf "mov %s %s" (register a) (operand b)
