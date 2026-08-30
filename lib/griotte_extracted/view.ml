@@ -37,7 +37,7 @@ let word word =
         |> Option.map Printer.instruction
     | _ -> None
   in
-  let base kind integer capability sealing annotations =
+  let base kind integer capability seal_range sealing annotations =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -47,21 +47,23 @@ let word word =
       kind;
       integer;
       capability;
+      seal_range;
       sealing;
       annotations;
     }
   in
   match word with
-  | I value -> base Integer (Some value) None None []
+  | I value -> base Integer (Some value) None None None []
   | Sealable (Cap (permission, locality, first, last, cursor)) ->
-      base Capability None (capability permission locality first last cursor) None []
+      base Capability None (capability permission locality first last cursor) None None []
   | Sentry (permission, locality, first, last, cursor) ->
       base Sentry None
         (capability permission locality first last cursor)
-        None
+        None None
         [ ("entry", "sentry") ]
   | Sealable (SealRange (permission, locality, first, last, cursor)) ->
       base Seal_range None None
+        (Some { Machine_view.base = first; limit = last; cursor; locality = Some (Printer.locality locality) })
         (sealing ~sealed:false permission)
         [
           ("locality", Printer.locality locality);
@@ -72,11 +74,13 @@ let word word =
   | Sealed (object_type, Cap (permission, locality, first, last, cursor)) ->
       base Sealed_capability None
         (capability permission locality first last cursor)
+        None
         (Some
            { object_type = Some object_type; can_seal = None; can_unseal = None; is_sealed = true })
         []
   | Sealed (object_type, SealRange (permission, locality, first, last, cursor)) ->
       base Sealed_capability None None
+        (Some { Machine_view.base = first; limit = last; cursor; locality = Some (Printer.locality locality) })
         (sealing ~object_type ~sealed:true permission)
         [
           ("locality", Printer.locality locality);

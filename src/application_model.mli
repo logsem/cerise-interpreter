@@ -15,9 +15,10 @@ val move_primary : Z.t -> t -> t
 val move_secondary : Z.t -> t -> t
 val page_primary : int -> int -> t -> t
 val page_secondary : int -> int -> t -> t
-val follow_primary : t -> t
-val follow_secondary : t -> t
+val follow_primary : ?rows:int -> t -> t
+val follow_secondary : ?rows:int -> t -> t
 val row_budget : height:int -> register_count:int -> int * int * int
 val capability_registers : t -> Cerise.Machine_view.register list
 val selected_capability : t -> Cerise.Machine_view.register option
+val active_stack_pointer : t -> Cerise.Machine_view.register option
 val select_next_capability : t -> t

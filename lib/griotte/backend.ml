@@ -67,7 +67,7 @@ let view_word word =
         |> Option.map Printer.instruction
     | _ -> None
   in
-  let base kind integer capability sealing annotations =
+  let base kind integer capability seal_range sealing annotations =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -77,16 +77,19 @@ let view_word word =
       kind;
       integer;
       capability;
+      seal_range;
       sealing;
       annotations;
     }
   in
   match word with
-  | Ast.I z -> base Integer (Some z) None None []
-  | Sealable (Cap (p, l, b, e, a)) -> base Capability None (capability p l b e a) None []
-  | Sentry (p, l, b, e, a) -> base Sentry None (capability p l b e a) None [ ("entry", "sentry") ]
+  | Ast.I z -> base Integer (Some z) None None None []
+  | Sealable (Cap (p, l, b, e, a)) -> base Capability None (capability p l b e a) None None []
+  | Sentry (p, l, b, e, a) -> base Sentry None (capability p l b e a) None None [ ("entry", "sentry") ]
   | Sealable (SealRange (sp, l, b, e, a)) ->
-      base Seal_range None None (sealing ~sealed:false sp)
+      base Seal_range None None
+        (Some { Machine_view.base = b; limit = e; cursor = a; locality = Some (Printer.locality l) })
+        (sealing ~sealed:false sp)
         [
           ("locality", Printer.locality l);
           ("base", Z.to_string b);
@@ -95,10 +98,12 @@ let view_word word =
         ]
   | Sealed (otype, Cap (p, l, b, e, a)) ->
       base Sealed_capability None (capability p l b e a)
+        None
         (Some { object_type = Some otype; can_seal = None; can_unseal = None; is_sealed = true })
         []
   | Sealed (otype, SealRange (sp, l, b, e, a)) ->
       base Sealed_capability None None
+        (Some { Machine_view.base = b; limit = e; cursor = a; locality = Some (Printer.locality l) })
         (sealing ~object_type:otype ~sealed:true sp)
         [
           ("locality", Printer.locality l);

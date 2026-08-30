@@ -1,0 +1,12 @@
+ pc:       RWX   Global    0-20  0
+stk:       RWLX  Local    10-30 18
+ddc:       SU    Global    0-20  0
+ r1:                             0
+ r2:                             0
+ r3:                             0
+… +27 registers
+backend: locality-cerise  machine state: Running
+HEAP
+┏ ▶  0                           B803  mov r1 7
+┃    1                             32  halt
+┃    2                              0  jmp pc

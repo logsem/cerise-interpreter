@@ -23,6 +23,13 @@ type capability = {
   locality : string option;
 }
 
+type seal_range = {
+  base : Z.t;
+  limit : Z.t;
+  cursor : Z.t;
+  locality : string option;
+}
+
 type sealing = {
   object_type : Z.t option;
   can_seal : bool option;
@@ -40,6 +47,7 @@ type word = {
   kind : semantic_kind;
   integer : Z.t option;
   capability : capability option;
+  seal_range : seal_range option;
   sealing : sealing option;
   annotations : (string * string) list;
 }

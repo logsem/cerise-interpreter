@@ -41,7 +41,7 @@ let view_word word =
         |> Option.map Printer.instruction
     | _ -> None
   in
-  let base kind integer capability sealing =
+  let base kind integer capability seal_range sealing =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -51,6 +51,7 @@ let view_word word =
       kind;
       integer;
       capability;
+      seal_range;
       sealing;
       annotations = [];
     }
@@ -76,13 +77,18 @@ let view_word word =
         Some
           { Machine_view.object_type; can_seal = Some s; can_unseal = Some u; is_sealed = sealed }
   in
+  let seal_range = function
+    | Ast.SealRange (_, l, b, e, a) ->
+        Some { Machine_view.base = b; limit = e; cursor = a; locality = Some (Printer.locality l) }
+    | Cap _ -> None
+  in
   match word with
-  | Ast.I z -> base Integer (Some z) None None
-  | Sealable (Cap (Ast.E, _, _, _, _) as c) -> base Sentry None (capability c) None
-  | Sealable (Cap _ as c) -> base Capability None (capability c) None
-  | Sealable (SealRange _ as s) -> base Seal_range None None (sealing ~sealed:false s)
+  | Ast.I z -> base Integer (Some z) None None None
+  | Sealable (Cap (Ast.E, _, _, _, _) as c) -> base Sentry None (capability c) None None
+  | Sealable (Cap _ as c) -> base Capability None (capability c) None None
+  | Sealable (SealRange _ as s) -> base Seal_range None None (seal_range s) (sealing ~sealed:false s)
   | Sealed (o, s) ->
-      base Sealed_capability None (capability s) (sealing ~object_type:o ~sealed:true s)
+      base Sealed_capability None (capability s) (seal_range s) (sealing ~object_type:o ~sealed:true s)
 
 let register_description = function
   | Ast.PC ->

@@ -7,9 +7,11 @@
   griotte_backend_tests
   griotte_extracted_tests
   cli_ui_fixture_tests
- public_api_compile
- instruction_codec_tests)
+  public_api_compile
+  instruction_codec_tests
+  tui_fidelity_tests)
  (deps
+  (glob_files goldens/*.txt)
   (glob_files test_files/cerisier/pos/*.s)
   (source_tree test_files/griotte)
   (glob_files test_files/vanilla/pos/*))
@@ -19,6 +21,13 @@
  (alias runtest)
  (deps ../scripts/final-cleanup-architecture-gate.sh (source_tree ../lib) (source_tree ../scripts))
  (action (run %{dep:../scripts/final-cleanup-architecture-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps ../scripts/pty-smoke.sh test_files/tui_smoke.s)
+ (action
+  (run bash %{dep:../scripts/pty-smoke.sh} %{workspace_root}
+   %{exe:../src/interpreter.exe} %{dep:test_files/tui_smoke.s})))
 
 (rule
  (alias runtest)

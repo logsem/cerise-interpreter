@@ -9,6 +9,30 @@ ocamllex/Menhir, restore the rich Notty terminal UI, and remove all web-UI compa
 
 No merge commits, compatibility aliases, pushes, or web-facing fixtures remain.
 
+## Legacy Notty TUI Fidelity Pass
+
+The accepted base for this pass is `cb94432e27e4afcf5d60efd7ead2f2730f76ea67`.
+Rebuild the backend-neutral terminal UI using
+`c7a9ad037527c1f0ba54d3c7bf044d89c972ee52:src/interactive_ui.ml` as the visual and
+interaction reference. Preserve the current session architecture, backend selection, parsers,
+codecs, machine semantics, CLI, linear history, and source-only ownership of Notty.
+
+- Extend `Machine_view.word` with typed optional seal-range bounds, cursor, and locality data.
+  Populate it in every sealing backend and keep uCerise/mCerise sealing-free.
+- Restore dense column-major registers, fixed-width semantic hexadecimal words, mirrored
+  `HEAP` and `STACK`/selected-capability panels, decoded instructions, exclusive range
+  indicators, legacy colors, and the right-aligned `machine state:` status.
+- Compute all field widths with Zarith-safe integer operations. Malformed or inconsistent view
+  metadata falls back to clipped gray text and never raises.
+- Adapt by hiding the secondary panel first and eliding registers by role priority, preserving at
+  least three HEAP data rows at heights of five or more and exact requested image dimensions.
+- Restore contextual following, two-row page overlap, both-panel following after step commands,
+  primary-only following after undo, fallback capability cycling, actual-layout mouse targeting,
+  toggle-and-refollow behavior, and terminal-safe boundary clamping.
+- Gate the pass with metadata contracts, text and ANSI render goldens, transition and dimension
+  tests, a pseudo-terminal quit/release smoke test, `make test`, `dune build @install`, the
+  rebuilding Nix gate, and the installed CLI help smoke test.
+
 ## History and Integration
 
 - Freeze the currently fetched `origin/main` at

@@ -36,12 +36,12 @@ let view_word word =
   in
   match word with
   | Ast.I z -> { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; decoded_instruction; fingerprint;
-      kind=Integer; integer=Some z; capability=None; sealing=None; annotations=[] }
+      kind=Integer; integer=Some z; capability=None; seal_range=None; sealing=None; annotations=[] }
   | Cap (Cap (p,l,b,e,a)) ->
       { Machine_view.edit_text; short_text=edit_text; detail_text=edit_text; decoded_instruction; fingerprint;
         kind=(if p=Ast.E then Sentry else Capability); integer=None;
         capability=Some {base=b;limit=e;cursor=a;permissions=[Printer.permission p];
-          locality=Some (Printer.locality l)}; sealing=None; annotations=[] }
+          locality=Some (Printer.locality l)}; seal_range=None; sealing=None; annotations=[] }
 let register_description = function
   | Ast.PC -> ({Machine_view.Register_id.bank=System;key="pc"},"pc",Machine_view.Program_counter)
   | Reg 0 -> ({Machine_view.Register_id.bank=System;key="ddc"},"ddc",

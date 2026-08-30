@@ -54,6 +54,9 @@ module Extracted_backend = Cerise.Griotte_extracted.Backend
 
 let machine_alias (state : Cerise.Vanilla.Machine.t) : Cerise.Machine.t = state
 
+let typed_seal_range (word : Cerise.Machine_view.word) : Cerise.Machine_view.seal_range option =
+  word.seal_range
+
 let backends : (module Cerise.Machine_backend.S) list =
   [
     (module Vanilla_backend);
@@ -67,4 +70,5 @@ let backends : (module Cerise.Machine_backend.S) list =
 
 let () =
   ignore machine_alias;
+  ignore typed_seal_range;
   if List.length backends <> 7 then failwith "missing public backend namespace"

@@ -194,21 +194,14 @@ let test_capabilities_and_rendering () =
   let narrow = Interactive_ui.snapshot ~width:30 ~height:4 state in
   Alcotest.(check int) "wide image width" 120 (Notty.I.width wide_image);
   Alcotest.(check int) "wide image height" 8 (Notty.I.height wide_image);
-  Alcotest.(check string) "wide composed Notty golden"
-    {|vanilla  Running  [space step, n x10, backspace undo, tab follow, s panels, c cap, q quit]
-pc: (RWX, 0, 32, 0) RWX 0-20 @0         r3: 0                                   r7: 0
-ddc: [SU, 0, 16, 0]                     r4: 0                                   r8: 0
-r1: 0                                   r5: 0                                   r9: 0
-r2: 0                                   r6: 0                                   r10: 0
-HEAP / PC                                                   CAPABILITY / pc
-┏▶ 0  49  halt                                                                                            ┏▶ 0  49  halt
-┃  1  0  jmp pc                                                                                          ┃  1  0  jmp pc|}
-    wide;
-  Alcotest.(check bool) "wide composed golden has both panel titles" true
-    (contains wide "HEAP / PC" && contains wide "CAPABILITY / pc");
-  Alcotest.(check bool) "wide composed golden has PC bounds and cursor" true (contains wide "┏▶ 0");
-  Alcotest.(check string) "narrow composed golden"
-    "vanilla  Running  [space ste..\npc: (RWX, 0, 32, 0) RWX 0-20..\nHEAP / PC\n┏▶ 0  49  halt" narrow;
+  Alcotest.(check bool) "wide composed layout has both panel titles" true
+    (contains wide "HEAP" && contains wide "CAPABILITY pc");
+  Alcotest.(check bool) "wide composed layout has status labels" true
+    (contains wide "backend: vanilla" && contains wide "machine state: Running");
+  Alcotest.(check bool) "wide composed layout has PC bounds and cursor" true
+    (contains wide "┏ ▶ ");
+  Alcotest.(check bool) "narrow layout leads with status and HEAP" true
+    (contains narrow "machine state: Running" && contains narrow "HEAP");
   ignore (Interactive_ui.render ~width:1 ~height:1 state);
   let next event state =
     match Interactive_ui.transition ~rows:8 event state with

@@ -2,166 +2,632 @@ open Notty
 open Notty.Infix
 open Cerise
 
-type t = { application : Application_model.t; show_secondary : bool }
+type side = Left | Right
+type t = {
+  application : Application_model.t;
+  show_secondary : bool;
+  initial_primary_follow : bool;
+  initial_secondary_follow : bool;
+}
 type event = Quit | Step | Step_ten | Undo | Move_primary of Z.t | Move_secondary of Z.t
   | Page_primary of int | Page_secondary of int | Follow_primary | Follow_secondary
   | Toggle_secondary | Cycle_capability | Resize of int * int
 
-let create session = { application = Application_model.create session; show_secondary = true }
-let application state = state.application
-let status = function Machine_view.Running -> "Running" | Halted -> "Halted" | Failed -> "Failed"
+type fields = {
+  address_width : int;
+  range_width : int;
+  permission_width : int;
+  locality_width : int;
+  sealable_width : int;
+  word_width : int;
+}
+
+type layout = { dual : bool; primary_width : int; secondary_width : int; gap : int; rows : int }
+
 let cap_style = A.(fg lightmagenta)
-let sealed_style = A.(fg magenta)
+let sealed_cap_style = A.(fg magenta)
 let seal_range_style = A.(fg lightcyan)
+let sealed_seal_range_style = A.(fg cyan)
+let sealed_wrapper_style = A.(fg (gray 14))
+let fallback_style = sealed_wrapper_style
 let instruction_style = A.(fg green)
 let address_style = A.(fg yellow)
-let error_style = A.(fg red ++ st bold)
-let word_style word = match word.Machine_view.kind with
-  | Integer -> A.empty | Capability | Sentry -> cap_style | Sealed_capability -> sealed_style
-  | Seal_range -> seal_range_style | Opaque -> A.(fg (gray 14))
-let compact width text =
-  if width <= 0 then "" else if String.length text <= width then text
-  else if width <= 2 then String.sub text 0 width else String.sub text 0 (width - 2) ^ ".."
-let image width attr text = I.hsnap ~align:`Left (max 0 width) (I.string attr (compact (max 0 width) text))
-let hex address = Z.format "%X" address
-let capability_suffix word = match word.Machine_view.capability with
-  | None -> ""
-  | Some c -> Printf.sprintf " %s%s %s-%s @%s" (String.concat "," c.permissions)
-      (match c.locality with None -> "" | Some l -> "/" ^ l) (hex c.base) (hex c.limit) (hex c.cursor)
-let word_text word = compact 46 (word.Machine_view.short_text ^ capability_suffix word)
-let is_target address = function Some target -> Z.equal address target | None -> false
-let register_cell width (r : Machine_view.register) =
-  let label = r.label ^ ": " in
-  I.hsnap ~align:`Left width
-    (I.string A.empty label <|> image (max 0 (width - String.length label)) (word_style r.word) (word_text r.word))
-let register_panel ~max_rows width registers =
-  let cell_width = 32 in
-  let columns = max 1 (width / cell_width) in
-  let rows = min (max 1 max_rows) (max 1 ((List.length registers + columns - 1) / columns)) in
-  let at index = List.nth_opt registers index in
-  List.init rows (fun row ->
-    List.init columns (fun col -> match at (col * rows + row) with
-      | None -> I.empty | Some r -> register_cell (max 1 (width / columns)) r)
-    |> List.fold_left ( <|> ) I.empty |> I.hsnap ~align:`Left width)
-  |> List.fold_left ( <-> ) I.empty
-let range_indicator capability address = match capability with
-  | None -> "  "
-  | Some c ->
-      let boundary =
-        if Z.equal c.Machine_view.base address then "┏"
-        else if Z.equal Z.(c.Machine_view.limit - one) address then "┗"
-        else if Z.compare c.Machine_view.base address <= 0 && Z.compare address c.Machine_view.limit < 0 then "┃"
-        else " "
+let primary_indicator_style = A.(fg red)
+let secondary_indicator_style = A.(fg lightmagenta)
+
+let status_text = function Machine_view.Running -> "Running" | Halted -> "Halted" | Failed -> "Failed"
+let status_style = function
+  | Machine_view.Running -> A.empty
+  | Halted -> A.(st bold)
+  | Failed -> A.(fg red ++ st bold)
+
+let create session = {
+  application = Application_model.create session;
+  show_secondary = true;
+  initial_primary_follow = true;
+  initial_secondary_follow = true;
+}
+let application state = state.application
+let spaces n = String.make (max 0 n) ' '
+let pad_left width value = spaces (width - String.length value) ^ value
+let pad_right width value = value ^ spaces (width - String.length value)
+
+let compact width value =
+  if width <= 0 then ""
+  else if String.length value <= width then value
+  else if width <= 2 then String.sub value 0 width
+  else String.sub value 0 (width - 2) ^ ".."
+
+let middle_elide width value =
+  if width <= 0 then ""
+  else if String.length value <= width then value
+  else if width <= 2 then String.sub value 0 width
+  else
+    let digits = width - 2 in
+    let left = digits / 2 and right = digits - (digits / 2) in
+    String.sub value 0 left ^ ".." ^ String.sub value (String.length value - right) right
+
+let snap_left width image = I.hsnap ~align:`Left (max 0 width) image
+let snap_right width image = I.hsnap ~align:`Right (max 0 width) image
+let text width attr value = snap_left width (I.string attr (compact width value))
+let hex value = Z.format "%X" value
+let address_width limit = max 1 (String.length (hex limit))
+
+let address_text width value =
+  let raw = hex value in
+  if Z.sign value >= 0 && String.length raw <= width then pad_left width raw
+  else middle_elide width raw
+
+let range_text width base limit =
+  let base = address_text width base and limit = address_text width limit in
+  let full = base ^ "-" ^ limit in
+  let rec prefix index =
+    if index < width && base.[index] = limit.[index] then prefix (index + 1) else index
+  in
+  let common = prefix 0 in
+  if common > 2 && common < width then
+    let short = String.sub base 0 common ^ "["
+      ^ String.sub base common (width - common) ^ "-"
+      ^ String.sub limit common (width - common) ^ "]"
+    in
+    if String.length short < String.length full then short else full
+  else full
+
+let normalize_locality value =
+  match String.lowercase_ascii value with
+  | "global" -> Some "Global"
+  | "local" -> Some "Local"
+  | "directed" -> Some "Directed"
+  | _ -> None
+
+let permission_text permissions =
+  match permissions with
+  | [ permission ] -> Some permission
+  | _ :: _ :: _ -> Some ("[" ^ String.concat " " permissions ^ "]")
+  | _ -> None
+
+let seal_permission (sealing : Machine_view.sealing) =
+  match (sealing.can_seal, sealing.can_unseal) with
+  | Some false, Some false -> Some "SO"
+  | Some true, Some false -> Some "S"
+  | Some false, Some true -> Some "U"
+  | Some true, Some true -> Some "SU"
+  | _ -> None
+
+let words view =
+  List.map (fun (register : Machine_view.register) -> register.word) view.Machine_view.registers
+  @ List.map (fun (cell : Machine_view.memory_cell) -> cell.word) view.memory
+  @ (match view.missing_cell with Unmapped -> [] | Default word -> [ word ])
+
+let fields view =
+  let address_width = address_width view.Machine_view.address_limit in
+  let permission_width =
+    List.fold_left
+      (fun width word ->
+        match word.Machine_view.capability with
+        | Some capability ->
+            Option.fold ~none:width ~some:(fun value -> max width (max 15 (String.length value)))
+              (if List.length capability.permissions > 1 then permission_text capability.permissions else None)
+        | None -> width)
+      5 (words view)
+  in
+  let has_locality =
+    List.exists
+      (fun word ->
+        Option.is_some (Option.bind word.Machine_view.capability (fun c -> c.locality))
+        || Option.is_some (Option.bind word.seal_range (fun r -> r.locality)))
+      (words view)
+  in
+  let locality_width = if has_locality then 8 else 0 in
+  let range_width = (2 * address_width) + 1 in
+  let sealable_width = permission_width + (if locality_width = 0 then 0 else locality_width + 1)
+    + 1 + range_width + 1 + address_width in
+  let word_width = 1 + address_width + 2 + sealable_width + 1 in
+  { address_width; range_width; permission_width; locality_width; sealable_width; word_width }
+
+let aligned side width image = match side with Left -> snap_right width image | Right -> snap_left width image
+
+let sealable_image frame side ~attr ~permission ~locality ~base ~limit ~cursor =
+  let locality =
+    match locality with
+    | None when frame.locality_width = 0 -> Some ""
+    | None -> None
+    | Some value -> Option.map (pad_right frame.locality_width) (normalize_locality value)
+  in
+  match locality with
+  | None -> None
+  | Some locality ->
+      let permission = pad_right frame.permission_width permission in
+      let group = permission
+        ^ (if frame.locality_width = 0 then "" else " " ^ locality)
+        ^ " " ^ pad_right frame.range_width (range_text frame.address_width base limit)
       in
-      boundary ^ if Z.equal c.Machine_view.cursor address then "▶" else " "
-let missing_word = { Machine_view.edit_text = "<unmapped>"; short_text = "<unmapped>"; detail_text = "<unmapped>";
+      let cursor = address_text frame.address_width cursor in
+      let image =
+        match side with
+        | Left -> snap_left frame.sealable_width (I.string attr group)
+          </> snap_right frame.sealable_width (I.string attr cursor)
+        | Right -> snap_left frame.sealable_width (I.string attr cursor)
+          </> snap_right frame.sealable_width (I.string attr group)
+      in
+      Some image
+
+let fallback_word frame side word =
+  aligned side frame.word_width
+    (I.string fallback_style (middle_elide frame.word_width word.Machine_view.short_text))
+
+let word_image frame side word =
+  let finish inner = aligned side frame.word_width inner in
+  match (word.Machine_view.kind, word.integer, word.capability, word.seal_range, word.sealing) with
+  | Integer, Some integer, None, None, None ->
+      finish (I.string A.empty (middle_elide frame.word_width (hex integer)))
+  | (Capability | Sentry), None, Some capability, None, None -> (
+      match permission_text capability.permissions with
+      | None -> fallback_word frame side word
+      | Some permission -> (
+          match sealable_image frame side ~attr:cap_style ~permission ~locality:capability.locality
+                  ~base:capability.base ~limit:capability.limit ~cursor:capability.cursor with
+          | Some image -> finish image
+          | None -> fallback_word frame side word))
+  | Seal_range, None, None, Some range, Some sealing when not sealing.is_sealed -> (
+      match seal_permission sealing with
+      | None -> fallback_word frame side word
+      | Some permission -> (
+          match sealable_image frame side ~attr:seal_range_style ~permission ~locality:range.locality
+                  ~base:range.base ~limit:range.limit ~cursor:range.cursor with
+          | Some image -> finish image
+          | None -> fallback_word frame side word))
+  | Sealed_capability, None, capability, seal_range, Some sealing
+      when sealing.is_sealed && Option.is_some sealing.object_type
+        && Option.is_some capability <> Option.is_some seal_range ->
+      let payload =
+        match (capability, seal_range) with
+        | Some capability, None -> (
+            match permission_text capability.permissions with
+            | Some permission ->
+                sealable_image frame side ~attr:sealed_cap_style ~permission
+                  ~locality:capability.locality ~base:capability.base ~limit:capability.limit
+                  ~cursor:capability.cursor
+            | None -> None)
+        | None, Some range -> (
+            match seal_permission sealing with
+            | Some permission ->
+                sealable_image frame side ~attr:sealed_seal_range_style ~permission
+                  ~locality:range.locality ~base:range.base ~limit:range.limit ~cursor:range.cursor
+            | None -> None)
+        | _ -> None
+      in
+      (match payload with
+      | None -> fallback_word frame side word
+      | Some payload ->
+          let object_type = address_text frame.address_width (Option.get sealing.object_type) in
+          finish
+            (I.string sealed_wrapper_style ("{" ^ object_type ^ ": ")
+            <|> payload <|> I.string sealed_wrapper_style "}"))
+  | _ -> fallback_word frame side word
+
+let word_snapshot_with capability ~address_limit ~width ~side word =
+  let view = {
+    Machine_view.backend_name = "test"; status = Running; address_limit; pc = None;
+    registers = []; memory = [ { address = Z.zero; word } ]; missing_cell = Unmapped;
+  } in
+  let frame = fields view in
+  let output = Buffer.create width in
+  Render.to_buffer output capability (0, 0) (max 0 width, 1)
+    (snap_left width (word_image frame side word));
+  Buffer.contents output
+
+let word_snapshot = word_snapshot_with Cap.dumb
+let word_ansi_snapshot = word_snapshot_with Cap.ansi
+
+let missing_word = {
+  Machine_view.edit_text = "<unmapped>"; short_text = "<unmapped>"; detail_text = "<unmapped>";
   decoded_instruction = None; fingerprint = ""; kind = Opaque; integer = None; capability = None;
-  sealing = None; annotations = [] }
-let memory_line ~right ~active_capability view address width =
+  seal_range = None; sealing = None; annotations = [];
+}
+
+let active_capability register =
+  Option.bind register (fun (register : Machine_view.register) -> register.word.capability)
+
+let in_bounds (capability : Machine_view.capability option) address =
+  Option.fold ~none:false
+    ~some:(fun (capability : Machine_view.capability) ->
+      Z.compare address capability.base >= 0 && Z.compare address capability.limit < 0)
+    capability
+
+let instruction_image capability address word =
+  if word.Machine_view.kind <> Integer || Option.is_none word.integer
+     || not (in_bounds capability address)
+  then I.empty
+  else I.string instruction_style (Option.value word.decoded_instruction ~default:"???")
+
+let boundary ~side capability address =
+  match capability with
+  | None -> " "
+  | Some (capability : Machine_view.capability) ->
+      if Z.equal address capability.base then (match side with Left -> "┏" | Right -> "┓")
+      else if Z.equal address Z.(capability.limit - one) then
+        (match side with Left -> "┗" | Right -> "┛")
+      else if Z.compare address capability.base >= 0 && Z.compare address capability.limit < 0
+      then "┃" else " "
+
+let memory_line frame ~side ~capability view address width =
   let word = Option.value (Machine_view.memory_at address view) ~default:missing_word in
-  let marker = range_indicator active_capability address in
-  let instruction = Option.value word.decoded_instruction ~default:"" in
-  let attr = if is_target address (Option.map (fun c -> c.Machine_view.cursor) active_capability) then error_style else word_style word in
-  let line =
-    I.string attr marker <|> I.string A.empty " " <|> I.string address_style (hex address)
-    <|> I.string A.empty "  " <|> I.string attr (word_text word)
-    <|> I.string A.empty "  " <|> I.string instruction_style instruction
-    |> I.hsnap ~align:(if right then `Right else `Left) width
-  in line
+  let indicator_style = match side with Left -> primary_indicator_style | Right -> secondary_indicator_style in
+  let at_cursor =
+    Option.fold ~none:false
+      ~some:(fun (capability : Machine_view.capability) -> Z.equal address capability.cursor)
+      capability
+  in
+  let cursor = match (side, at_cursor) with
+    | Left, true -> " ▶ " | Right, true -> " ◀ " | _ -> "   "
+  in
+  let range_marker = boundary ~side capability address in
+  let address_image = I.string address_style (address_text frame.address_width address) in
+  let semantic = word_image frame side word in
+  let instruction = instruction_image capability address word in
+  let line = match side with
+    | Left -> I.string indicator_style range_marker <|> I.string indicator_style cursor
+      <|> address_image <|> I.string A.empty "  " <|> semantic
+      <|> I.string A.empty "  " <|> instruction
+    | Right -> instruction <|> I.string A.empty "  " <|> semantic
+      <|> I.string A.empty "  " <|> address_image <|> I.string indicator_style cursor
+      <|> I.string indicator_style range_marker
+  in
+  match side with Left -> snap_left width line | Right -> snap_right width line
+
 let rows_from view start count =
-  List.init (max 0 count) (fun i -> Z.(start + of_int i))
-  |> List.filter (fun a -> Z.compare a view.Machine_view.address_limit < 0)
-let panel ~title ~right ~active_capability view start rows width =
-  if width <= 0 then I.empty else
-    let heading = image width A.(st bold) title in
-    List.fold_left (fun out a -> out <-> memory_line ~right ~active_capability view a width) heading (rows_from view start rows)
+  List.init (max 0 count) (fun index -> Z.(start + of_int index))
+  |> List.filter (fun address ->
+      Z.sign address >= 0 && Z.compare address view.Machine_view.address_limit < 0)
+
+let panel frame ~title ~side ~capability view start rows width =
+  let heading = match side with
+    | Left -> text width A.empty title
+    | Right -> snap_right width (I.string A.empty title)
+  in
+  List.fold_left
+    (fun image address -> image <-> memory_line frame ~side ~capability view address width)
+    heading (rows_from view start rows)
+
+let deduplicate registers =
+  List.fold_left
+    (fun unique register ->
+      if List.exists
+           (fun (other : Machine_view.register) ->
+             Machine_view.Register_id.equal register.Machine_view.id other.id)
+           unique
+      then unique else unique @ [ register ])
+    [] registers
+
+let prioritized_registers application registers capacity =
+  let registers = deduplicate registers in
+  if capacity >= List.length registers then (registers, 0)
+  else if capacity <= 1 then
+    let kept =
+      match List.find_opt
+              (fun (register : Machine_view.register) -> register.role = Program_counter)
+              registers with
+      | Some register -> [ register ]
+      | None -> (match registers with [] -> [] | register :: _ -> [ register ])
+    in
+    (kept, max 0 (List.length registers - 1))
+  else
+    let stack = Application_model.active_stack_pointer application in
+    let selected = Application_model.selected_capability application in
+    let same register candidate =
+      Option.fold ~none:false
+        ~some:(fun (other : Machine_view.register) ->
+          Machine_view.Register_id.equal register.Machine_view.id other.id)
+        candidate
+    in
+    let category predicate = List.filter predicate registers in
+    let preferred =
+      category (fun (register : Machine_view.register) -> register.role = Program_counter)
+      @ category (fun register -> same register stack)
+      @ category (fun register ->
+          match register.Machine_view.role with Backend_specific _ -> true | _ -> false)
+      @ category (fun register -> same register selected)
+      |> deduplicate
+    in
+    let ordered =
+      preferred
+      @ List.filter
+          (fun register ->
+            not (List.exists
+                   (fun preferred ->
+                     Machine_view.Register_id.equal register.Machine_view.id
+                       preferred.Machine_view.id)
+                   preferred))
+          registers
+    in
+    let keep = min (capacity - 1) (List.length ordered) in
+    (List.filteri (fun index _ -> index < keep) ordered, List.length registers - keep)
+
+let register_panel frame ~max_rows width application registers =
+  if max_rows <= 0 || registers = [] then I.empty
+  else
+    let label_width =
+      max 3
+        (List.fold_left
+           (fun width (register : Machine_view.register) ->
+             max width (String.length register.label))
+           0 registers)
+    in
+    let cell_width = label_width + 2 + frame.word_width + 2 in
+    let columns = max 1 (width / cell_width) in
+    let natural_rows = (List.length (deduplicate registers) + columns - 1) / columns in
+    let rows = min max_rows (max 1 natural_rows) in
+    let kept, omitted = prioritized_registers application registers (rows * columns) in
+    let cells =
+      List.map
+        (fun (register : Machine_view.register) ->
+          I.string A.empty (pad_left label_width register.label ^ ": ")
+          <|> word_image frame Left register.word <|> I.string A.empty "  ")
+        kept
+      @ if omitted > 0
+        then [ I.string fallback_style (Printf.sprintf "… +%d registers" omitted) ]
+        else []
+    in
+    let at index = List.nth_opt cells index in
+    List.init rows (fun row ->
+      List.init columns (fun column ->
+        Option.value (at ((column * rows) + row)) ~default:I.empty)
+      |> List.fold_left ( <|> ) I.empty |> snap_left width)
+    |> List.fold_left ( <-> ) I.empty
+
+let status_row width view =
+  let state_label = "machine state: " in
+  let state_value = status_text view.Machine_view.status in
+  let state_width = String.length state_label + String.length state_value in
+  let state =
+    I.string A.empty state_label <|> I.string (status_style view.status) state_value
+  in
+  if state_width >= width then snap_right width state
+  else
+    text (width - state_width) A.empty ("backend: " ^ view.backend_name) <|> state
+
+let secondary_register application =
+  match Application_model.active_stack_pointer application with
+  | Some register -> Some register
+  | None -> Application_model.selected_capability application
+
+let compute_layout ~width ~rows ~show_secondary frame =
+  let minimum = 1 + 3 + frame.address_width + 2 + frame.word_width + 2 + 8 in
+  let gap = 2 in
+  let half = (width - gap) / 2 in
+  let dual = show_secondary && rows > 0 && half >= minimum in
+  if dual then { dual; primary_width = half; secondary_width = half; gap; rows }
+  else { dual = false; primary_width = width; secondary_width = 0; gap = 0; rows }
+
+let display_application state rows =
+  let application =
+    if state.initial_primary_follow
+    then Application_model.follow_primary ~rows state.application
+    else state.application
+  in
+  if state.initial_secondary_follow
+  then Application_model.follow_secondary ~rows application
+  else application
+
 let render_parts ~width ~height state =
   let view = Application_model.view state.application in
-  let header = image width A.(st bold) (Printf.sprintf "%s  %s  [space step, n x10, backspace undo, tab follow, s panels, c cap, q quit]" view.backend_name (status view.status)) in
-  if height <= 1 then (header, false, 0) else
-    let regs = register_panel ~max_rows:(max 0 (height - 4)) width view.registers in
-    let available = max 0 (height - 1 - I.height regs) in
-    let two_panels = state.show_secondary && width >= 70 && available >= 2 in
-    let rows = max 0 (available - 1) in
-    let primary_width = if two_panels then width / 2 else width in
-    let secondary_width = width - primary_width in
-    let primary_capability =
-      Option.bind
-        (List.find_opt (fun (r : Machine_view.register) -> r.role = Machine_view.Program_counter) view.registers)
-        (fun r -> r.word.capability)
+  let frame = fields view in
+  if width <= 0 || height <= 0 then
+    (I.empty, compute_layout ~width:0 ~rows:0 ~show_secondary:false frame)
+  else if height < 5 then
+    let status = status_row width view in
+    let remaining = height - 1 in
+    let primary_register =
+      List.find_opt
+        (fun (register : Machine_view.register) -> register.role = Program_counter)
+        view.registers
     in
-    let primary = panel ~title:"HEAP / PC" ~right:false ~active_capability:primary_capability view (Application_model.primary_start state.application) rows primary_width in
-    let secondary_register = match List.find_opt (fun (r : Machine_view.register) -> r.role = Machine_view.Stack_pointer) view.registers with
-      | Some r -> Some r | None -> Application_model.selected_capability state.application in
-    let secondary_capability = Option.bind secondary_register (fun r -> r.word.capability) in
-    let secondary_title = match secondary_register with
-      | Some r when r.role = Machine_view.Stack_pointer -> "STACK / " ^ r.label
-      | Some r -> "CAPABILITY / " ^ r.label
-      | None -> "CAPABILITY / none" in
-    let secondary = panel ~title:secondary_title ~right:true ~active_capability:secondary_capability view (Application_model.secondary_start state.application) rows secondary_width in
-    let memories = if two_panels then primary <|> secondary else primary in
-    (header <-> regs <-> memories, two_panels, rows)
+    let capability = active_capability primary_register in
+    let display = display_application state (max 0 (remaining - 1)) in
+    let heap =
+      if remaining <= 0 then I.empty
+      else
+        panel frame ~title:"HEAP" ~side:Left ~capability view
+          (Application_model.primary_start display) (remaining - 1) width
+    in
+    (status <-> heap,
+     compute_layout ~width ~rows:(max 0 (remaining - 1)) ~show_secondary:false frame)
+  else
+    let registers =
+      register_panel frame ~max_rows:(height - 5) width state.application view.registers
+    in
+    let memory_rows = max 3 (height - I.height registers - 2) in
+    let layout =
+      compute_layout ~width ~rows:memory_rows ~show_secondary:state.show_secondary frame
+    in
+    let display = display_application state layout.rows in
+    let primary_register =
+      List.find_opt
+        (fun (register : Machine_view.register) -> register.role = Program_counter)
+        view.registers
+    in
+    let primary_capability = active_capability primary_register in
+    let primary =
+      panel frame ~title:"HEAP" ~side:Left ~capability:primary_capability view
+        (Application_model.primary_start display) layout.rows layout.primary_width
+    in
+    let memories =
+      if not layout.dual then primary
+      else
+        let secondary_register = secondary_register state.application in
+        let secondary_capability = active_capability secondary_register in
+        let title = match secondary_register with
+          | Some register when register.role = Stack_pointer -> "STACK"
+          | Some register -> "CAPABILITY " ^ register.label
+          | None -> "CAPABILITY"
+        in
+        let secondary =
+          panel frame ~title ~side:Right ~capability:secondary_capability view
+            (Application_model.secondary_start display) layout.rows
+            layout.secondary_width
+        in
+        primary <|> I.string A.empty (spaces layout.gap) <|> secondary
+    in
+    (registers <-> status_row width view <-> memories, layout)
+
 let render ~width ~height state =
-  let image, _, _ = render_parts ~width ~height state in
-  I.vsnap ~align:`Top (max 0 height) (I.hsnap ~align:`Left (max 0 width) image)
-let snapshot ~width ~height state =
+  if width <= 0 || height <= 0 then I.empty
+  else
+    let image, _ = render_parts ~width ~height state in
+    I.vsnap ~align:`Top height (snap_left width image)
+
+let snapshot_with capability ~width ~height state =
   let output = Buffer.create (max 16 (width * height)) in
-  Notty.Render.to_buffer output Notty.Cap.dumb (0, 0) (max 0 width, max 0 height)
+  Render.to_buffer output capability (0, 0) (max 0 width, max 0 height)
     (render ~width ~height state);
   Buffer.contents output
+
+let snapshot ~width ~height state = snapshot_with Cap.dumb ~width ~height state
+let ansi_snapshot ~width ~height state = snapshot_with Cap.ansi ~width ~height state
+
+let scroll_event ~width ~height ~x ~ctrl ~direction state =
+  let _, layout = render_parts ~width ~height state in
+  let amount = match direction with `Up -> -1 | `Down -> 1 in
+  let secondary = layout.dual && x >= layout.primary_width + layout.gap in
+  match (secondary, ctrl) with
+  | true, true -> Page_secondary amount
+  | true, false -> Move_secondary (Z.of_int amount)
+  | false, true -> Page_primary amount
+  | false, false -> Move_primary (Z.of_int amount)
+
 let transition ~rows event state =
-  let app = state.application in match event with
+  let app = state.application in
+  match event with
   | Quit -> None
   | Step ->
       Some
         (match Application_model.step app with
         | Ok app ->
-            { state with application = Application_model.follow_secondary (Application_model.follow_primary app) }
+            { state with
+              application =
+                app |> Application_model.follow_primary ~rows
+                |> Application_model.follow_secondary ~rows;
+              initial_primary_follow = false;
+              initial_secondary_follow = false }
         | Error _ -> state)
   | Step_ten ->
       Some
         (match Application_model.step_n 10 app with
         | Ok app ->
-            { state with application = Application_model.follow_secondary (Application_model.follow_primary app) }
+            { state with
+              application =
+                app |> Application_model.follow_primary ~rows
+                |> Application_model.follow_secondary ~rows;
+              initial_primary_follow = false;
+              initial_secondary_follow = false }
         | Error _ -> state)
-  | Undo -> Some { state with application = Application_model.undo app }
-  | Move_primary d -> Some { state with application = Application_model.move_primary d app }
-  | Move_secondary d -> Some { state with application = Application_model.move_secondary d app }
-  | Page_primary p -> Some { state with application = Application_model.page_primary rows p app }
-  | Page_secondary p -> Some { state with application = Application_model.page_secondary rows p app }
-  | Follow_primary -> Some { state with application = Application_model.follow_primary app }
-  | Follow_secondary -> Some { state with application = Application_model.follow_secondary app }
-  | Toggle_secondary -> Some { state with show_secondary = not state.show_secondary }
-  | Cycle_capability -> Some { state with application = Application_model.select_next_capability app }
+  | Undo ->
+      let secondary_start = Application_model.secondary_start app in
+      let application =
+        Application_model.undo app |> Application_model.follow_primary ~rows
+      in
+      let application =
+        Application_model.move_secondary
+          Z.(secondary_start - Application_model.secondary_start application)
+          application
+      in
+      Some { state with application; initial_primary_follow = false }
+  | Move_primary delta ->
+      Some { state with application = Application_model.move_primary delta app; initial_primary_follow = false }
+  | Move_secondary delta ->
+      Some { state with application = Application_model.move_secondary delta app; initial_secondary_follow = false }
+  | Page_primary pages ->
+      Some { state with application = Application_model.page_primary rows pages app; initial_primary_follow = false }
+  | Page_secondary pages ->
+      Some { state with application = Application_model.page_secondary rows pages app; initial_secondary_follow = false }
+  | Follow_primary ->
+      Some { state with application = Application_model.follow_primary ~rows app; initial_primary_follow = false }
+  | Follow_secondary ->
+      Some { state with application = Application_model.follow_secondary ~rows app; initial_secondary_follow = false }
+  | Toggle_secondary ->
+      let show_secondary = not state.show_secondary in
+      let application =
+        if show_secondary then Application_model.follow_secondary ~rows app else app
+      in
+      Some { state with application; show_secondary; initial_secondary_follow = false }
+  | Cycle_capability ->
+      let application = Application_model.select_next_capability app in
+      let application =
+        match Application_model.active_stack_pointer application with
+        | Some _ -> application
+        | None -> Application_model.follow_secondary ~rows application
+      in
+      Some { state with application; initial_secondary_follow = false }
   | Resize _ -> Some state
+
 let render_loop session =
   let terminal = Notty_unix.Term.create () in
   let rec loop state =
     let width, height = Notty_unix.Term.size terminal in
-    Notty_unix.Term.image terminal (render ~width ~height state);
-    let rows = max 1 (height / 2) in
-    let apply event = match transition ~rows event state with None -> Notty_unix.Term.release terminal | Some next -> loop next in
+    let image, layout = render_parts ~width ~height state in
+    Notty_unix.Term.image terminal
+      (I.vsnap ~align:`Top (max 0 height) (snap_left width image));
+    let rows = max 1 layout.rows in
+    let apply event =
+      match transition ~rows event state with
+      | None -> Notty_unix.Term.release terminal
+      | Some next -> loop next
+    in
     match Notty_unix.Term.event terminal with
-    | `End | `Key (`Escape, _) | `Key (`ASCII 'q', _) -> Notty_unix.Term.release terminal
-    | `Key (`ASCII ' ', _) -> apply Step | `Key (`ASCII 'n', _) -> apply Step_ten | `Key (`Backspace, _) -> apply Undo
-    | `Key (`ASCII 's', _) -> apply Toggle_secondary | `Key (`ASCII 'c', _) -> apply Cycle_capability
-    | `Key (`Tab, modifiers) -> apply (if List.mem `Shift modifiers then Follow_secondary else Follow_primary)
-    | `Key (`Arrow `Up, modifiers) -> apply (if List.mem `Ctrl modifiers then Move_secondary Z.minus_one else Move_primary Z.minus_one)
-    | `Key (`Arrow `Down, modifiers) -> apply (if List.mem `Ctrl modifiers then Move_secondary Z.one else Move_primary Z.one)
-    | `Key (`Arrow `Left, modifiers) -> let n = if List.mem `Shift modifiers then -10 else -1 in apply (if List.mem `Ctrl modifiers then Page_secondary n else Page_primary n)
-    | `Key (`Arrow `Right, modifiers) -> let n = if List.mem `Shift modifiers then 10 else 1 in apply (if List.mem `Ctrl modifiers then Page_secondary n else Page_primary n)
-    | `Key (`Page `Up, _) -> apply (Page_primary (-1)) | `Key (`Page `Down, _) -> apply (Page_primary 1)
-    | `Mouse (`Press (`Scroll `Up), (x, _), modifiers) ->
-        let page = List.mem `Ctrl modifiers in
-        let secondary = state.show_secondary && width >= 70 && x >= width / 2 in
-        apply (match secondary, page with
-          | true, true -> Page_secondary (-1) | true, false -> Move_secondary Z.minus_one
-          | false, true -> Page_primary (-1) | false, false -> Move_primary Z.minus_one)
-    | `Mouse (`Press (`Scroll `Down), (x, _), modifiers) ->
-        let page = List.mem `Ctrl modifiers in
-        let secondary = state.show_secondary && width >= 70 && x >= width / 2 in
-        apply (match secondary, page with
-          | true, true -> Page_secondary 1 | true, false -> Move_secondary Z.one
-          | false, true -> Page_primary 1 | false, false -> Move_primary Z.one)
-    | `Resize (width, height) -> apply (Resize (width, height)) | _ -> loop state
-  in loop (create session)
+    | `End | `Key (`Escape, _) | `Key (`ASCII 'q', _) ->
+        Notty_unix.Term.release terminal
+    | `Key (`ASCII ' ', _) -> apply Step
+    | `Key (`ASCII 'n', _) -> apply Step_ten
+    | `Key (`Backspace, _) -> apply Undo
+    | `Key (`ASCII 's', _) -> apply Toggle_secondary
+    | `Key (`ASCII 'c', _) -> apply Cycle_capability
+    | `Key (`Tab, modifiers) ->
+        apply (if List.mem `Shift modifiers then Follow_secondary else Follow_primary)
+    | `Key (`Arrow `Up, modifiers) ->
+        apply
+          (if List.mem `Ctrl modifiers then Move_secondary Z.minus_one
+           else Move_primary Z.minus_one)
+    | `Key (`Arrow `Down, modifiers) ->
+        apply
+          (if List.mem `Ctrl modifiers then Move_secondary Z.one
+           else Move_primary Z.one)
+    | `Key (`Arrow `Left, modifiers) ->
+        let pages = if List.mem `Shift modifiers then -10 else -1 in
+        apply
+          (if List.mem `Ctrl modifiers then Page_secondary pages
+           else Page_primary pages)
+    | `Key (`Arrow `Right, modifiers) ->
+        let pages = if List.mem `Shift modifiers then 10 else 1 in
+        apply
+          (if List.mem `Ctrl modifiers then Page_secondary pages
+           else Page_primary pages)
+    | `Key (`Page `Up, _) -> apply (Page_primary (-1))
+    | `Key (`Page `Down, _) -> apply (Page_primary 1)
+    | `Mouse (`Press (`Scroll direction), (x, _), modifiers) ->
+        ignore layout;
+        apply (scroll_event ~width ~height ~x ~ctrl:(List.mem `Ctrl modifiers) ~direction state)
+    | `Resize (width, height) -> apply (Resize (width, height))
+    | _ -> loop state
+  in
+  loop (create session)
