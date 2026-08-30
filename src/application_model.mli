@@ -1,3 +1,5 @@
+(** Reversible machine-session state and the two memory viewports used by the terminal interface. *)
+
 type t
 
 val create : Cerise.Machine_session.t -> t
@@ -7,7 +9,10 @@ val history_length : t -> int
 val undo : t -> t
 val step : t -> (t, Cerise.Machine_session.execution_error) result
 val step_n : int -> t -> (t, Cerise.Machine_session.execution_error) result
-val set_register_text : Cerise.Machine_view.register_id -> string -> t -> (t, Cerise.Diagnostic.t list) result
+
+val set_register_text :
+  Cerise.Machine_view.register_id -> string -> t -> (t, Cerise.Diagnostic.t list) result
+
 val set_memory_text : Z.t -> string -> t -> (t, Cerise.Diagnostic.t list) result
 val primary_start : t -> Z.t
 val secondary_start : t -> Z.t

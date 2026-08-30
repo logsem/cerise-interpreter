@@ -1,3 +1,5 @@
+(** Reusable command-line parsing and validation, without process exits. *)
+
 type mode = Interactive | Noninteractive
 
 type t = {

@@ -1,4 +1,6 @@
-(* TODO test of the CLI *)
+(* This compatibility layer maps reusable option-parser values to the names used
+   by the executable, then owns the process-level help and error exits. *)
+
 open Cerise
 
 type cli_mode = Interactive_mode | Interpreter_mode
@@ -13,17 +15,24 @@ type arguments = {
 
 let of_options (options : Cli_options.t) : arguments =
   {
-    mode = (match options.mode with Cli_options.Interactive -> Interactive_mode | Noninteractive -> Interpreter_mode);
+    mode =
+      (match options.mode with
+      | Cli_options.Interactive -> Interactive_mode
+      | Noninteractive -> Interpreter_mode);
     backend = options.backend;
     program_filename = options.program_filename;
     regfile_filename = options.regfile_filename;
     config = options.config;
   }
 
-let parse_argv (argv : string array) : (arguments, string) result = Result.map of_options (Cli_options.parse argv)
+let parse_argv (argv : string array) : (arguments, string) result =
+  Result.map of_options (Cli_options.parse argv)
 
 let parse_arguments (() : unit) : arguments =
-  if Array.exists (fun argument -> String.equal argument "--help" || String.equal argument "-help") Sys.argv
+  if
+    Array.exists
+      (fun argument -> String.equal argument "--help" || String.equal argument "-help")
+      Sys.argv
   then (
     print_endline Cli_options.usage;
     exit 0)
