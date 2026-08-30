@@ -1,6 +1,10 @@
+(* Render Griotte values and instructions in the canonical assembly spelling used
+   by diagnostics, editable machine views, and round-trip tests. *)
+
 open Ast
 
-let register (matched_value : register) : string = match matched_value with
+let register (value : register) : string =
+  match value with
   | PC -> "pc"
   | Reg n -> (
       match n with
@@ -38,33 +42,46 @@ let register (matched_value : register) : string = match matched_value with
       | 17 -> "ca7"
       | n -> "r" ^ string_of_int n)
 
-let system_register (matched_value : system_register) : string = match matched_value with MTDC -> "mtdc"
-let rx_permission (matched_value : rx_permission) : string = match matched_value with Orx -> "Orx" | R -> "R" | X -> "X" | XSR -> "XSR"
-let write_permission (matched_value : write_permission) : string = match matched_value with Ow -> "Ow" | W -> "W" | WL -> "WL"
-let deep_local_permission (matched_value : deep_local_permission) : string = match matched_value with DL -> "DL" | LG -> "LG"
-let deep_read_only_permission (matched_value : deep_read_only_permission) : string = match matched_value with DRO -> "DRO" | LM -> "LM"
+let system_register (value : system_register) : string = match value with MTDC -> "mtdc"
 
-let permission ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : string =
+let rx_permission (value : rx_permission) : string =
+  match value with Orx -> "Orx" | R -> "R" | X -> "X" | XSR -> "XSR"
+
+let write_permission (value : write_permission) : string =
+  match value with Ow -> "Ow" | W -> "W" | WL -> "WL"
+
+let deep_local_permission (value : deep_local_permission) : string =
+  match value with DL -> "DL" | LG -> "LG"
+
+let deep_read_only_permission (value : deep_read_only_permission) : string =
+  match value with DRO -> "DRO" | LM -> "LM"
+
+let permission
+    ((rx, w, dl, dro) :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : string
+    =
   Printf.sprintf "[%s %s %s %s]" (rx_permission rx) (write_permission w) (deep_local_permission dl)
     (deep_read_only_permission dro)
 
-let locality (matched_value : locality) : string = match matched_value with Global -> "Global" | Local -> "Local"
+let locality (value : locality) : string = match value with Global -> "Global" | Local -> "Local"
 
-let seal_permission (matched_value : bool * bool) : string = match matched_value with
+let seal_permission (value : bool * bool) : string =
+  match value with
   | false, false -> "SO"
   | true, false -> "S"
   | false, true -> "U"
   | true, true -> "SU"
 
-let word_type (matched_value : word_type) : string = match matched_value with
+let word_type (value : word_type) : string =
+  match value with
   | W_I -> "Int"
   | W_Cap -> "Cap"
   | W_SealRange -> "SealRange"
   | W_Sealed -> "Sealed"
   | W_Sentry -> "Sentry"
 
-let sealable (matched_value : sealable) : string = match matched_value with
+let sealable (value : sealable) : string =
+  match value with
   | Cap (p, l, b, e, a) ->
       Printf.sprintf "(%s, %s, %s, %s, %s)" (permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
@@ -72,7 +89,8 @@ let sealable (matched_value : sealable) : string = match matched_value with
       Printf.sprintf "[%s, %s, %s, %s, %s]" (seal_permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
 
-let word (matched_value : word) : string = match matched_value with
+let word (value : word) : string =
+  match value with
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sentry (p, l, b, e, a) ->
@@ -80,9 +98,11 @@ let word (matched_value : word) : string = match matched_value with
         (Z.to_string e) (Z.to_string a)
   | Sealed (otype, s) -> Printf.sprintf "{%s: %s}" (Z.to_string otype) (sealable s)
 
-let operand (matched_value : reg_or_const) : string = match matched_value with Register r -> register r | Constant z -> Z.to_string z
+let operand (value : reg_or_const) : string =
+  match value with Register r -> register r | Constant z -> Z.to_string z
 
-let instruction (matched_value : instruction) : string = match matched_value with
+let instruction (value : instruction) : string =
+  match value with
   | Jalr (a, b) -> Printf.sprintf "jalr %s %s" (register a) (register b)
   | Jmp a -> Printf.sprintf "jmp %s" (operand a)
   | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (operand b)

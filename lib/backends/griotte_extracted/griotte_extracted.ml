@@ -1,3 +1,5 @@
+(* Stable public facade for the Rocq-extracted Griotte backend. *)
+
 module Ast = Ast
 module Asm_ir = Asm_ir
 module Parser = Parser

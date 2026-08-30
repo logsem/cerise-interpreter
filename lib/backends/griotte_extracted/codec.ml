@@ -1,3 +1,6 @@
+(* Independent codec for the extracted Griotte adapter. Its fixed encodings mirror
+   the Rocq extraction parameters without depending on the handwritten codec. *)
+
 open Ast
 
 (* UNTRUSTED ADAPTER CODE.  This is intentionally a small, direct copy of the
@@ -5,13 +8,17 @@ open Ast
    a use of either of the interpreter's codec abstractions. *)
 
 let ( let* ) (type value next error) (result : (value, error) result)
-        (continuation : value -> (next, error) result) : (next, error) result =
+    (continuation : value -> (next, error) result) : (next, error) result =
   Result.bind result continuation
+
 let error (message : 'a) : ('b, 'a) result = Error message
 let opcode_width = 8
-let pack (opcode : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int opcode) (Z.shift_left payload opcode_width)
 
-let encode_register (matched_value : register) : (Z.t, string) result = match matched_value with
+let pack (opcode : int) (payload : Z.t) : Z.t =
+  Z.logor (Z.of_int opcode) (Z.shift_left payload opcode_width)
+
+let encode_register (value : register) : (Z.t, string) result =
+  match value with
   | PC -> Ok Z.zero
   | Reg n when n >= 0 && n <= 31 -> Ok (Z.of_int (n + 1))
   | Reg n -> error (Printf.sprintf "invalid Griotte register r%d" n)
@@ -86,11 +93,13 @@ let decode_pair (value : Z.t) : (Z.t * Z.t, string) result =
     let x, y = split_unsigned (Z.shift_right value 2) in
     Ok ((if Z.testbit value 0 then Z.neg x else x), if Z.testbit value 1 then Z.neg y else y)
 
-let encode_operand (base : int) (matched_value : reg_or_const) : (int * Z.t, string) result = match matched_value with
+let encode_operand (base : int) (value : reg_or_const) : (int * Z.t, string) result =
+  match value with
   | Register r -> Result.map (fun encoded -> (base, encoded)) (encode_register r)
   | Constant z -> Ok (base + 1, z)
 
-let encode_two_operands (base : int) (first : reg_or_const) (second : reg_or_const) : (int * Z.t, string) result =
+let encode_two_operands (base : int) (first : reg_or_const) (second : reg_or_const) :
+    (int * Z.t, string) result =
   let first_opcode, first =
     match first with Register r -> (base, encode_register r) | Constant z -> (base + 2, Ok z)
   in
@@ -98,82 +107,89 @@ let encode_two_operands (base : int) (first : reg_or_const) (second : reg_or_con
   let* second_opcode, second = encode_operand first_opcode second in
   Ok (second_opcode, encode_pair first second)
 
-let encode_rr (opcode : int) (a : register) (b : register) : (Z.t, string) result =
+let encode_register_pair (opcode : int) (a : register) (b : register) : (Z.t, string) result =
   let* a = encode_register a in
   let* b = encode_register b in
   Ok (pack opcode (encode_pair a b))
 
-let encode_ro (opcode : int) (r : register) (operand : reg_or_const) : (Z.t, string) result =
+let encode_register_and_operand (opcode : int) (r : register) (operand : reg_or_const) :
+    (Z.t, string) result =
   let* r = encode_register r in
   let* opcode, operand = encode_operand opcode operand in
   Ok (pack opcode (encode_pair r operand))
 
-let encode_roo (opcode : int) (r : register) (a : reg_or_const) (b : reg_or_const) : (Z.t, string) result =
+let encode_register_and_operands (opcode : int) (r : register) (a : reg_or_const) (b : reg_or_const)
+    : (Z.t, string) result =
   let* r = encode_register r in
   let* opcode, operands = encode_two_operands opcode a b in
   Ok (pack opcode (encode_pair r operands))
 
-let encode_rrr (opcode : int) (a : register) (b : register) (c : register) : (Z.t, string) result =
+let encode_three_registers (opcode : int) (a : register) (b : register) (c : register) :
+    (Z.t, string) result =
   let* a = encode_register a in
   let* b = encode_register b in
   let* c = encode_register c in
   Ok (pack opcode (encode_pair a (encode_pair b c)))
 
-let encode (matched_value : instruction) : (Z.t, string) result = match matched_value with
+let encode (value : instruction) : (Z.t, string) result =
+  match value with
   | Jmp operand ->
       let* opcode, payload = encode_operand 0x00 operand in
       Ok (pack opcode payload)
-  | Jnz (r, operand) -> encode_ro 0x02 r operand
-  | Jalr (a, b) -> encode_rr 0x04 a b
+  | Jnz (r, operand) -> encode_register_and_operand 0x02 r operand
+  | Jalr (a, b) -> encode_register_pair 0x04 a b
   | ReadSR (r, MTDC) ->
       let* r = encode_register r in
       Ok (pack 0x05 (encode_pair r Z.zero))
   | WriteSR (MTDC, r) ->
       let* r = encode_register r in
       Ok (pack 0x06 (encode_pair Z.zero r))
-  | Move (r, operand) -> encode_ro 0x07 r operand
-  | Load (a, b) -> encode_rr 0x09 a b
-  | Store (r, operand) -> encode_ro 0x0a r operand
-  | Add (r, a, b) -> encode_roo 0x0c r a b
-  | Sub (r, a, b) -> encode_roo 0x10 r a b
-  | Mul (r, a, b) -> encode_roo 0x14 r a b
-  | Lt (r, a, b) -> encode_roo 0x20 r a b
-  | Lea (r, operand) -> encode_ro 0x24 r operand
-  | Restrict (r, operand) -> encode_ro 0x26 r operand
-  | SubSeg (r, a, b) -> encode_roo 0x28 r a b
-  | GetL (a, b) -> encode_rr 0x2c a b
-  | GetB (a, b) -> encode_rr 0x2d a b
-  | GetE (a, b) -> encode_rr 0x2e a b
-  | GetA (a, b) -> encode_rr 0x2f a b
-  | GetP (a, b) -> encode_rr 0x30 a b
-  | GetOType (a, b) -> encode_rr 0x31 a b
-  | GetWType (a, b) -> encode_rr 0x32 a b
-  | Seal (a, b, c) -> encode_rrr 0x33 a b c
-  | UnSeal (a, b, c) -> encode_rrr 0x34 a b c
+  | Move (r, operand) -> encode_register_and_operand 0x07 r operand
+  | Load (a, b) -> encode_register_pair 0x09 a b
+  | Store (r, operand) -> encode_register_and_operand 0x0a r operand
+  | Add (r, a, b) -> encode_register_and_operands 0x0c r a b
+  | Sub (r, a, b) -> encode_register_and_operands 0x10 r a b
+  | Mul (r, a, b) -> encode_register_and_operands 0x14 r a b
+  | Lt (r, a, b) -> encode_register_and_operands 0x20 r a b
+  | Lea (r, operand) -> encode_register_and_operand 0x24 r operand
+  | Restrict (r, operand) -> encode_register_and_operand 0x26 r operand
+  | SubSeg (r, a, b) -> encode_register_and_operands 0x28 r a b
+  | GetL (a, b) -> encode_register_pair 0x2c a b
+  | GetB (a, b) -> encode_register_pair 0x2d a b
+  | GetE (a, b) -> encode_register_pair 0x2e a b
+  | GetA (a, b) -> encode_register_pair 0x2f a b
+  | GetP (a, b) -> encode_register_pair 0x30 a b
+  | GetOType (a, b) -> encode_register_pair 0x31 a b
+  | GetWType (a, b) -> encode_register_pair 0x32 a b
+  | Seal (a, b, c) -> encode_three_registers 0x33 a b c
+  | UnSeal (a, b, c) -> encode_three_registers 0x34 a b c
   | Fail -> Ok (Z.of_int 0x35)
   | Halt -> Ok (Z.of_int 0x36)
-  | LAnd (r, a, b) -> encode_roo 0x37 r a b
-  | LOr (r, a, b) -> encode_roo 0x3b r a b
-  | LShiftL (r, a, b) -> encode_roo 0x3f r a b
-  | LShiftR (r, a, b) -> encode_roo 0x43 r a b
+  | LAnd (r, a, b) -> encode_register_and_operands 0x37 r a b
+  | LOr (r, a, b) -> encode_register_and_operands 0x3b r a b
+  | LShiftL (r, a, b) -> encode_register_and_operands 0x3f r a b
+  | LShiftR (r, a, b) -> encode_register_and_operands 0x43 r a b
 
-let decode_operand ~constant:(constant : bool) (encoded : Z.t) : (reg_or_const, string) result =
+let decode_operand ~(constant : bool) (encoded : Z.t) : (reg_or_const, string) result =
   if constant then Ok (Constant encoded)
   else Result.map (fun r -> Register r) (decode_register encoded)
 
-let decode_rr (payload : Z.t) (construct : (register -> register -> 'a)) : ('a, string) result =
+let decode_register_pair (payload : Z.t) (construct : register -> register -> 'a) :
+    ('a, string) result =
   let* a, b = decode_pair payload in
   let* a = decode_register a in
   let* b = decode_register b in
   Ok (construct a b)
 
-let decode_ro (base : int) (opcode : int) (payload : Z.t) (construct : (register -> reg_or_const -> 'a)) : ('a, string) result =
+let decode_register_and_operand (base : int) (opcode : int) (payload : Z.t)
+    (construct : register -> reg_or_const -> 'a) : ('a, string) result =
   let* r, operand = decode_pair payload in
   let* r = decode_register r in
   let* operand = decode_operand ~constant:(opcode = base + 1) operand in
   Ok (construct r operand)
 
-let decode_roo (base : int) (opcode : int) (payload : Z.t) (construct : (register -> reg_or_const -> reg_or_const -> 'a)) : ('a, string) result =
+let decode_register_and_operands (base : int) (opcode : int) (payload : Z.t)
+    (construct : register -> reg_or_const -> reg_or_const -> 'a) : ('a, string) result =
   let* r, operands = decode_pair payload in
   let* a, b = decode_pair operands in
   let variant = opcode - base in
@@ -182,7 +198,8 @@ let decode_roo (base : int) (opcode : int) (payload : Z.t) (construct : (registe
   let* b = decode_operand ~constant:(variant land 1 <> 0) b in
   Ok (construct r a b)
 
-let decode_rrr (payload : Z.t) (construct : (register -> register -> register -> 'a)) : ('a, string) result =
+let decode_three_registers (payload : Z.t) (construct : register -> register -> register -> 'a) :
+    ('a, string) result =
   let* a, rest = decode_pair payload in
   let* b, c = decode_pair rest in
   let* a = decode_register a in
@@ -199,41 +216,52 @@ let decode (encoded : Z.t) : (instruction, string) result =
     match opcode with
     | 0x00 | 0x01 ->
         Result.map (fun operand -> Jmp operand) (decode_operand ~constant:(opcode = 0x01) payload)
-    | 0x02 | 0x03 -> decode_ro 0x02 opcode payload (fun r o -> Jnz (r, o))
-    | 0x04 -> decode_rr payload (fun a b -> Jalr (a, b))
+    | 0x02 | 0x03 -> decode_register_and_operand 0x02 opcode payload (fun r o -> Jnz (r, o))
+    | 0x04 -> decode_register_pair payload (fun a b -> Jalr (a, b))
     | 0x05 ->
-        let* r, sr = decode_pair payload in
+        let* r, system_register_code = decode_pair payload in
         let* r = decode_register r in
-        if Z.equal sr Z.zero then Ok (ReadSR (r, MTDC)) else error "unknown system register"
+        if Z.equal system_register_code Z.zero then Ok (ReadSR (r, MTDC))
+        else error "unknown system register"
     | 0x06 ->
-        let* sr, r = decode_pair payload in
+        let* system_register_code, r = decode_pair payload in
         let* r = decode_register r in
-        if Z.equal sr Z.zero then Ok (WriteSR (MTDC, r)) else error "unknown system register"
-    | 0x07 | 0x08 -> decode_ro 0x07 opcode payload (fun r o -> Move (r, o))
-    | 0x09 -> decode_rr payload (fun a b -> Load (a, b))
-    | 0x0a | 0x0b -> decode_ro 0x0a opcode payload (fun r o -> Store (r, o))
-    | _ when in_span 0x0c -> decode_roo 0x0c opcode payload (fun r a b -> Add (r, a, b))
-    | _ when in_span 0x10 -> decode_roo 0x10 opcode payload (fun r a b -> Sub (r, a, b))
-    | _ when in_span 0x14 -> decode_roo 0x14 opcode payload (fun r a b -> Mul (r, a, b))
-    | _ when in_span 0x20 -> decode_roo 0x20 opcode payload (fun r a b -> Lt (r, a, b))
-    | 0x24 | 0x25 -> decode_ro 0x24 opcode payload (fun r o -> Lea (r, o))
-    | 0x26 | 0x27 -> decode_ro 0x26 opcode payload (fun r o -> Restrict (r, o))
-    | _ when in_span 0x28 -> decode_roo 0x28 opcode payload (fun r a b -> SubSeg (r, a, b))
-    | 0x2c -> decode_rr payload (fun a b -> GetL (a, b))
-    | 0x2d -> decode_rr payload (fun a b -> GetB (a, b))
-    | 0x2e -> decode_rr payload (fun a b -> GetE (a, b))
-    | 0x2f -> decode_rr payload (fun a b -> GetA (a, b))
-    | 0x30 -> decode_rr payload (fun a b -> GetP (a, b))
-    | 0x31 -> decode_rr payload (fun a b -> GetOType (a, b))
-    | 0x32 -> decode_rr payload (fun a b -> GetWType (a, b))
-    | 0x33 -> decode_rrr payload (fun a b c -> Seal (a, b, c))
-    | 0x34 -> decode_rrr payload (fun a b c -> UnSeal (a, b, c))
+        if Z.equal system_register_code Z.zero then Ok (WriteSR (MTDC, r))
+        else error "unknown system register"
+    | 0x07 | 0x08 -> decode_register_and_operand 0x07 opcode payload (fun r o -> Move (r, o))
+    | 0x09 -> decode_register_pair payload (fun a b -> Load (a, b))
+    | 0x0a | 0x0b -> decode_register_and_operand 0x0a opcode payload (fun r o -> Store (r, o))
+    | _ when in_span 0x0c ->
+        decode_register_and_operands 0x0c opcode payload (fun r a b -> Add (r, a, b))
+    | _ when in_span 0x10 ->
+        decode_register_and_operands 0x10 opcode payload (fun r a b -> Sub (r, a, b))
+    | _ when in_span 0x14 ->
+        decode_register_and_operands 0x14 opcode payload (fun r a b -> Mul (r, a, b))
+    | _ when in_span 0x20 ->
+        decode_register_and_operands 0x20 opcode payload (fun r a b -> Lt (r, a, b))
+    | 0x24 | 0x25 -> decode_register_and_operand 0x24 opcode payload (fun r o -> Lea (r, o))
+    | 0x26 | 0x27 -> decode_register_and_operand 0x26 opcode payload (fun r o -> Restrict (r, o))
+    | _ when in_span 0x28 ->
+        decode_register_and_operands 0x28 opcode payload (fun r a b -> SubSeg (r, a, b))
+    | 0x2c -> decode_register_pair payload (fun a b -> GetL (a, b))
+    | 0x2d -> decode_register_pair payload (fun a b -> GetB (a, b))
+    | 0x2e -> decode_register_pair payload (fun a b -> GetE (a, b))
+    | 0x2f -> decode_register_pair payload (fun a b -> GetA (a, b))
+    | 0x30 -> decode_register_pair payload (fun a b -> GetP (a, b))
+    | 0x31 -> decode_register_pair payload (fun a b -> GetOType (a, b))
+    | 0x32 -> decode_register_pair payload (fun a b -> GetWType (a, b))
+    | 0x33 -> decode_three_registers payload (fun a b c -> Seal (a, b, c))
+    | 0x34 -> decode_three_registers payload (fun a b c -> UnSeal (a, b, c))
     | 0x35 when Z.equal payload Z.zero -> Ok Fail
     | 0x36 when Z.equal payload Z.zero -> Ok Halt
-    | _ when in_span 0x37 -> decode_roo 0x37 opcode payload (fun r a b -> LAnd (r, a, b))
-    | _ when in_span 0x3b -> decode_roo 0x3b opcode payload (fun r a b -> LOr (r, a, b))
-    | _ when in_span 0x3f -> decode_roo 0x3f opcode payload (fun r a b -> LShiftL (r, a, b))
-    | _ when in_span 0x43 -> decode_roo 0x43 opcode payload (fun r a b -> LShiftR (r, a, b))
+    | _ when in_span 0x37 ->
+        decode_register_and_operands 0x37 opcode payload (fun r a b -> LAnd (r, a, b))
+    | _ when in_span 0x3b ->
+        decode_register_and_operands 0x3b opcode payload (fun r a b -> LOr (r, a, b))
+    | _ when in_span 0x3f ->
+        decode_register_and_operands 0x3f opcode payload (fun r a b -> LShiftL (r, a, b))
+    | _ when in_span 0x43 ->
+        decode_register_and_operands 0x43 opcode payload (fun r a b -> LShiftR (r, a, b))
     | _ -> error (Printf.sprintf "malformed or unknown extracted Griotte opcode 0x%02x" opcode)
 
 let tagged (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
@@ -243,41 +271,43 @@ let untag (tag : int) (kind : string) (encoded : Z.t) : (Z.t, string) result =
     error ("not an extracted Griotte " ^ kind ^ " encoding")
   else Ok (Z.shift_right encoded 3)
 
-let permission_scalar ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : int =
+let permission_scalar
+    ((rx, w, dl, dro) :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : int =
   let rx = match rx with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3 in
   let w = match w with Ow -> 0 | W -> 1 | WL -> 2 in
   let dl = match dl with DL -> 0 | LG -> 1 in
   let dro = match dro with DRO -> 0 | LM -> 1 in
   (rx lsl 4) lor (w lsl 2) lor (dl lsl 1) lor dro
 
-let permission_of_scalar (n : int) : (rx_permission * write_permission * deep_local_permission *
- deep_read_only_permission, string)
-result =
+let permission_of_scalar (n : int) :
+    ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
+      string )
+    result =
   if n < 0 || n > 0x3f || (n lsr 2) land 3 = 3 then error "unknown extracted permission"
   else
     let rx = match (n lsr 4) land 3 with 0 -> Orx | 1 -> R | 2 -> X | _ -> XSR in
     let w = match (n lsr 2) land 3 with 0 -> Ow | 1 -> W | _ -> WL in
     Ok (rx, w, (if n land 2 = 0 then DL else LG), if n land 1 = 0 then DRO else LM)
 
-let encode_permission (p : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : Z.t = tagged 0 (Z.of_int (permission_scalar p))
+let encode_permission
+    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : Z.t
+    =
+  tagged 0 (Z.of_int (permission_scalar p))
 
-let decode_permission (encoded : Z.t) : (rx_permission * write_permission * deep_local_permission *
- deep_read_only_permission, string)
-result =
+let decode_permission (encoded : Z.t) :
+    ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
+      string )
+    result =
   let* payload = untag 0 "permission" encoded in
   if Z.fits_int payload then permission_of_scalar (Z.to_int payload)
   else error "oversized extracted permission"
 
-let locality_scalar (matched_value : locality) : int = match matched_value with Local -> 0 | Global -> 1
+let locality_scalar (value : locality) : int = match value with Local -> 0 | Global -> 1
 let encode_locality (locality : locality) : Z.t = tagged 2 (Z.of_int (locality_scalar locality))
 
-let seal_scalar (matched_value : bool * bool) : int = match matched_value with
-  | false, false -> 0
-  | false, true -> 1
-  | true, false -> 2
-  | true, true -> 3
+let seal_scalar (value : bool * bool) : int =
+  match value with false, false -> 0 | false, true -> 1 | true, false -> 2 | true, true -> 3
 
 let encode_seal_permission (p : bool * bool) : Z.t = tagged 1 (Z.of_int (seal_scalar p))
 
@@ -292,14 +322,16 @@ let decode_seal_permission (encoded : Z.t) : (bool * bool, string) result =
     | 3 -> Ok (true, true)
     | _ -> error "unknown extracted seal permission"
 
-let encode_permission_locality (p : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) (locality : locality) : Z.t =
+let encode_permission_locality
+    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+    (locality : locality) : Z.t =
   tagged 4 (Z.of_int ((locality_scalar locality lsl 6) lor permission_scalar p))
 
-let decode_permission_locality (encoded : Z.t) : ((rx_permission * write_permission * deep_local_permission *
-  deep_read_only_permission) *
- locality, string)
-result =
+let decode_permission_locality (encoded : Z.t) :
+    ( (rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+      * locality,
+      string )
+    result =
   let* payload = untag 4 "permission/locality" encoded in
   if (not (Z.fits_int payload)) || Z.to_int payload > 0x7f then
     error "unknown extracted permission/locality"
@@ -326,14 +358,11 @@ let decode_seal_permission_locality (encoded : Z.t) : ((bool * bool) * locality,
     in
     Ok (p, if n land 4 = 0 then Local else Global)
 
-let word_type_scalar (matched_value : word_type) : int = match matched_value with
-  | W_I -> 0
-  | W_Cap -> 1
-  | W_SealRange -> 2
-  | W_Sealed -> 3
-  | W_Sentry -> 4
+let word_type_scalar (value : word_type) : int =
+  match value with W_I -> 0 | W_Cap -> 1 | W_SealRange -> 2 | W_Sealed -> 3 | W_Sentry -> 4
 
-let encode_word_type (word_type : word_type) : Z.t = tagged 3 (Z.of_int (word_type_scalar word_type))
+let encode_word_type (word_type : word_type) : Z.t =
+  tagged 3 (Z.of_int (word_type_scalar word_type))
 
 let decode_word_type (encoded : Z.t) : (word_type, string) result =
   let* payload = untag 3 "word type" encoded in

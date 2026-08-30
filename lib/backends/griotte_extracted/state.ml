@@ -1,3 +1,6 @@
+(* Adapter-owned snapshots provide predictable maps and status values for the UI.
+   The extracted configuration is reconstructed from and folded back into this form. *)
+
 open Ast
 
 module RegMap = Map.Make (struct
@@ -24,10 +27,13 @@ type t = {
   memory : word MemMap.t;
 }
 
-let diagnostic (message : string) : ('a, Diagnostic.t list) result = Error [ Diagnostic.error message ]
+let diagnostic (message : string) : ('a, Diagnostic.t list) result =
+  Error [ Diagnostic.error message ]
+
 let ( let* ) (type value next error) (result : (value, error) result)
-        (continuation : value -> (next, error) result) : (next, error) result =
+    (continuation : value -> (next, error) result) : (next, error) result =
   Result.bind result continuation
+
 let arch_root_memory_permission = (R, WL, LG, LM)
 let arch_root_executable_permission = (XSR, Ow, LG, LM)
 
@@ -52,18 +58,21 @@ let write_flows (requested : write_permission) (current : write_permission) : bo
 let deep_local_flows (requested : deep_local_permission) (current : deep_local_permission) : bool =
   match (requested, current) with DL, _ -> true | LG, LG -> true | LG, DL -> false
 
-let deep_read_only_flows (requested : deep_read_only_permission) (current : deep_read_only_permission) : bool =
+let deep_read_only_flows (requested : deep_read_only_permission)
+    (current : deep_read_only_permission) : bool =
   match (requested, current) with DRO, _ -> true | LM, LM -> true | LM, DRO -> false
 
-let permission_flows ((rx, write, deep_local, deep_read_only) : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission)
-    ((rx', write', deep_local', deep_read_only') : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : bool =
+let permission_flows
+    ((rx, write, deep_local, deep_read_only) :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+    ((rx', write', deep_local', deep_read_only') :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : bool =
   rx_flows rx rx' && write_flows write write'
   && deep_local_flows deep_local deep_local'
   && deep_read_only_flows deep_read_only deep_read_only'
 
-let permission_of_word (matched_value : word) : permission = match matched_value with
+let permission_of_word (word : word) : permission =
+  match word with
   | Sealable (Cap (permission, _, _, _, _))
   | Sentry (permission, _, _, _, _)
   | Sealed (_, Cap (permission, _, _, _, _)) ->
@@ -99,9 +108,12 @@ let set_register (register : register) (word : word) (state : t) : t =
 let set_system_register (register : system_register) (word : word) (state : t) : t =
   { state with system_registers = SRegMap.add register word state.system_registers }
 
-let set_memory_raw (address : Z.t) (word : word) (state : t) : t = { state with memory = MemMap.add address word state.memory }
+let set_memory_raw (address : Z.t) (word : word) (state : t) : t =
+  { state with memory = MemMap.add address word state.memory }
 
-let init (config : Runtime_config.t) (program : word list) (regfile : ((register * word) list * (system_register * word) list) option) : (t, Diagnostic.t list) result =
+let init (config : Runtime_config.t) (program : word list)
+    (regfile : ((register * word) list * (system_register * word) list) option) :
+    (t, Diagnostic.t list) result =
   let registers =
     match regfile with None -> initial_registers config | Some _ -> zero_registers ()
   in

@@ -1,4 +1,6 @@
 %{
+(* Backend-specific grammar actions validate Griotte names immediately so parse
+   diagnostics retain the token's precise source position. *)
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =

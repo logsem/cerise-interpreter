@@ -1,3 +1,6 @@
+(* Stable adapter-side values for the Rocq-extracted Griotte machine. These mirror
+   the public handwritten shapes while remaining distinct from the generated AST. *)
+
 type register = PC | Reg of int
 type system_register = MTDC
 

@@ -1,7 +1,12 @@
+(* Pure rendering adapter from extracted-Griotte snapshots to generic machine views.
+   Editing travels in the opposite direction through the backend boundary module. *)
+
 open Ast
 
-let permission_parts ((rx, write, deep_local, deep_read_only) : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : string list =
+let permission_parts
+    ((rx, write, deep_local, deep_read_only) :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) :
+    string list =
   [
     Printer.rx_permission rx;
     Printer.write_permission write;
@@ -9,8 +14,11 @@ deep_read_only_permission) : string list =
     Printer.deep_read_only_permission deep_read_only;
   ]
 
-let capability (permission : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) (locality : locality) (base : Z.t) (limit : Z.t) (cursor : Z.t) : Machine_view.capability option =
+let capability
+    (permission :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+    (locality : locality) (base : Z.t) (limit : Z.t) (cursor : Z.t) : Machine_view.capability option
+    =
   Some
     {
       Machine_view.base;
@@ -20,8 +28,8 @@ deep_read_only_permission) (locality : locality) (base : Z.t) (limit : Z.t) (cur
       locality = Some (Printer.locality locality);
     }
 
-let sealing ?object_type:(object_type : Z.t option) ~sealed:(sealed : bool)
-    ((can_seal, can_unseal) : bool * bool) : Machine_view.sealing option =
+let sealing ?(object_type : Z.t option) ~(sealed : bool) ((can_seal, can_unseal) : bool * bool) :
+    Machine_view.sealing option =
   Some
     {
       Machine_view.object_type;
@@ -35,12 +43,13 @@ let word (word : word) : Machine_view.word =
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
   let decoded_instruction =
     match word with
-    | I encoded ->
-        Result.to_option (Codec.decode encoded)
-        |> Option.map Printer.instruction
+    | I encoded -> Result.to_option (Codec.decode encoded) |> Option.map Printer.instruction
     | _ -> None
   in
-  let base (kind : Machine_view.semantic_kind) (integer : Z.t option) (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option) (sealing : Machine_view.sealing option) (annotations : (string * string) list) : Machine_view.word =
+  let base (kind : Machine_view.semantic_kind) (integer : Z.t option)
+      (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option)
+      (sealing : Machine_view.sealing option) (annotations : (string * string) list) :
+      Machine_view.word =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -66,7 +75,13 @@ let word (word : word) : Machine_view.word =
         [ ("entry", "sentry") ]
   | Sealable (SealRange (permission, locality, first, last, cursor)) ->
       base Seal_range None None
-        (Some { Machine_view.base = first; limit = last; cursor; locality = Some (Printer.locality locality) })
+        (Some
+           {
+             Machine_view.base = first;
+             limit = last;
+             cursor;
+             locality = Some (Printer.locality locality);
+           })
         (sealing ~sealed:false permission)
         [
           ("locality", Printer.locality locality);
@@ -83,7 +98,13 @@ let word (word : word) : Machine_view.word =
         []
   | Sealed (object_type, SealRange (permission, locality, first, last, cursor)) ->
       base Sealed_capability None None
-        (Some { Machine_view.base = first; limit = last; cursor; locality = Some (Printer.locality locality) })
+        (Some
+           {
+             Machine_view.base = first;
+             limit = last;
+             cursor;
+             locality = Some (Printer.locality locality);
+           })
         (sealing ~object_type ~sealed:true permission)
         [
           ("locality", Printer.locality locality);
@@ -92,7 +113,8 @@ let word (word : word) : Machine_view.word =
           ("cursor", Z.to_string cursor);
         ]
 
-let register_description (register : register) : Machine_view.register_id * string * Machine_view.register_role =
+let register_description (register : register) :
+    Machine_view.register_id * string * Machine_view.register_role =
   let label = Printer.register register in
   match register with
   | PC ->
@@ -105,7 +127,7 @@ let register_description (register : register) : Machine_view.register_id * stri
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.Stack_pointer)
   | Reg _ -> ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
-let inspect ~backend_name:(backend_name : string) (state : State.t) : Machine_view.t =
+let inspect ~(backend_name : string) (state : State.t) : Machine_view.t =
   let registers =
     State.RegMap.bindings state.State.registers
     |> List.map (fun (register, value) ->

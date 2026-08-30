@@ -1,5 +1,9 @@
+(* Encode and decode handwritten Griotte instructions and tagged metadata. The
+   instruction table owns opcode allocation; the helpers below own capability tags. *)
+
 open Ast
 
+(* Instruction encoding. *)
 let register_codec =
   Instruction_codec.scalar_codec ~name:"Griotte register"
     ~encode:(function
@@ -19,112 +23,129 @@ let system_register_codec =
     ~decode:(fun value -> if Z.equal value Z.zero then Ok MTDC else Error "unknown system register")
 
 let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
-let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with Instruction_codec.Register r -> Register r | Constant z -> Constant z
-let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with Register r -> Instruction_codec.Register r | Constant z -> Constant z
-let r = Instruction_codec.register register_codec
-let sr = Instruction_codec.register system_register_codec
-let o = operand
-let rr = Instruction_codec.pair r r
-let rs = Instruction_codec.pair r sr
-let sr_r = Instruction_codec.pair sr r
-let ro = Instruction_codec.pair r o
-let roo = Instruction_codec.triple r o o
-let rrr = Instruction_codec.triple r r r
 
-let case (name : string) (opcode : int) (codec : 'a Instruction_codec.shape) (construct : ('a -> 'b)) (project : ('b -> 'a option)) : 'b Instruction_codec.case =
+let from_operand (value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const =
+  match value with
+  | Instruction_codec.Register register_shape -> Register register_shape
+  | Constant z -> Constant z
+
+let to_operand (value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant =
+  match value with
+  | Register register_shape -> Instruction_codec.Register register_shape
+  | Constant z -> Constant z
+
+let register_shape = Instruction_codec.register register_codec
+let system_register_shape = Instruction_codec.register system_register_codec
+let operand_shape = operand
+let register_pair_shape = Instruction_codec.pair register_shape register_shape
+let register_system_pair_shape = Instruction_codec.pair register_shape system_register_shape
+
+let system_register_register_pair_shape =
+  Instruction_codec.pair system_register_shape register_shape
+
+let register_operand_pair_shape = Instruction_codec.pair register_shape operand_shape
+
+let register_operand_operand_shape =
+  Instruction_codec.triple register_shape operand_shape operand_shape
+
+let register_triple_shape = Instruction_codec.triple register_shape register_shape register_shape
+
+let case (name : string) (opcode : int) (codec : 'a Instruction_codec.shape) (construct : 'a -> 'b)
+    (project : 'b -> 'a option) : 'b Instruction_codec.case =
   Instruction_codec.case ~name ~allocation:(Fixed opcode) codec ~construct ~project
 
-let unit_case (name : string) (opcode : int) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
+let unit_case (name : string) (opcode : int) (construct : 'a) (project : 'a -> bool) :
+    'a Instruction_codec.case =
   case name opcode Instruction_codec.unit
     (fun () -> construct)
     (fun x -> if project x then Some () else None)
 
 let cases =
   [
-    case "Jmp" 0x00 o
+    case "Jmp" 0x00 operand_shape
       (fun x -> Jmp (from_operand x))
       (function Jmp x -> Some (to_operand x) | _ -> None);
-    case "Jnz" 0x02 ro
+    case "Jnz" 0x02 register_operand_pair_shape
       (fun (a, b) -> Jnz (a, from_operand b))
       (function Jnz (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Jalr" 0x04 rr
+    case "Jalr" 0x04 register_pair_shape
       (fun (a, b) -> Jalr (a, b))
       (function Jalr (a, b) -> Some (a, b) | _ -> None);
-    case "ReadSR" 0x05 rs
+    case "ReadSR" 0x05 register_system_pair_shape
       (fun (a, b) -> ReadSR (a, b))
       (function ReadSR (a, b) -> Some (a, b) | _ -> None);
-    case "WriteSR" 0x06 sr_r
+    case "WriteSR" 0x06 system_register_register_pair_shape
       (fun (a, b) -> WriteSR (a, b))
       (function WriteSR (a, b) -> Some (a, b) | _ -> None);
-    case "Move" 0x07 ro
+    case "Move" 0x07 register_operand_pair_shape
       (fun (a, b) -> Move (a, from_operand b))
       (function Move (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Load" 0x09 rr
+    case "Load" 0x09 register_pair_shape
       (fun (a, b) -> Load (a, b))
       (function Load (a, b) -> Some (a, b) | _ -> None);
-    case "Store" 0x0a ro
+    case "Store" 0x0a register_operand_pair_shape
       (fun (a, b) -> Store (a, from_operand b))
       (function Store (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Add" 0x0c roo
+    case "Add" 0x0c register_operand_operand_shape
       (fun (a, b, c) -> Add (a, from_operand b, from_operand c))
       (function Add (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Sub" 0x10 roo
+    case "Sub" 0x10 register_operand_operand_shape
       (fun (a, b, c) -> Sub (a, from_operand b, from_operand c))
       (function Sub (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Mul" 0x14 roo
+    case "Mul" 0x14 register_operand_operand_shape
       (fun (a, b, c) -> Mul (a, from_operand b, from_operand c))
       (function Mul (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Lt" 0x20 roo
+    case "Lt" 0x20 register_operand_operand_shape
       (fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
       (function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Lea" 0x24 ro
+    case "Lea" 0x24 register_operand_pair_shape
       (fun (a, b) -> Lea (a, from_operand b))
       (function Lea (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Restrict" 0x26 ro
+    case "Restrict" 0x26 register_operand_pair_shape
       (fun (a, b) -> Restrict (a, from_operand b))
       (function Restrict (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "SubSeg" 0x28 roo
+    case "SubSeg" 0x28 register_operand_operand_shape
       (fun (a, b, c) -> SubSeg (a, from_operand b, from_operand c))
       (function SubSeg (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "GetL" 0x2c rr
+    case "GetL" 0x2c register_pair_shape
       (fun (a, b) -> GetL (a, b))
       (function GetL (a, b) -> Some (a, b) | _ -> None);
-    case "GetB" 0x2d rr
+    case "GetB" 0x2d register_pair_shape
       (fun (a, b) -> GetB (a, b))
       (function GetB (a, b) -> Some (a, b) | _ -> None);
-    case "GetE" 0x2e rr
+    case "GetE" 0x2e register_pair_shape
       (fun (a, b) -> GetE (a, b))
       (function GetE (a, b) -> Some (a, b) | _ -> None);
-    case "GetA" 0x2f rr
+    case "GetA" 0x2f register_pair_shape
       (fun (a, b) -> GetA (a, b))
       (function GetA (a, b) -> Some (a, b) | _ -> None);
-    case "GetP" 0x30 rr
+    case "GetP" 0x30 register_pair_shape
       (fun (a, b) -> GetP (a, b))
       (function GetP (a, b) -> Some (a, b) | _ -> None);
-    case "GetOType" 0x31 rr
+    case "GetOType" 0x31 register_pair_shape
       (fun (a, b) -> GetOType (a, b))
       (function GetOType (a, b) -> Some (a, b) | _ -> None);
-    case "GetWType" 0x32 rr
+    case "GetWType" 0x32 register_pair_shape
       (fun (a, b) -> GetWType (a, b))
       (function GetWType (a, b) -> Some (a, b) | _ -> None);
-    case "Seal" 0x33 rrr
+    case "Seal" 0x33 register_triple_shape
       (fun (a, b, c) -> Seal (a, b, c))
       (function Seal (a, b, c) -> Some (a, b, c) | _ -> None);
-    case "UnSeal" 0x34 rrr
+    case "UnSeal" 0x34 register_triple_shape
       (fun (a, b, c) -> UnSeal (a, b, c))
       (function UnSeal (a, b, c) -> Some (a, b, c) | _ -> None);
     unit_case "Fail" 0x35 Fail (function Fail -> true | _ -> false);
     unit_case "Halt" 0x36 Halt (function Halt -> true | _ -> false);
-    case "LAnd" 0x37 roo
+    case "LAnd" 0x37 register_operand_operand_shape
       (fun (a, b, c) -> LAnd (a, from_operand b, from_operand c))
       (function LAnd (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LOr" 0x3b roo
+    case "LOr" 0x3b register_operand_operand_shape
       (fun (a, b, c) -> LOr (a, from_operand b, from_operand c))
       (function LOr (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LShiftL" 0x3f roo
+    case "LShiftL" 0x3f register_operand_operand_shape
       (fun (a, b, c) -> LShiftL (a, from_operand b, from_operand c))
       (function LShiftL (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LShiftR" 0x43 roo
+    case "LShiftR" 0x43 register_operand_operand_shape
       (fun (a, b, c) -> LShiftR (a, from_operand b, from_operand c))
       (function LShiftR (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
   ]
@@ -134,7 +155,8 @@ let table =
   | Ok table -> table
   | Error errors -> failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
 
-let encode (matched_value : instruction) : (Z.t, Instruction_codec.error) result = match matched_value with
+let encode (value : instruction) : (Z.t, Instruction_codec.error) result =
+  match value with
   | Jmp (Constant immediate) when Z.sign immediate < 0 -> Ok Z.(logor one (shift_left immediate 8))
   | instruction -> Instruction_codec.encode table instruction
 
@@ -146,6 +168,9 @@ let decode (encoded : Z.t) : (instruction, Instruction_codec.error) result =
   else Instruction_codec.decode table encoded
 
 let allocations = Instruction_codec.allocations table
+
+(* Capability-metadata encoding. These fixed tags are part of the assembly and
+   machine contract, so decoding deliberately rejects rather than normalizes them. *)
 let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
 
 let decode_tag (tag : int) (name : string) (value : Z.t) : (Z.t, string) result =
@@ -153,18 +178,20 @@ let decode_tag (tag : int) (name : string) (value : Z.t) : (Z.t, string) result 
     Error ("not a Griotte " ^ name ^ " encoding")
   else Ok (Z.shift_right value 3)
 
-let rx_scalar (matched_value : rx_permission) : int = match matched_value with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3
-let write_scalar (matched_value : write_permission) : int = match matched_value with Ow -> 0 | W -> 1 | WL -> 2
-let dl_scalar (matched_value : deep_local_permission) : int = match matched_value with DL -> 0 | LG -> 1
-let dro_scalar (matched_value : deep_read_only_permission) : int = match matched_value with DRO -> 0 | LM -> 1
+let rx_scalar (value : rx_permission) : int =
+  match value with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3
 
-let permission_scalar ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : int =
+let write_scalar (value : write_permission) : int = match value with Ow -> 0 | W -> 1 | WL -> 2
+let dl_scalar (value : deep_local_permission) : int = match value with DL -> 0 | LG -> 1
+let dro_scalar (value : deep_read_only_permission) : int = match value with DRO -> 0 | LM -> 1
+
+let permission_scalar
+    ((rx, w, dl, dro) :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : int =
   (rx_scalar rx lsl 4) lor (write_scalar w lsl 2) lor (dl_scalar dl lsl 1) lor dro_scalar dro
 
-let permission_of_scalar (scalar : int) : (rx_permission * write_permission * deep_local_permission *
- deep_read_only_permission)
-option =
+let permission_of_scalar (scalar : int) :
+    (rx_permission * write_permission * deep_local_permission * deep_read_only_permission) option =
   let rx = match (scalar lsr 4) land 3 with 0 -> Orx | 1 -> R | 2 -> X | _ -> XSR in
   let w =
     match (scalar lsr 2) land 3 with 0 -> Some Ow | 1 -> Some W | 2 -> Some WL | _ -> None
@@ -177,27 +204,31 @@ option =
 let payload_at_most (maximum : int) (message : 'a) (payload : Z.t) : (Z.t, 'a) result =
   if Z.compare payload (Z.of_int maximum) <= 0 then Ok payload else Error message
 
-let decode_permission_payload (payload : Z.t) : (rx_permission * write_permission * deep_local_permission *
- deep_read_only_permission, string)
-result =
+let decode_permission_payload (payload : Z.t) :
+    ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
+      string )
+    result =
   Result.bind (payload_at_most 0x3f "unknown Griotte permission" payload) (fun payload ->
       match permission_of_scalar (Z.to_int payload) with
       | Some permission -> Ok permission
       | None -> Error "unknown Griotte permission")
 
-let encode_permission (p : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
-let decode_permission (z : Z.t) : (rx_permission * write_permission * deep_local_permission *
- deep_read_only_permission, string)
-result = Result.bind (decode_tag 0 "permission" z) decode_permission_payload
+let encode_permission
+    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : Z.t
+    =
+  encode_tag 0 (Z.of_int (permission_scalar p))
 
-let seal_permission_scalar (matched_value : bool * bool) : int = match matched_value with
-  | false, false -> 0
-  | false, true -> 1
-  | true, false -> 2
-  | true, true -> 3
+let decode_permission (z : Z.t) :
+    ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
+      string )
+    result =
+  Result.bind (decode_tag 0 "permission" z) decode_permission_payload
 
-let encode_seal_permission (p : bool * bool) : Z.t = encode_tag 1 (Z.of_int (seal_permission_scalar p))
+let seal_permission_scalar (value : bool * bool) : int =
+  match value with false, false -> 0 | false, true -> 1 | true, false -> 2 | true, true -> 3
+
+let encode_seal_permission (p : bool * bool) : Z.t =
+  encode_tag 1 (Z.of_int (seal_permission_scalar p))
 
 let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
   Result.bind (decode_tag 1 "seal permission" z) (fun p ->
@@ -207,7 +238,7 @@ let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
       else if Z.equal p (Z.of_int 3) then Ok (true, true)
       else Error "unknown Griotte seal permission")
 
-let locality_scalar (matched_value : locality) : int = match matched_value with Local -> 0 | Global -> 1
+let locality_scalar (value : locality) : int = match value with Local -> 0 | Global -> 1
 let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
 
 let decode_locality (z : Z.t) : (locality, string) result =
@@ -216,12 +247,8 @@ let decode_locality (z : Z.t) : (locality, string) result =
       else if Z.equal p Z.one then Ok Global
       else Error "unknown Griotte locality")
 
-let word_type_scalar (matched_value : word_type) : int = match matched_value with
-  | W_I -> 0
-  | W_Cap -> 1
-  | W_SealRange -> 2
-  | W_Sealed -> 3
-  | W_Sentry -> 4
+let word_type_scalar (value : word_type) : int =
+  match value with W_I -> 0 | W_Cap -> 1 | W_SealRange -> 2 | W_Sealed -> 3 | W_Sentry -> 4
 
 let encode_word_type (w : word_type) : Z.t = encode_tag 3 (Z.of_int (word_type_scalar w))
 
@@ -234,14 +261,16 @@ let decode_word_type (z : Z.t) : (word_type, string) result =
       else if Z.equal p (Z.of_int 4) then Ok W_Sentry
       else Error "unknown Griotte word type")
 
-let encode_permission_locality (p : rx_permission * write_permission * deep_local_permission *
-deep_read_only_permission) (l : locality) : Z.t =
+let encode_permission_locality
+    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+    (l : locality) : Z.t =
   encode_tag 4 (Z.of_int ((locality_scalar l lsl 6) lor permission_scalar p))
 
-let decode_permission_locality (z : Z.t) : ((rx_permission * write_permission * deep_local_permission *
-  deep_read_only_permission) *
- locality, string)
-result =
+let decode_permission_locality (z : Z.t) :
+    ( (rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+      * locality,
+      string )
+    result =
   Result.bind (decode_tag 4 "permission/locality" z) (fun p ->
       Result.bind (payload_at_most 0x7f "unknown Griotte permission/locality" p) (fun p ->
           let locality = if Z.testbit p 6 then Global else Local in
