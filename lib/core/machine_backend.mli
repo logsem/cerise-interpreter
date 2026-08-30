@@ -8,6 +8,9 @@ type execution_error =
 val execution_error_message : execution_error -> string
 (** Render an execution error for CLI/UI diagnostics. Backend error text is preserved verbatim. *)
 
+type control = { status : Machine_view.status; pc : Z.t option }
+(** Lightweight execution-loop data. *)
+
 module type S = sig
   val name : string
   (** Canonical, stable backend identifier. A registry alias may be shown instead by
@@ -66,6 +69,11 @@ module type S = sig
       by stepping, [backend_name] is [name], and [address_limit] is the configuration's exclusive
       bound. Edit text must round-trip through [parse_word]; word and missing-cell semantics must be
       populated directly rather than encoded only in display strings. *)
+
+  val control : Runtime_config.t -> state -> control
+  (** Read only the execution-loop control data without constructing a full view. This operation is
+      side-effect-free, and its [status] and [pc] must equal those of [inspect] for the same
+      configuration and state. *)
 
   val set_register :
     Runtime_config.t ->

@@ -112,6 +112,17 @@ let register_description (register : Ast.register) :
       let label = "r" ^ string_of_int n in
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
+let control_status (state : state) : Machine_view.status =
+  match state.Machine.status with Running -> Running | Halted -> Halted | Failed -> Failed
+
+let program_counter (state : state) : Z.t option =
+  match Machine.read_register Ast.PC state with
+  | Ast.Cap (Ast.Cap (_, _, _, _, cursor)) -> Some cursor
+  | _ -> None
+
+let control (_config : Runtime_config.t) (state : state) : Machine_backend.control =
+  { status = control_status state; pc = program_counter state }
+
 let inspect (config : Runtime_config.t) (state : state) : Machine_view.t =
   let registers =
     Machine.RegMap.bindings state.Machine.registers
@@ -123,17 +134,11 @@ let inspect (config : Runtime_config.t) (state : state) : Machine_view.t =
     Machine.MemMap.bindings state.Machine.memory
     |> List.map (fun (address, word) -> { Machine_view.address; word = view_word word })
   in
-  let pc =
-    match Machine.read_register Ast.PC state with
-    | Ast.Cap (Ast.Cap (_, _, _, _, a)) -> Some a
-    | _ -> None
-  in
   {
     Machine_view.backend_name = name;
-    status =
-      (match state.Machine.status with Running -> Running | Halted -> Halted | Failed -> Failed);
+    status = control_status state;
     address_limit = Runtime_config.max_addr config;
-    pc;
+    pc = program_counter state;
     registers;
     enclave_table = None;
     memory;

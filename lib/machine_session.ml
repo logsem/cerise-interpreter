@@ -79,6 +79,9 @@ let backend_name (Session (_, requested_name, _, _) : t) : string = requested_na
 let view (Session ((module Backend), requested_name, config, state) : t) : Machine_view.t =
   { (Backend.inspect config state) with backend_name = requested_name }
 
+let control (Session ((module Backend), _, config, state) : t) : Machine_backend.control =
+  Backend.control config state
+
 let step (Session ((module Backend), requested_name, config, state) : t) :
     (t, execution_error) result =
   Result.map
@@ -99,12 +102,12 @@ let matching_breakpoint (breakpoints : Z.t list) (program_counter : Z.t option) 
 
 let run ?(breakpoints : Z.t list = []) ?(max_steps : int option) (session : t) : run_result =
   let rec loop (steps : int) (session : t) : run_result =
-    let current_view = view session in
-    match current_view.status with
+    let current_control = control session in
+    match current_control.status with
     | Machine_view.Halted -> { session; reason = Halted; steps }
     | Failed -> { session; reason = Failed; steps }
     | Running -> (
-        match matching_breakpoint breakpoints current_view.pc with
+        match matching_breakpoint breakpoints current_control.pc with
         | Some address -> { session; reason = Breakpoint address; steps }
         | None -> (
             match max_steps with

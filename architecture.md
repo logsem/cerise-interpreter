@@ -45,6 +45,12 @@ selected first-class `Machine_backend.S` module and its persistent dynamic state
 same immutable execution context to stepping, inspection, and checked edits; concrete machine
 states remain configuration-free and backend-specific types do not escape the existential session.
 
+Execution loops use the smaller `Machine_backend.control` projection, containing only status and
+program counter, instead of constructing a complete `Machine_view.t` before every instruction.
+Every backend reads this projection directly from its state, without side effects, and guarantees
+that both fields equal the corresponding fields from `inspect`. Breakpoints are consequently
+checked against the current PC before a transition while full views remain a rendering concern.
+
 `Machine_view` is the pure-data rendering boundary. A backend's `inspect` callback supplies stable
 register identities and order, sparse-memory behavior, semantic word metadata, status, and optional
 enclave data. Batch output and the Notty UI consume that snapshot without decoding backend text.

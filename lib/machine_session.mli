@@ -33,12 +33,17 @@ val create_with_filenames :
 
 val backend_name : t -> string
 val view : t -> Machine_view.t
+
+val control : t -> Machine_backend.control
+(** Return the current status and program counter without constructing a full [Machine_view.t]. *)
+
 val step : t -> (t, execution_error) result
 val step_n : int -> t -> (t, execution_error) result
 
 val run : ?breakpoints:Z.t list -> ?max_steps:int -> t -> run_result
 (** Run until the machine stops, reaches a breakpoint before executing that address, or consumes
-    [max_steps]. [max_steps] is useful to bound programs that do not halt. *)
+    [max_steps]. The execution loop reads only [control], avoiding full view construction per
+    instruction. A zero limit performs no steps, while a negative limit is an [Execution_error]. *)
 
 val set_register_text : Machine_view.Register_id.t -> string -> t -> (t, Diagnostic.t list) result
 val set_memory_text : Z.t -> string -> t -> (t, Diagnostic.t list) result

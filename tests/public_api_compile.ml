@@ -120,6 +120,9 @@ let find_memory_word (address : Z.t) (view : Cerise.Machine_view.t) :
     Cerise.Machine_view.word option =
   Cerise.Machine_view.find_memory_word address view
 
+let session_control (session : Cerise.Machine_session.t) : Cerise.Machine_backend.control =
+  Cerise.Machine_session.control session
+
 let backends : (module Cerise.Machine_backend.S) list =
   [
     (module Vanilla_backend);
@@ -144,6 +147,8 @@ let pin_backend_configuration_api (module Backend : Cerise.Machine_backend.S) : 
           (Backend.state, Cerise.Machine_backend.execution_error) result) =
     Backend.step_n
   and (_ : Cerise.Runtime_config.t -> Backend.state -> Cerise.Machine_view.t) = Backend.inspect
+  and (_ : Cerise.Runtime_config.t -> Backend.state -> Cerise.Machine_backend.control) =
+    Backend.control
   and (_
         : Cerise.Runtime_config.t ->
           Cerise.Machine_view.Register_id.t ->
@@ -340,6 +345,7 @@ let () =
   ignore available_backend_names;
   ignore selected_backend;
   ignore find_memory_word;
+  ignore session_control;
   List.iter pin_backend_configuration_api backends;
   ignore vanilla_machine_api;
   ignore locality_machine_api;

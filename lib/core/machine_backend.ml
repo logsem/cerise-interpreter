@@ -1,5 +1,7 @@
 (** Contract between backend-owned syntax/machine semantics and shared sessions and UIs. *)
 
+type control = { status : Machine_view.status; pc : Z.t option }
+
 type execution_error =
   | Stopped of Machine_view.status
       (** The input state was already non-running; the status must agree with [inspect].
@@ -72,6 +74,11 @@ module type S = sig
       by stepping, [backend_name] is [name], and [address_limit] is the configuration's exclusive
       bound. Edit text must round-trip through [parse_word]; word and missing-cell semantics must be
       populated directly rather than encoded only in display strings. *)
+
+  val control : Runtime_config.t -> state -> control
+  (** Read only the execution-loop control data without constructing a full view. This operation is
+      side-effect-free, and its [status] and [pc] must equal those of [inspect] for the same
+      configuration and state. *)
 
   val set_register :
     Runtime_config.t ->

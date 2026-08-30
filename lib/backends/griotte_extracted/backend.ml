@@ -539,6 +539,9 @@ let parse_word ?(filename : string option) (source : string) : (asm_word, Diagno
 let inspect (config : Runtime_config.t) (state : state) : Machine_view.t =
   View.inspect ~backend_name:name config state.snapshot
 
+let control (_config : Runtime_config.t) (state : state) : Machine_backend.control =
+  { status = View.control_status state.snapshot; pc = View.program_counter state.snapshot }
+
 let step (config : Runtime_config.t) (state : state) :
     (state, Machine_backend.execution_error) result =
   match state.snapshot.status with

@@ -26,10 +26,14 @@ The executable is intentionally thin. Data flows through it as follows:
    execution pipeline is `parse → macro expansion → symbol resolution → concrete assembly →
    execution`.
 5. `Machine_session` existentially packages the selected backend module, its private state, and the
-   immutable runtime configuration. Calls to `step`, `step_n`, text edits, and `view` always unpack
-   and repack that same backend and configuration, so backend-specific state and word types never
-   leak into shared clients and no machine state needs to retain execution context.
-6. In batch mode, `src/interpreter_ui.ml` uses `Machine_session.run`, obtains the final
+   immutable runtime configuration. Calls to `step`, `step_n`, text edits, `control`, and `view`
+   always unpack and repack that same backend and configuration, so backend-specific state and word
+   types never leak into shared clients and no machine state needs to retain execution context.
+6. `Machine_session.run` reads each backend's lightweight `control` projection for status and PC,
+   checks breakpoints before executing that address, and steps without constructing a full view in
+   the per-instruction loop. `Backend.control` must be side-effect-free, read state directly, and
+   exactly match the status and PC returned by `Backend.inspect`.
+7. In batch mode, `src/interpreter_ui.ml` uses `Machine_session.run`, obtains the final
    `Machine_view.t`, and prints its stable line-oriented representation. In interactive mode,
    `Application_model` adds history, selection, and two finite memory viewports;
    `Interactive_ui` maps terminal events to model transitions and renders the pure view through
@@ -77,9 +81,11 @@ independent.
    thread it through bounds-sensitive helpers. Preserve stopped-state and error behavior in `step`
    and `step_n`.
 8. **Adapt through `backend.ml`.** Implement `Machine_backend.S`: parser delegation, concrete
-   assembly and initialization, stepping, word/register mapping, `inspect`, and checked text edits.
-   `inspect` should return registers in stable order and enough structured metadata for renderers;
-   do not make UI code parse `short_text` to recover capability semantics.
+   assembly and initialization, stepping, word/register mapping, `control`, `inspect`, and checked
+   text edits. `control` must cheaply read status and PC directly from state and match `inspect`
+   exactly; it must not construct a view. `inspect` should return registers in stable order and
+   enough structured metadata for renderers; do not make UI code parse `short_text` to recover
+   capability semantics.
 9. **Expose the backend group.** Add `<backend>.ml` as the group index, a matching explicit
    `<backend>.mli` public surface, and an alias in `lib/cerise.ml` if it is public. Keep private
    implementation helpers out of the signature.
@@ -169,6 +175,7 @@ Start with `Machine_session`, not a concrete backend. It is the stable execution
 
 - `create`/`create_with_filenames` select, parse, concretely assemble, and initialize a backend;
 - `step`, `step_n`, and `run` return new persistent sessions;
+- `control` returns the cheap status/PC projection used by execution loops;
 - `set_register_text` and `set_memory_text` parse edits with the owning backend;
 - `view` returns the renderer-independent `Machine_view.t`.
 
