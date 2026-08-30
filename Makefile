@@ -1,4 +1,4 @@
-.PHONY: all no-warning clean test install regenerate-griotte-extracted check-griotte-extracted regeneration-gate
+.PHONY: all no-warning clean test format-production-check install regenerate-griotte-extracted check-griotte-extracted regeneration-gate
 
 all:
 	dune build
@@ -12,6 +12,12 @@ clean:
 test:
 	dune build @install
 	dune runtest --force
+
+# Check handwritten production OCaml without promoting formatter output or touching extracted code.
+format-production-check:
+	@find lib src -type f \( -name '*.ml' -o -name '*.mli' \) \
+		! -path 'lib/backends/griotte_extracted/generated/*' -print0 \
+		| xargs -0 ocamlformat --check
 
 regenerate-griotte-extracted:
 	./lib/backends/griotte_extracted/scripts/regenerate.sh
