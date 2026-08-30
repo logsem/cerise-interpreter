@@ -1,5 +1,7 @@
 # Architecture
 
+For the practical end-to-end extension workflow, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 The `src/` tree contains the CLI, session-oriented application model, and Notty terminal UI.
 `lib/` contains the installable library: `core/` provides backend-neutral assembly construction,
 diagnostics, codecs, and machine interfaces, while each `lib/backends/<backend>/` directory owns

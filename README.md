@@ -22,6 +22,9 @@ Assembly examples in `./tests/test_files` (for the syntax)
 See [assembler.md](assembler.md) for the complete assembly language, register-file, integer
 definition, and sequence-macro reference.
 
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the implementation data flow, backend and UI extension
+checklists, codec rules, machine conventions, and validation commands.
+
 The interpreter selects a backend with `--backend`; the default is `vanilla`. Available backends are
 `vanilla`, `cerise` (an alias for vanilla), `locality-cerise`, `ucerise`, `mcerise`, `cerisier`,
 `griotte`, and `griotte-extracted`. Each backend owns its AST, parser, printer, machine, and codec.
