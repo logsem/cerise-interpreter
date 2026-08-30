@@ -12,7 +12,7 @@
   tui_fidelity_tests)
  (deps
   (glob_files goldens/*.txt)
-  (glob_files test_files/cerisier/pos/*.s)
+  (source_tree test_files/cerisier)
   (source_tree test_files/griotte)
   (glob_files test_files/vanilla/pos/*))
  (libraries alcotest cerise cerise_terminal notty-community))

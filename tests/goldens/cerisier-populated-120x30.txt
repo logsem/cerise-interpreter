@@ -9,7 +9,7 @@ ddc:                    0   r9:                    0  r18:                    0 
  r7:                    0  r16:                    0  r25:                    0
 ENCLAVES  counter: 1
 id  identity
-0   1543CB4D
+0   B117FCDADA3B999678E79B3FD54F5D451
                                                                                                   machine state: Running
 HEAP                                                                                                       CAPABILITY pc
 ┃   11                280422  restrict r0 48                                restrict r0 48  280422                11   ┃

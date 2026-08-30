@@ -284,11 +284,13 @@ let rec execute (instruction : instruction) (state : t) : t =
           | _ -> fail state)
       | _ -> fail state)
   | Hash (destination, source) ->
-      !>(set_register destination (I (Z.of_int (Hashtbl.hash (source @! state)))) state)
+      !>(set_register destination (I (Hash_algebra.word (source @! state))) state)
   | HashConcat (destination, left, right) -> (
       match (resolve_operand left, resolve_operand right) with
-      | I left, I right ->
-          !>(set_register destination (I (Z.of_int (Hashtbl.hash (left, right)))) state)
+      | I left, I right -> (
+          match Hash_algebra.concat left right with
+          | Some hash -> !>(set_register destination (I hash) state)
+          | None -> fail state)
       | _ -> fail state)
   | IsUnique (destination, source) -> (
       match source @! state with
@@ -312,9 +314,12 @@ let rec execute (instruction : instruction) (state : t) : t =
               let counter = state.enclave_counter in
               let object_type = Z.mul (Z.of_int 2) counter in
               let identity =
-                Z.of_int
-                  (Hashtbl.hash
-                     (Z.of_int (Hashtbl.hash code_base), Z.of_int (Hashtbl.hash code_words)))
+                match
+                  Hash_algebra.concat (Hash_algebra.address code_base)
+                    (Hash_algebra.words code_words)
+                with
+                | Some identity -> identity
+                | None -> assert false
               in
               let seal_keys =
                 Sealable
