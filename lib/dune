@@ -5,6 +5,7 @@
  (public_name cerise-interpreter)
  (libraries
   cerise_core
+  cerise_tagged_metadata_codec
   cerise_griotte_extracted_generated
   menhirLib
   zarith)

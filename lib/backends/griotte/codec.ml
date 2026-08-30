@@ -167,127 +167,176 @@ let table =
 let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
 
-(* Capability-metadata encoding. These fixed tags are part of the assembly and
-   machine contract, so decoding deliberately rejects rather than normalizes them. *)
-let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
+(* Capability metadata is declared once and compiled into both directions. These values are part
+   of the assembly and machine contract, so decoding rejects rather than normalizes malformed
+   fields. *)
+let metadata_scalar ~(name : string) (mappings : ('a * int) list) =
+  Tagged_metadata_codec.finite_scalar ~name
+    (List.map (fun (value, encoding) -> (value, Z.of_int encoding)) mappings)
 
-let decode_tag (tag : int) (name : string) (value : Z.t) : (Z.t, string) result =
-  if Z.sign value < 0 || not (Z.equal (Z.extract value 0 3) (Z.of_int tag)) then
-    Error ("not a Griotte " ^ name ^ " encoding")
-  else Ok (Z.shift_right value 3)
+let permission_scalar =
+  metadata_scalar ~name:"Griotte permission"
+    [
+      ((Orx, Ow, DL, DRO), 0);
+      ((Orx, Ow, DL, LM), 1);
+      ((Orx, Ow, LG, DRO), 2);
+      ((Orx, Ow, LG, LM), 3);
+      ((Orx, W, DL, DRO), 4);
+      ((Orx, W, DL, LM), 5);
+      ((Orx, W, LG, DRO), 6);
+      ((Orx, W, LG, LM), 7);
+      ((Orx, WL, DL, DRO), 8);
+      ((Orx, WL, DL, LM), 9);
+      ((Orx, WL, LG, DRO), 10);
+      ((Orx, WL, LG, LM), 11);
+      ((R, Ow, DL, DRO), 16);
+      ((R, Ow, DL, LM), 17);
+      ((R, Ow, LG, DRO), 18);
+      ((R, Ow, LG, LM), 19);
+      ((R, W, DL, DRO), 20);
+      ((R, W, DL, LM), 21);
+      ((R, W, LG, DRO), 22);
+      ((R, W, LG, LM), 23);
+      ((R, WL, DL, DRO), 24);
+      ((R, WL, DL, LM), 25);
+      ((R, WL, LG, DRO), 26);
+      ((R, WL, LG, LM), 27);
+      ((X, Ow, DL, DRO), 32);
+      ((X, Ow, DL, LM), 33);
+      ((X, Ow, LG, DRO), 34);
+      ((X, Ow, LG, LM), 35);
+      ((X, W, DL, DRO), 36);
+      ((X, W, DL, LM), 37);
+      ((X, W, LG, DRO), 38);
+      ((X, W, LG, LM), 39);
+      ((X, WL, DL, DRO), 40);
+      ((X, WL, DL, LM), 41);
+      ((X, WL, LG, DRO), 42);
+      ((X, WL, LG, LM), 43);
+      ((XSR, Ow, DL, DRO), 48);
+      ((XSR, Ow, DL, LM), 49);
+      ((XSR, Ow, LG, DRO), 50);
+      ((XSR, Ow, LG, LM), 51);
+      ((XSR, W, DL, DRO), 52);
+      ((XSR, W, DL, LM), 53);
+      ((XSR, W, LG, DRO), 54);
+      ((XSR, W, LG, LM), 55);
+      ((XSR, WL, DL, DRO), 56);
+      ((XSR, WL, DL, LM), 57);
+      ((XSR, WL, LG, DRO), 58);
+      ((XSR, WL, LG, LM), 59);
+    ]
 
-let rx_scalar (value : rx_permission) : int =
-  match value with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3
+let seal_permission_scalar =
+  metadata_scalar ~name:"Griotte seal permission"
+    [ ((false, false), 0); ((false, true), 1); ((true, false), 2); ((true, true), 3) ]
 
-let write_scalar (value : write_permission) : int = match value with Ow -> 0 | W -> 1 | WL -> 2
-let dl_scalar (value : deep_local_permission) : int = match value with DL -> 0 | LG -> 1
-let dro_scalar (value : deep_read_only_permission) : int = match value with DRO -> 0 | LM -> 1
+let locality_scalar = metadata_scalar ~name:"Griotte locality" [ (Local, 0); (Global, 1) ]
 
-let permission_scalar
-    ((rx, w, dl, dro) :
-      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : int =
-  (rx_scalar rx lsl 4) lor (write_scalar w lsl 2) lor (dl_scalar dl lsl 1) lor dro_scalar dro
+let word_type_scalar =
+  metadata_scalar ~name:"Griotte word type"
+    [ (W_I, 0); (W_Cap, 1); (W_SealRange, 2); (W_Sealed, 3); (W_Sentry, 4) ]
 
-let permission_of_scalar (scalar : int) :
-    (rx_permission * write_permission * deep_local_permission * deep_read_only_permission) option =
-  let rx = match (scalar lsr 4) land 3 with 0 -> Orx | 1 -> R | 2 -> X | _ -> XSR in
-  let w =
-    match (scalar lsr 2) land 3 with 0 -> Some Ow | 1 -> Some W | 2 -> Some WL | _ -> None
-  in
-  match w with
-  | None -> None
-  | Some w ->
-      Some (rx, w, (if scalar land 2 = 0 then DL else LG), if scalar land 1 = 0 then DRO else LM)
+let permission_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"permission" ~tag:0
+    ~wrong_tag_error:"not a Griotte permission encoding"
+    ~malformed_payload_error:"unknown Griotte permission"
+    (Tagged_metadata_codec.scalar_payload permission_scalar)
 
-let payload_at_most (maximum : int) (message : 'a) (payload : Z.t) : (Z.t, 'a) result =
-  if Z.compare payload (Z.of_int maximum) <= 0 then Ok payload else Error message
+let seal_permission_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"seal permission" ~tag:1
+    ~wrong_tag_error:"not a Griotte seal permission encoding"
+    ~malformed_payload_error:"unknown Griotte seal permission"
+    (Tagged_metadata_codec.scalar_payload seal_permission_scalar)
 
-let decode_permission_payload (payload : Z.t) :
-    ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
-      string )
-    result =
-  Result.bind (payload_at_most 0x3f "unknown Griotte permission" payload) (fun payload ->
-      match permission_of_scalar (Z.to_int payload) with
-      | Some permission -> Ok permission
-      | None -> Error "unknown Griotte permission")
+let locality_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"locality" ~tag:2
+    ~wrong_tag_error:"not a Griotte locality encoding"
+    ~malformed_payload_error:"unknown Griotte locality"
+    (Tagged_metadata_codec.scalar_payload locality_scalar)
+
+let word_type_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"word type" ~tag:3
+    ~wrong_tag_error:"not a Griotte word type encoding"
+    ~malformed_payload_error:"unknown Griotte word type"
+    (Tagged_metadata_codec.scalar_payload word_type_scalar)
+
+let permission_locality_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"permission/locality" ~tag:4
+    ~wrong_tag_error:"not a Griotte permission/locality encoding"
+    ~malformed_payload_error:"unknown Griotte permission/locality"
+    (Tagged_metadata_codec.packed_pair ~low_width:6 ~high_width:1 permission_scalar locality_scalar)
+
+let seal_permission_locality_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"seal permission/locality" ~tag:5
+    ~wrong_tag_error:"not a Griotte seal permission/locality encoding"
+    ~malformed_payload_error:"unknown Griotte seal permission/locality"
+    (Tagged_metadata_codec.packed_pair ~low_width:2 ~high_width:1 seal_permission_scalar
+       locality_scalar)
+
+let metadata_layout =
+  match
+    Tagged_metadata_codec.compile
+      [
+        Tagged_metadata_codec.pattern permission_pattern;
+        Tagged_metadata_codec.pattern seal_permission_pattern;
+        Tagged_metadata_codec.pattern locality_pattern;
+        Tagged_metadata_codec.pattern word_type_pattern;
+        Tagged_metadata_codec.pattern permission_locality_pattern;
+        Tagged_metadata_codec.pattern seal_permission_locality_pattern;
+      ]
+  with
+  | Ok layout -> layout
+  | Error errors ->
+      failwith (String.concat "; " (List.map Tagged_metadata_codec.error_message errors))
+
+let encode_metadata (pattern : 'a Tagged_metadata_codec.encoding_pattern) (value : 'a) : Z.t =
+  match Tagged_metadata_codec.encode metadata_layout pattern value with
+  | Ok encoded -> encoded
+  | Error message -> failwith message
 
 let encode_permission
-    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : Z.t
-    =
-  encode_tag 0 (Z.of_int (permission_scalar p))
+    (permission :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission) : Z.t =
+  encode_metadata permission_pattern permission
 
-let decode_permission (z : Z.t) :
+let decode_permission (encoded : Z.t) :
     ( rx_permission * write_permission * deep_local_permission * deep_read_only_permission,
       string )
     result =
-  Result.bind (decode_tag 0 "permission" z) decode_permission_payload
+  Tagged_metadata_codec.decode metadata_layout permission_pattern encoded
 
-let seal_permission_scalar (value : bool * bool) : int =
-  match value with false, false -> 0 | false, true -> 1 | true, false -> 2 | true, true -> 3
+let encode_seal_permission (permission : bool * bool) : Z.t =
+  encode_metadata seal_permission_pattern permission
 
-let encode_seal_permission (p : bool * bool) : Z.t =
-  encode_tag 1 (Z.of_int (seal_permission_scalar p))
+let decode_seal_permission (encoded : Z.t) : (bool * bool, string) result =
+  Tagged_metadata_codec.decode metadata_layout seal_permission_pattern encoded
 
-let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
-  Result.bind (decode_tag 1 "seal permission" z) (fun p ->
-      if Z.equal p Z.zero then Ok (false, false)
-      else if Z.equal p Z.one then Ok (false, true)
-      else if Z.equal p (Z.of_int 2) then Ok (true, false)
-      else if Z.equal p (Z.of_int 3) then Ok (true, true)
-      else Error "unknown Griotte seal permission")
+let encode_locality (locality : locality) : Z.t = encode_metadata locality_pattern locality
 
-let locality_scalar (value : locality) : int = match value with Local -> 0 | Global -> 1
-let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
+let decode_locality (encoded : Z.t) : (locality, string) result =
+  Tagged_metadata_codec.decode metadata_layout locality_pattern encoded
 
-let decode_locality (z : Z.t) : (locality, string) result =
-  Result.bind (decode_tag 2 "locality" z) (fun p ->
-      if Z.equal p Z.zero then Ok Local
-      else if Z.equal p Z.one then Ok Global
-      else Error "unknown Griotte locality")
+let encode_word_type (word_type : word_type) : Z.t = encode_metadata word_type_pattern word_type
 
-let word_type_scalar (value : word_type) : int =
-  match value with W_I -> 0 | W_Cap -> 1 | W_SealRange -> 2 | W_Sealed -> 3 | W_Sentry -> 4
-
-let encode_word_type (w : word_type) : Z.t = encode_tag 3 (Z.of_int (word_type_scalar w))
-
-let decode_word_type (z : Z.t) : (word_type, string) result =
-  Result.bind (decode_tag 3 "word type" z) (fun p ->
-      if Z.equal p Z.zero then Ok W_I
-      else if Z.equal p Z.one then Ok W_Cap
-      else if Z.equal p (Z.of_int 2) then Ok W_SealRange
-      else if Z.equal p (Z.of_int 3) then Ok W_Sealed
-      else if Z.equal p (Z.of_int 4) then Ok W_Sentry
-      else Error "unknown Griotte word type")
+let decode_word_type (encoded : Z.t) : (word_type, string) result =
+  Tagged_metadata_codec.decode metadata_layout word_type_pattern encoded
 
 let encode_permission_locality
-    (p : rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
-    (l : locality) : Z.t =
-  encode_tag 4 (Z.of_int ((locality_scalar l lsl 6) lor permission_scalar p))
+    (permission :
+      rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
+    (locality : locality) : Z.t =
+  encode_metadata permission_locality_pattern (permission, locality)
 
-let decode_permission_locality (z : Z.t) :
+let decode_permission_locality (encoded : Z.t) :
     ( (rx_permission * write_permission * deep_local_permission * deep_read_only_permission)
       * locality,
       string )
     result =
-  Result.bind (decode_tag 4 "permission/locality" z) (fun p ->
-      Result.bind (payload_at_most 0x7f "unknown Griotte permission/locality" p) (fun p ->
-          let locality = if Z.testbit p 6 then Global else Local in
-          Result.map
-            (fun permission -> (permission, locality))
-            (decode_permission_payload (Z.extract p 0 6))))
+  Tagged_metadata_codec.decode metadata_layout permission_locality_pattern encoded
 
-let encode_seal_permission_locality (p : bool * bool) (l : locality) : Z.t =
-  encode_tag 5 (Z.of_int ((locality_scalar l lsl 2) lor seal_permission_scalar p))
+let encode_seal_permission_locality (permission : bool * bool) (locality : locality) : Z.t =
+  encode_metadata seal_permission_locality_pattern (permission, locality)
 
-let decode_seal_permission_locality (z : Z.t) : ((bool * bool) * locality, string) result =
-  Result.bind (decode_tag 5 "seal permission/locality" z) (fun p ->
-      Result.bind (payload_at_most 0x7 "unknown Griotte seal permission/locality" p) (fun p ->
-          let locality = if Z.testbit p 2 then Global else Local in
-          let seal =
-            match Z.to_int (Z.extract p 0 2) with
-            | 0 -> (false, false)
-            | 1 -> (false, true)
-            | 2 -> (true, false)
-            | _ -> (true, true)
-          in
-          Ok (seal, locality)))
+let decode_seal_permission_locality (encoded : Z.t) : ((bool * bool) * locality, string) result =
+  Tagged_metadata_codec.decode metadata_layout seal_permission_locality_pattern encoded

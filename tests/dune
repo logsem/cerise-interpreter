@@ -9,6 +9,7 @@
   cli_ui_fixture_tests
   public_api_compile
   instruction_codec_tests
+  tagged_metadata_codec_tests
   tui_fidelity_tests)
  (deps
   (glob_files goldens/*.txt)
@@ -33,7 +34,7 @@
   test_files/malloc_test.s
   test_files/test_linking_res.s
   (glob_files test_files/vanilla/pos/*))
- (libraries alcotest cerise cerise_terminal notty-community))
+ (libraries alcotest cerise cerise_tagged_metadata_codec cerise_terminal notty-community))
 
 (rule
  (alias runtest)

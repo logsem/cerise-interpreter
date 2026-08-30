@@ -63,12 +63,13 @@ independent.
 5. **Add `printer.ml`.** It must print machine words in syntax accepted by `parse_word`; instruction
    text is also used when an integer in a `Machine_view.word` decodes successfully. Add round-trip
    tests rather than relying on display-only examples.
-6. **Declare `codec.ml`.** Define scalar codecs and typed operand codecs, then one symmetric
+6. **Declare `codec.ml`.** Define scalar codecs and typed operand codecs, then symmetric
    `Instruction_codec.encoding_pattern` declarations for the `Ast.instruction` constructors.
    A constructor may use disjoint patterns when its operand alternatives need different codecs,
    as handwritten Griotte does for register and signed-constant `Jmp` targets. Declare patterns in
-   the intended opcode order and expose `encode` and `decode`, plus scalar encodings needed by
-   instructions such as `restrict`, `getp`, or `getwtype`.
+   the intended opcode order and expose `encode` and `decode`. For capability metadata used by
+   instructions such as `restrict`, `getp`, or `getwtype`, use the private tagged-metadata engine
+   described below instead of maintaining separate scalar encoders and decoders.
 7. **Implement `machine.ml`.** Keep its state limited to dynamic semantic state. Use the runtime
    configuration to initialize registers and finite sparse memory, then discard it; accept the
    configuration first in `read_memory`, `execute`, `step`, `step_n`, and any exposed `run`, and
@@ -135,6 +136,31 @@ rather than raise exceptions.
 Assembly text is the portable interchange form across backends that share an instruction set.
 Encoded instruction integers are backend-specific: in particular, handwritten Griotte uses this
 compact declaration-order codec while extracted Griotte retains its independent Rocq fixed layout.
+
+## Tagged metadata codecs
+
+The six handwritten backends encode capability metadata through the repository-private
+`Tagged_metadata_codec`; extracted Griotte deliberately retains its independent implementation.
+Author a handwritten metadata layout in four layers:
+
+1. A finite scalar declaration lists each semantic value and its non-negative numeric encoding.
+   Decoding is derived from the same list, so do not add a reverse table or matching decoder.
+2. A scalar payload carries one declaration directly. A packed payload combines two scalar
+   declarations into explicit fixed-width low and high fields—for example, five permission bits
+   below two locality bits.
+3. A typed encoding pattern gives the payload a unique name, one of the fixed three-bit tags, and
+   the backend's exact wrong-tag and malformed-payload messages.
+4. One compiled metadata layout contains every pattern supported by that backend. Public named
+   wrappers delegate to their typed pattern; keep existing wrapper types and decoder visibility.
+
+In short, the authoring flow is
+`scalar declaration → packed payload → tagged encoding pattern → compiled metadata layout`.
+Compilation rejects empty or duplicate pattern names, invalid or duplicate tags, duplicate or
+negative scalar encodings, and values that do not fit their declared packed field. Decoding uses
+arbitrary-precision `Z.t` operations throughout and treats negative inputs, extra high bits,
+unknown scalar values, and wrong tags as errors. Preserve the established numeric scalars, field
+widths, tags, and error strings when changing a backend; add exhaustive scalar and composite
+goldens so the layout cannot silently drift.
 
 ## Building or extending a UI
 

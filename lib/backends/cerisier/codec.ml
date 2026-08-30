@@ -148,54 +148,71 @@ let table =
 
 let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
-let encode_tag (tag : int) (scalar : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left scalar 3)
 
-let permission_scalar (codec_value : permission) : int =
-  match codec_value with O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
+(* Capability metadata is declared once and compiled into both directions. *)
+let metadata_scalar ~(name : string) (mappings : ('a * int) list) =
+  Tagged_metadata_codec.finite_scalar ~name
+    (List.map (fun (value, encoding) -> (value, Z.of_int encoding)) mappings)
 
-let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
+let permission_scalar =
+  metadata_scalar ~name:"Cerisier permission"
+    [ (O, 0); (E, 1); (RO, 4); (RX, 5); (RW, 6); (RWX, 7) ]
 
-let decode_permission (z : Z.t) : (permission, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) Z.zero) then
-    Error "not a Cerisier permission encoding"
-  else
-    match Z.shift_right z 3 with
-    | payload when Z.equal payload Z.zero -> Ok O
-    | payload when Z.equal payload Z.one -> Ok E
-    | payload when Z.equal payload (Z.of_int 4) -> Ok RO
-    | payload when Z.equal payload (Z.of_int 5) -> Ok RX
-    | payload when Z.equal payload (Z.of_int 6) -> Ok RW
-    | payload when Z.equal payload (Z.of_int 7) -> Ok RWX
-    | _ -> Error "unknown Cerisier permission"
+let seal_permission_scalar =
+  metadata_scalar ~name:"seal permission"
+    [ ((false, false), 0); ((false, true), 1); ((true, false), 2); ((true, true), 3) ]
 
-let encode_seal_permission ((s, u) : bool * bool) : Z.t =
-  encode_tag 1 (Z.of_int ((if s then 2 else 0) + if u then 1 else 0))
+let word_type_scalar =
+  metadata_scalar ~name:"word type" [ (Integer, 0); (Capability, 1); (Seal_range, 2); (Sealed, 3) ]
 
-let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 1)) then
-    Error "not a seal permission encoding"
-  else
-    match Z.shift_right z 3 with
-    | payload when Z.equal payload Z.zero -> Ok (false, false)
-    | payload when Z.equal payload Z.one -> Ok (false, true)
-    | payload when Z.equal payload (Z.of_int 2) -> Ok (true, false)
-    | payload when Z.equal payload (Z.of_int 3) -> Ok (true, true)
-    | _ -> Error "unknown seal permission"
+let permission_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"permission" ~tag:0
+    ~wrong_tag_error:"not a Cerisier permission encoding"
+    ~malformed_payload_error:"unknown Cerisier permission"
+    (Tagged_metadata_codec.scalar_payload permission_scalar)
 
-let encode_word_type (codec_value : word_type) : Z.t =
-  match codec_value with
-  | Integer -> encode_tag 3 Z.zero
-  | Capability -> encode_tag 3 Z.one
-  | Seal_range -> encode_tag 3 (Z.of_int 2)
-  | Sealed -> encode_tag 3 (Z.of_int 3)
+let seal_permission_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"seal permission" ~tag:1
+    ~wrong_tag_error:"not a seal permission encoding"
+    ~malformed_payload_error:"unknown seal permission"
+    (Tagged_metadata_codec.scalar_payload seal_permission_scalar)
 
-let decode_word_type (z : Z.t) : (word_type, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 3)) then
-    Error "not a word-type encoding"
-  else
-    match Z.shift_right z 3 with
-    | payload when Z.equal payload Z.zero -> Ok Integer
-    | payload when Z.equal payload Z.one -> Ok Capability
-    | payload when Z.equal payload (Z.of_int 2) -> Ok Seal_range
-    | payload when Z.equal payload (Z.of_int 3) -> Ok Sealed
-    | _ -> Error "unknown word type"
+let word_type_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"word type" ~tag:3
+    ~wrong_tag_error:"not a word-type encoding" ~malformed_payload_error:"unknown word type"
+    (Tagged_metadata_codec.scalar_payload word_type_scalar)
+
+let metadata_layout =
+  match
+    Tagged_metadata_codec.compile
+      [
+        Tagged_metadata_codec.pattern permission_pattern;
+        Tagged_metadata_codec.pattern seal_permission_pattern;
+        Tagged_metadata_codec.pattern word_type_pattern;
+      ]
+  with
+  | Ok layout -> layout
+  | Error errors ->
+      failwith (String.concat "; " (List.map Tagged_metadata_codec.error_message errors))
+
+let encode_metadata (pattern : 'a Tagged_metadata_codec.encoding_pattern) (value : 'a) : Z.t =
+  match Tagged_metadata_codec.encode metadata_layout pattern value with
+  | Ok encoded -> encoded
+  | Error message -> failwith message
+
+let encode_permission (permission : permission) : Z.t =
+  encode_metadata permission_pattern permission
+
+let decode_permission (encoded : Z.t) : (permission, string) result =
+  Tagged_metadata_codec.decode metadata_layout permission_pattern encoded
+
+let encode_seal_permission (permission : bool * bool) : Z.t =
+  encode_metadata seal_permission_pattern permission
+
+let decode_seal_permission (encoded : Z.t) : (bool * bool, string) result =
+  Tagged_metadata_codec.decode metadata_layout seal_permission_pattern encoded
+
+let encode_word_type (word_type : word_type) : Z.t = encode_metadata word_type_pattern word_type
+
+let decode_word_type (encoded : Z.t) : (word_type, string) result =
+  Tagged_metadata_codec.decode metadata_layout word_type_pattern encoded

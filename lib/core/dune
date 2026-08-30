@@ -4,4 +4,18 @@
  (name cerise_core)
  (public_name cerise-interpreter.core)
  (wrapped true)
+ (modules
+  assembly_construction
+  diagnostic
+  instruction_codec
+  machine_backend
+  machine_view
+  runtime_config)
+ (libraries zarith))
+
+(library
+ (name cerise_tagged_metadata_codec)
+ (package cerise-interpreter)
+ (wrapped false)
+ (modules tagged_metadata_codec)
  (libraries zarith))

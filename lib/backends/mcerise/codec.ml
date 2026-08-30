@@ -129,79 +129,80 @@ let encode (instruction : instruction) : (Z.t, Instruction_codec.error) result =
 let decode (encoded : Z.t) : (instruction, Instruction_codec.error) result =
   Instruction_codec.decode table encoded
 
-(* Capability-field encodings used by restrict and inspection instructions. *)
-let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
+(* Capability metadata is declared once and compiled into both directions. *)
+let metadata_scalar ~(name : string) (mappings : ('a * int) list) =
+  Tagged_metadata_codec.finite_scalar ~name
+    (List.map (fun (value, encoding) -> (value, Z.of_int encoding)) mappings)
 
-let permission_scalar (value : permission) : int =
-  match value with
-  | O -> 0
-  | E -> 1
-  | RO -> 4
-  | RX -> 5
-  | RW -> 6
-  | RWX -> 7
-  | RWL -> 14
-  | RWLX -> 15
-  | URW -> 22
-  | URWX -> 23
-  | URWL -> 30
-  | URWLX -> 31
+let permission_scalar =
+  metadata_scalar ~name:"mCerise permission"
+    [
+      (O, 0);
+      (E, 1);
+      (RO, 4);
+      (RX, 5);
+      (RW, 6);
+      (RWX, 7);
+      (RWL, 14);
+      (RWLX, 15);
+      (URW, 22);
+      (URWX, 23);
+      (URWL, 30);
+      (URWLX, 31);
+    ]
 
-let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
+let locality_scalar =
+  metadata_scalar ~name:"mCerise locality" [ (Directed, 0); (Local, 1); (Global, 2) ]
 
-let permission_of_scalar (value : int) : permission option =
-  match value with
-  | 0 -> Some O
-  | 1 -> Some E
-  | 4 -> Some RO
-  | 5 -> Some RX
-  | 6 -> Some RW
-  | 7 -> Some RWX
-  | 14 -> Some RWL
-  | 15 -> Some RWLX
-  | 22 -> Some URW
-  | 23 -> Some URWX
-  | 30 -> Some URWL
-  | 31 -> Some URWLX
-  | _ -> None
+let permission_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"permission" ~tag:0
+    ~wrong_tag_error:"not a mCerise permission encoding"
+    ~malformed_payload_error:"unknown mCerise permission"
+    (Tagged_metadata_codec.scalar_payload permission_scalar)
 
-let decode_permission (z : Z.t) : (permission, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) Z.zero) then
-    Error "not a mCerise permission encoding"
-  else if not (Z.fits_int (Z.shift_right z 3)) then Error "unknown mCerise permission"
-  else
-    match permission_of_scalar (Z.to_int (Z.shift_right z 3)) with
-    | Some p -> Ok p
-    | None -> Error "unknown mCerise permission"
+let locality_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"locality" ~tag:2
+    ~wrong_tag_error:"not a mCerise locality encoding"
+    ~malformed_payload_error:"unknown mCerise locality"
+    (Tagged_metadata_codec.scalar_payload locality_scalar)
 
-let locality_scalar (value : locality) : int =
-  match value with Global -> 2 | Local -> 1 | Directed -> 0
+let permission_locality_pattern =
+  Tagged_metadata_codec.encoding_pattern ~name:"permission/locality" ~tag:4
+    ~wrong_tag_error:"not a mCerise permission/locality encoding"
+    ~malformed_payload_error:"unknown mCerise permission/locality"
+    (Tagged_metadata_codec.packed_pair ~low_width:5 ~high_width:2 permission_scalar locality_scalar)
 
-let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
+let metadata_layout =
+  match
+    Tagged_metadata_codec.compile
+      [
+        Tagged_metadata_codec.pattern permission_pattern;
+        Tagged_metadata_codec.pattern locality_pattern;
+        Tagged_metadata_codec.pattern permission_locality_pattern;
+      ]
+  with
+  | Ok layout -> layout
+  | Error errors ->
+      failwith (String.concat "; " (List.map Tagged_metadata_codec.error_message errors))
 
-let decode_locality (z : Z.t) : (locality, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 2)) then
-    Error "not a mCerise locality encoding"
-  else
-    match Z.shift_right z 3 with
-    | p when Z.equal p Z.zero -> Ok Directed
-    | p when Z.equal p Z.one -> Ok Local
-    | p when Z.equal p (Z.of_int 2) -> Ok Global
-    | _ -> Error "unknown mCerise locality"
+let encode_metadata (pattern : 'a Tagged_metadata_codec.encoding_pattern) (value : 'a) : Z.t =
+  match Tagged_metadata_codec.encode metadata_layout pattern value with
+  | Ok encoded -> encoded
+  | Error message -> failwith message
 
-let encode_permission_locality (p : permission) (l : locality) : Z.t =
-  encode_tag 4 (Z.of_int ((locality_scalar l lsl 5) + permission_scalar p))
+let encode_permission (permission : permission) : Z.t =
+  encode_metadata permission_pattern permission
 
-let decode_permission_locality (z : Z.t) : (permission * locality, string) result =
-  if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 4)) then
-    Error "not a mCerise permission/locality encoding"
-  else
-    let payload = Z.shift_right z 3 in
-    if not (Z.fits_int payload) then Error "unknown mCerise permission/locality"
-    else
-      let payload = Z.to_int payload in
-      match (permission_of_scalar (payload land 31), payload lsr 5) with
-      | Some p, 0 -> Ok (p, Directed)
-      | Some p, 1 -> Ok (p, Local)
-      | Some p, 2 -> Ok (p, Global)
-      | _ -> Error "unknown mCerise permission/locality"
+let decode_permission (encoded : Z.t) : (permission, string) result =
+  Tagged_metadata_codec.decode metadata_layout permission_pattern encoded
+
+let encode_locality (locality : locality) : Z.t = encode_metadata locality_pattern locality
+
+let decode_locality (encoded : Z.t) : (locality, string) result =
+  Tagged_metadata_codec.decode metadata_layout locality_pattern encoded
+
+let encode_permission_locality (permission : permission) (locality : locality) : Z.t =
+  encode_metadata permission_locality_pattern (permission, locality)
+
+let decode_permission_locality (encoded : Z.t) : (permission * locality, string) result =
+  Tagged_metadata_codec.decode metadata_layout permission_locality_pattern encoded
