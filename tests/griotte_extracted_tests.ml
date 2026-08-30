@@ -1,6 +1,7 @@
 open Cerise
 
-let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a =
+  match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.to_string diagnostics))
@@ -8,7 +9,8 @@ let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_val
 let integer (value : int) : Z.t = Z.of_int value
 let config = Runtime_config.create ~max_addr:(integer 128) ~stack_addr:(integer 64) ()
 
-let resolve_file (path : string) : string = if Sys.file_exists path then path else "../../../" ^ path
+let resolve_file (path : string) : string =
+  if Sys.file_exists path then path else "../../../" ^ path
 
 let read_file (path : string) : string =
   let path = resolve_file path in
@@ -18,9 +20,7 @@ let read_file (path : string) : string =
     (fun () -> really_input_string channel (in_channel_length channel))
 
 let extracted_register (register : Griotte.Ast.register) : Griotte_extracted.Ast.register =
-  match register with
-  | PC -> PC
-  | Reg number -> Reg number
+  match register with PC -> PC | Reg number -> Reg number
 
 let extracted_operand (operand : Griotte.Ast.reg_or_const) : Griotte_extracted.Ast.reg_or_const =
   match operand with
@@ -36,9 +36,7 @@ let extracted_permission ((rx, write, deep_local, deep_read_only) : Griotte.Ast.
   (rx, write, deep_local, deep_read_only)
 
 let extracted_locality (locality : Griotte.Ast.locality) : Griotte_extracted.Ast.locality =
-  match locality with
-  | Local -> Local
-  | Global -> Global
+  match locality with Local -> Local | Global -> Global
 
 let extracted_word_type (word_type : Griotte.Ast.word_type) : Griotte_extracted.Ast.word_type =
   match word_type with
@@ -153,16 +151,18 @@ let instructions =
     LShiftR (a, c, c);
   ]
 
-let encoding_identity (() : unit) : unit =
+let independent_instruction_codecs_and_metadata_identity (() : unit) : unit =
   List.iter
     (fun instruction ->
-      let expected = Result.get_ok (Griotte.Codec.encode instruction) in
+      let handwritten = Result.get_ok (Griotte.Codec.encode instruction) in
       let extracted_instruction = extracted_instruction instruction in
-      let actual = Result.get_ok (Griotte_extracted.Codec.encode extracted_instruction) in
-      Alcotest.(check string) "fixed numeric encoding" (Z.to_string expected) (Z.to_string actual);
+      let extracted = Result.get_ok (Griotte_extracted.Codec.encode extracted_instruction) in
       Alcotest.(check bool)
-        "standalone round trip" true
-        (Griotte_extracted.Codec.decode actual = Ok extracted_instruction))
+        "handwritten round trip" true
+        (Griotte.Codec.decode handwritten = Ok instruction);
+      Alcotest.(check bool)
+        "extracted round trip" true
+        (Griotte_extracted.Codec.decode extracted = Ok extracted_instruction))
     instructions;
   let open Griotte_extracted.Ast in
   Alcotest.(check string)
@@ -173,7 +173,8 @@ let encoding_identity (() : unit) : unit =
     (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jalr (Reg 1, Reg 2)))));
   Alcotest.(check string)
     "Move negative constant golden" "47624"
-    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (integer (-7)))))));
+    (Z.to_string
+       (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (integer (-7)))))));
   let open Griotte.Ast in
   let permissions =
     List.concat_map
@@ -237,8 +238,6 @@ let large_codec_round_trip (() : unit) : unit =
   let handwritten = Result.get_ok (Griotte.Codec.encode instruction) in
   let extracted_instruction = extracted_instruction instruction in
   let extracted = Result.get_ok (Griotte_extracted.Codec.encode extracted_instruction) in
-  Alcotest.(check string)
-    "large finite encoding identity" (Z.to_string handwritten) (Z.to_string extracted);
   Alcotest.(check bool)
     "large finite handwritten round trip" true
     (Griotte.Codec.decode handwritten = Ok instruction);
@@ -263,7 +262,8 @@ let decoder_totality (() : unit) : unit =
     (fun opcode ->
       Alcotest.(check bool)
         (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
-        true (rejects (integer opcode)))
+        true
+        (rejects (integer opcode)))
     (List.init 8 (fun offset -> 0x18 + offset))
 
 let parser_ownership_and_corpus (() : unit) : unit =
@@ -430,19 +430,108 @@ let nested_composite_macro_arguments (() : unit) : unit =
     "extracted rejects wrong nested permission kind" true
     (Result.is_error (Griotte_extracted.Parser.parse_program (nested "wtype" "Cap")))
 
-let normalize (view : Machine_view.t) : Machine_view.t = { view with Machine_view.backend_name = "griotte" }
+let normalize_word (instruction : string option) (word : Machine_view.word) : Machine_view.word =
+  match instruction with
+  | None -> { word with decoded_instruction = None }
+  | Some instruction ->
+      {
+        word with
+        edit_text = instruction;
+        short_text = instruction;
+        detail_text = instruction;
+        decoded_instruction = Some instruction;
+        fingerprint = instruction;
+        integer = Some Z.zero;
+      }
 
-let compare_view (label : string) (handwritten : Machine_session.t) (extracted : Machine_session.t) : unit =
+let normalize (instruction_registers : (Machine_view.register_id * string) list)
+    (instruction_addresses : (Z.t * string) list) (missing_instruction : string option)
+    (view : Machine_view.t) : Machine_view.t =
+  let registers =
+    List.map
+      (fun (register : Machine_view.register) ->
+        let instruction =
+          List.find_map
+            (fun (id, instruction) ->
+              if Machine_view.Register_id.equal id register.id then Some instruction else None)
+            instruction_registers
+        in
+        { register with Machine_view.word = normalize_word instruction register.word })
+      view.registers
+  in
+  let memory =
+    List.map
+      (fun (cell : Machine_view.memory_cell) ->
+        let instruction =
+          List.find_map
+            (fun (address, instruction) ->
+              if Z.equal address cell.address then Some instruction else None)
+            instruction_addresses
+        in
+        { cell with Machine_view.word = normalize_word instruction cell.word })
+      view.memory
+  in
+  let missing_cell =
+    match view.missing_cell with
+    | Machine_view.Unmapped -> Machine_view.Unmapped
+    | Default word -> Default (normalize_word missing_instruction word)
+  in
+  { view with Machine_view.backend_name = "griotte"; registers; memory; missing_cell }
+
+let compare_view (label : string) (handwritten : Machine_session.t) (extracted : Machine_session.t)
+    : unit =
+  let handwritten_view = Machine_session.view handwritten in
+  let extracted_view = Machine_session.view extracted in
+  let matching_instruction (left : Machine_view.word) (right : Machine_view.word) : string option =
+    match (left.decoded_instruction, right.decoded_instruction) with
+    | Some left, Some right when String.equal left right -> Some left
+    | _ -> None
+  in
+  let instruction_registers =
+    List.filter_map
+      (fun (register : Machine_view.register) ->
+        Option.bind
+          (List.find_opt
+             (fun (other : Machine_view.register) ->
+               Machine_view.Register_id.equal register.id other.id)
+             extracted_view.registers)
+          (fun other ->
+            Option.map
+              (fun instruction -> (register.id, instruction))
+              (matching_instruction register.word other.word)))
+      handwritten_view.registers
+  in
+  let instruction_addresses =
+    List.filter_map
+      (fun (cell : Machine_view.memory_cell) ->
+        Option.bind
+          (List.find_opt
+             (fun (other : Machine_view.memory_cell) -> Z.equal cell.address other.address)
+             extracted_view.memory)
+          (fun other ->
+            Option.map
+              (fun instruction -> (cell.address, instruction))
+              (matching_instruction cell.word other.word)))
+      handwritten_view.memory
+  in
+  let missing_instruction =
+    match (handwritten_view.missing_cell, extracted_view.missing_cell) with
+    | Default left, Default right -> matching_instruction left right
+    | Unmapped, Unmapped | Unmapped, Default _ | Default _, Unmapped -> None
+  in
   Alcotest.(check bool)
     label true
-    (normalize (Machine_session.view handwritten) = normalize (Machine_session.view extracted))
+    (normalize instruction_registers instruction_addresses missing_instruction handwritten_view
+    = normalize instruction_registers instruction_addresses missing_instruction extracted_view)
 
-let sessions ?regfile:(regfile : string option) (source : string) : Machine_session.t * Machine_session.t =
+let sessions ?(regfile : string option) (source : string) : Machine_session.t * Machine_session.t =
   ( ok (Machine_session.create ~backend:"griotte" ~config ~source ~regfile),
     ok (Machine_session.create ~backend:"griotte-extracted" ~config ~source ~regfile) )
 
-let differential_final ?regfile:(regfile : string option) (label : string) (source : string) : Machine_session.t * Machine_session.t =
-  let rec loop (step_number : int) (handwritten : Machine_session.t) (extracted : Machine_session.t) : Machine_session.t * Machine_session.t =
+let differential_final ?(regfile : string option) (label : string) (source : string) :
+    Machine_session.t * Machine_session.t =
+  let rec loop (step_number : int) (handwritten : Machine_session.t) (extracted : Machine_session.t)
+      : Machine_session.t * Machine_session.t =
     compare_view
       (Printf.sprintf "%s after %d instruction steps" label step_number)
       handwritten extracted;
@@ -457,7 +546,8 @@ let differential_final ?regfile:(regfile : string option) (label : string) (sour
   let handwritten, extracted = sessions ?regfile source in
   loop 0 handwritten extracted
 
-let differential ?regfile:(regfile : string option) (label : string) (source : string) : unit = ignore (differential_final ?regfile label source)
+let differential ?(regfile : string option) (label : string) (source : string) : unit =
+  ignore (differential_final ?regfile label source)
 
 let general_word (key : string) (session : Machine_session.t) : Machine_view.register =
   Option.get
@@ -465,7 +555,8 @@ let general_word (key : string) (session : Machine_session.t) : Machine_view.reg
        { Machine_view.Register_id.bank = General; key }
        (Machine_session.view session))
 
-let check_terminal_integer (label : string) (expected : Z.t) ((handwritten, extracted) : Machine_session.t * Machine_session.t) : unit =
+let check_terminal_integer (label : string) (expected : Z.t)
+    ((handwritten, extracted) : Machine_session.t * Machine_session.t) : unit =
   List.iter
     (fun (backend, session) ->
       let view = Machine_session.view session in
@@ -479,7 +570,8 @@ let check_terminal_integer (label : string) (expected : Z.t) ((handwritten, extr
         (Option.map Z.to_string (general_word "ca0" session).word.integer))
     [ ("handwritten", handwritten); ("extracted", extracted) ]
 
-let check_subseg_result (label : string) (expected_status : Machine_view.status) (expected_base : Z.t) (expected_limit : Z.t) (expected_cursor : Z.t)
+let check_subseg_result (label : string) (expected_status : Machine_view.status)
+    (expected_base : Z.t) (expected_limit : Z.t) (expected_cursor : Z.t)
     ((handwritten, extracted) : Machine_session.t * Machine_session.t) : unit =
   List.iter
     (fun (backend, session) ->
@@ -490,7 +582,9 @@ let check_subseg_result (label : string) (expected_status : Machine_view.status)
         match word.capability with
         | Some capability -> (capability.base, capability.limit, capability.cursor)
         | None ->
-            let annotation (name : string) : Z.t = Z.of_string (Option.get (List.assoc_opt name word.annotations)) in
+            let annotation (name : string) : Z.t =
+              Z.of_string (Option.get (List.assoc_opt name word.annotations))
+            in
             (annotation "base", annotation "limit", annotation "cursor")
       in
       Alcotest.(check string)
@@ -590,7 +684,8 @@ let capabilities_and_sealing (() : unit) : unit =
 let subseg_boundaries (() : unit) : unit =
   let capability = architectural_pc ^ "ca0 := ([R WL LG LM], Global, 1, 10, 4)" in
   let seal_range = architectural_pc ^ "ca0 := [SU, Global, 1, 10, 4]" in
-  let check (label : string) (regfile : string) (source : string) (status : Machine_view.status) (base : int) (limit : int) : unit =
+  let check (label : string) (regfile : string) (source : string) (status : Machine_view.status)
+      (base : int) (limit : int) : unit =
     differential_final label ~regfile source
     |> check_subseg_result label status (integer base) (integer limit) (integer 4)
   in
@@ -714,9 +809,9 @@ let () =
     [
       ( "codec",
         [
-          Alcotest.test_case "encoding identity" `Quick encoding_identity;
-          Alcotest.test_case "large finite encoding identity and round trip" `Quick
-            large_codec_round_trip;
+          Alcotest.test_case "independent instruction codecs and metadata identity" `Quick
+            independent_instruction_codecs_and_metadata_identity;
+          Alcotest.test_case "large finite independent round trips" `Quick large_codec_round_trip;
           Alcotest.test_case "malformed totality" `Quick decoder_totality;
         ] );
       ( "parser",

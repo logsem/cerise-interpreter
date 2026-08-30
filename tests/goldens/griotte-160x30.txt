@@ -13,7 +13,7 @@ cnull:                                       0    ca2:                          
                                                                                                                                           machine state: Running
 HEAP                                                                                                                                                       STACK
 ┏ ▶  0                                    1BC08  mov ca0 7                                               jmp pc  0                                        16   ┃
-┃    1                                       36  halt                                                    jmp pc  0                                        17   ┃
+┃    1                                       2E  halt                                                    jmp pc  0                                        17   ┃
 ┃    2                                        0  jmp pc                                                  jmp pc  0                                        18 ◀ ┃
 ┃    3                                        0  jmp pc                                                  jmp pc  0                                        19   ┃
 ┃    4                                        0  jmp pc                                                  jmp pc  0                                        1A   ┃

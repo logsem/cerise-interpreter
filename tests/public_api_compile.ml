@@ -61,6 +61,24 @@ module Extracted_printer = Cerise.Griotte_extracted.Printer
 module Extracted_codec = Cerise.Griotte_extracted.Codec
 module Extracted_backend = Cerise.Griotte_extracted.Backend
 
+type public_codec_instruction = Public_instruction of int * Z.t
+
+let public_scalar_codec : int Cerise.Instruction_codec.scalar_codec =
+  Cerise.Instruction_codec.enum ~name:"public API scalar" [ 0; 1 ]
+
+let public_operand_codec : (int * Z.t) Cerise.Instruction_codec.operand_codec =
+  Cerise.Instruction_codec.pair
+    (Cerise.Instruction_codec.scalar public_scalar_codec)
+    Cerise.Instruction_codec.signed_zarith
+
+let public_encoding_pattern : public_codec_instruction Cerise.Instruction_codec.encoding_pattern =
+  Cerise.Instruction_codec.encoding_pattern ~name:"Public_instruction" public_operand_codec
+    ~construct:(fun (tag, payload) -> Public_instruction (tag, payload))
+    ~project:(function Public_instruction (tag, payload) -> Some (tag, payload))
+
+let public_instruction_codec : public_codec_instruction Cerise.Instruction_codec.t =
+  Cerise.Instruction_codec.compile [ public_encoding_pattern ] |> Result.get_ok
+
 let vanilla_assemble_word = Vanilla_asm_ir.assemble_word
 let vanilla_assemble_program = Vanilla_asm_ir.assemble_program
 let vanilla_assemble_regfile = Vanilla_asm_ir.assemble_regfile
@@ -288,6 +306,7 @@ let backend_state_files =
   ]
 
 let () =
+  ignore public_instruction_codec;
   ignore machine_alias;
   ignore typed_seal_range;
   ignore typed_enclave_table;

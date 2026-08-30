@@ -1,6 +1,7 @@
 open Cerise
 
-let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a =
+  match matched_value with
   | Ok x -> x
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.to_string diagnostics))
@@ -9,40 +10,6 @@ let z (n : int) : Z.t = Z.of_int n
 
 let check_z (message : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) message (Z.to_string expected) (Z.to_string actual)
-
-let expected_allocations =
-  [
-    ("Jmp", 0x00, 2);
-    ("Jnz", 0x02, 2);
-    ("Jalr", 0x04, 1);
-    ("ReadSR", 0x05, 1);
-    ("WriteSR", 0x06, 1);
-    ("Move", 0x07, 2);
-    ("Load", 0x09, 1);
-    ("Store", 0x0a, 2);
-    ("Add", 0x0c, 4);
-    ("Sub", 0x10, 4);
-    ("Mul", 0x14, 4);
-    ("Lt", 0x20, 4);
-    ("Lea", 0x24, 2);
-    ("Restrict", 0x26, 2);
-    ("SubSeg", 0x28, 4);
-    ("GetL", 0x2c, 1);
-    ("GetB", 0x2d, 1);
-    ("GetE", 0x2e, 1);
-    ("GetA", 0x2f, 1);
-    ("GetP", 0x30, 1);
-    ("GetOType", 0x31, 1);
-    ("GetWType", 0x32, 1);
-    ("Seal", 0x33, 1);
-    ("UnSeal", 0x34, 1);
-    ("Fail", 0x35, 1);
-    ("Halt", 0x36, 1);
-    ("LAnd", 0x37, 4);
-    ("LOr", 0x3b, 4);
-    ("LShiftL", 0x3f, 4);
-    ("LShiftR", 0x43, 4);
-  ]
 
 let instructions =
   let open Griotte.Ast in
@@ -114,8 +81,6 @@ let instructions =
   ]
 
 let codec (() : unit) : unit =
-  Alcotest.(check (list (triple string int int)))
-    "historical fixed allocation" expected_allocations Griotte.Codec.allocations;
   List.iter
     (fun instruction ->
       let encoded = Result.get_ok (Griotte.Codec.encode instruction) in
@@ -124,30 +89,23 @@ let codec (() : unit) : unit =
         (Result.get_ok (Griotte.Codec.decode encoded) = instruction))
     instructions;
   let open Griotte.Ast in
-  check_z "negative immediate is historical signed high payload" (z (-767))
-    (Result.get_ok (Griotte.Codec.encode (Jmp (Constant (z (-3))))));
-  check_z "Jalr golden signed pair" (z 14340)
-    (Result.get_ok (Griotte.Codec.encode (Jalr (Reg 1, Reg 2))));
-  check_z "Move reg/negative constant golden" (z 47624)
-    (Result.get_ok (Griotte.Codec.encode (Move (Reg 1, Constant (z (-7))))));
+  Alcotest.(check bool)
+    "negative jump immediate has a non-negative encoding" true
+    (Z.sign (Result.get_ok (Griotte.Codec.encode (Jmp (Constant (z (-3)))))) >= 0);
+  let malformed_halt = Z.logor (Result.get_ok (Griotte.Codec.encode Halt)) (Z.shift_left Z.one 8) in
   List.iter
     (fun encoded ->
       Alcotest.(check bool)
         "malformed/unknown rejected" true
         (Result.is_error (Griotte.Codec.decode encoded)))
-    [
-      Z.minus_one;
-      z 0xfe;
-      Z.logor (z 0x36) (Z.shift_left Z.one 8);
-      Z.logor Z.zero (Z.shift_left (z 99) 8);
-    ];
+    [ Z.minus_one; z 0xfe; malformed_halt; Z.logor Z.zero (Z.shift_left (z 99) 8) ];
   List.iter
     (fun opcode ->
       Alcotest.(check bool)
         (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
         true
         (Result.is_error (Griotte.Codec.decode (z opcode))))
-    (List.init 8 (fun offset -> 0x18 + offset));
+    (List.init 8 (fun offset -> 0x80 + offset));
   let p = (XSR, WL, LG, LM) in
   Alcotest.(check bool)
     "permission round trip" true
@@ -190,10 +148,10 @@ let codec (() : unit) : unit =
 let parser (() : unit) : unit =
   let source =
     "jalr cra csp jmp -2 jnz ca0 2 readsR ca1 MTDC writeSR mtdc ca1 mov ct0 cnull load ct1 cgp \
-     store cgp ct1 add ca0 ca1 1 sub ca0 3 ca1 mul ca0 ca1 2 land ca0 7 3 \
-     lor ca0 4 1 lshiftl ca0 1 3 lshiftr ca0 8 2 lt ca0 1 2 lea cgp -1 restrict cgp ([R WL LG LM], \
-     Global) subseg cgp 0 8 getl ca0 cgp getb ca0 cgp gete ca0 cgp geta ca0 cgp getp ca0 cgp \
-     getotype ca0 cgp getwtype ca0 cgp seal ca0 ca3 cgp unseal ca1 ca3 ca0 fail halt"
+     store cgp ct1 add ca0 ca1 1 sub ca0 3 ca1 mul ca0 ca1 2 land ca0 7 3 lor ca0 4 1 lshiftl ca0 \
+     1 3 lshiftr ca0 8 2 lt ca0 1 2 lea cgp -1 restrict cgp ([R WL LG LM], Global) subseg cgp 0 8 \
+     getl ca0 cgp getb ca0 cgp gete ca0 cgp geta ca0 cgp getp ca0 cgp getotype ca0 cgp getwtype \
+     ca0 cgp seal ca0 ca3 cgp unseal ca1 ca3 ca0 fail halt"
   in
   ignore (ok (Griotte.Parser.parse_program source));
   let aliases =
@@ -389,22 +347,32 @@ let nested_composite_macro_arguments (() : unit) : unit =
 
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
-let session ?regfile:(regfile : string option) (source : string) : Machine_session.t =
+let session ?(regfile : string option) (source : string) : Machine_session.t =
   ok (Machine_session.create ~backend:"griotte" ~config ~source ~regfile)
 
 let architectural_pc = "pc := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 0) "
-let executable_session ?(regfile : string = "") (source : string) : Machine_session.t = session ~regfile:(architectural_pc ^ regfile) source
-let run (s : Machine_session.t) : Machine_session.t = (Machine_session.run ~max_steps:1000 s).session
 
-let find (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.register =
+let executable_session ?(regfile : string = "") (source : string) : Machine_session.t =
+  session ~regfile:(architectural_pc ^ regfile) source
+
+let run (s : Machine_session.t) : Machine_session.t =
+  (Machine_session.run ~max_steps:1000 s).session
+
+let find (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) :
+    Machine_view.register =
   Option.get
     (Machine_view.find_register
        { Machine_view.Register_id.bank; key }
        (Machine_session.view session))
 
-let int_reg (key : string) (session : Machine_session.t) : Z.t = Option.get (find Machine_view.General key session).word.integer
-let cap_reg (key : string) (session : Machine_session.t) : Machine_view.capability = Option.get (find Machine_view.General key session).word.capability
-let status (session : Machine_session.t) : Machine_view.status = (Machine_session.view session).status
+let int_reg (key : string) (session : Machine_session.t) : Z.t =
+  Option.get (find Machine_view.General key session).word.integer
+
+let cap_reg (key : string) (session : Machine_session.t) : Machine_view.capability =
+  Option.get (find Machine_view.General key session).word.capability
+
+let status (session : Machine_session.t) : Machine_view.status =
+  (Machine_session.view session).status
 
 let initialization_and_program_validation (() : unit) : unit =
   let defaults = session "halt" in
@@ -422,7 +390,9 @@ let initialization_and_program_validation (() : unit) : unit =
   check_z "explicit regfile applies supplied entry" (z 7) (int_reg "cra" partial);
   check_z "explicit regfile starts MTDC at zero" Z.zero
     (Option.get (find System "mtdc" partial).word.integer);
-  let create (source : string) : (Machine_session.t, Diagnostic.t list) result = Machine_session.create ~backend:"griotte" ~config ~source ~regfile:None in
+  let create (source : string) : (Machine_session.t, Diagnostic.t list) result =
+    Machine_session.create ~backend:"griotte" ~config ~source ~regfile:None
+  in
   List.iter
     (fun (name, source) -> Alcotest.(check bool) name true (Result.is_ok (create source)))
     [
@@ -450,8 +420,8 @@ let initialization_and_program_validation (() : unit) : unit =
 let arithmetic_and_control (() : unit) : unit =
   let s =
     session
-      "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 land ca7 7 3 lor cs0 4 \
-       1 lshiftl cs1 1 4 lshiftr cs2 16 2 lt cs3 ca1 ca0 halt"
+      "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 land ca7 7 3 lor cs0 4 1 \
+       lshiftl cs1 1 4 lshiftr cs2 16 2 lt cs3 ca1 ca0 halt"
     |> run
   in
   List.iter
@@ -571,7 +541,8 @@ let capabilities_sealing_and_view (() : unit) : unit =
     (Result.is_ok
        (Machine_session.create ~backend:"griotte-extracted" ~config ~source:"halt" ~regfile:None))
 
-let resolve_file (path : string) : string = if Sys.file_exists path then path else "../../../" ^ path
+let resolve_file (path : string) : string =
+  if Sys.file_exists path then path else "../../../" ^ path
 
 let read_file (path : string) : string =
   let path = resolve_file path in
@@ -652,7 +623,7 @@ let examples (() : unit) : unit =
 let () =
   Alcotest.run "griotte"
     [
-      ("codec", [ Alcotest.test_case "fixed historical codec" `Quick codec ]);
+      ("codec", [ Alcotest.test_case "instruction codec" `Quick codec ]);
       ( "parser",
         [
           Alcotest.test_case "acceptance and rejection" `Quick parser;

@@ -137,7 +137,6 @@ end
 module Codec : sig
   val encode : Ast.instruction -> (Z.t, Instruction_codec.error) result
   val decode : Z.t -> (Ast.instruction, Instruction_codec.error) result
-  val allocations : (string * int * int) list
   val encode_permission : Ast.permission -> Z.t
   val decode_permission : Z.t -> (Ast.permission, string) result
   val encode_seal_permission : Ast.seal_permission -> Z.t

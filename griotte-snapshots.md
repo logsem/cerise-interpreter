@@ -1,11 +1,11 @@
 # Griotte sibling snapshots
 
-`griotte` (handwritten) and `griotte-extracted` (Rocq-extracted with its
-adapter) are independent sibling snapshots.  They share the currently
-documented Griotte ISA and codec constraints: the exact instruction list in
-[assembler.md](assembler.md), rejection of `Rem` and `Div`, and the fixed
-opcode gaps.  They also retain independent parsers.  Semantic identity between
-the two snapshots is deliberately not a requirement.
+`griotte` (handwritten) and `griotte-extracted` (Rocq-extracted with its adapter) are independent
+sibling snapshots. They share the textual instruction list documented in
+[assembler.md](assembler.md) and reject `Rem` and `Div`, but they retain independent parsers and
+instruction codecs. Handwritten Griotte assigns compact opcodes in pattern declaration order;
+extracted Griotte retains its fixed Rocq layout. Encoded instruction integers are therefore not a
+shared interface. Semantic identity between the two snapshots is deliberately not a requirement.
 
 Neither backend is universally authoritative.  Select the backend whose
 snapshot is the one being studied, rather than treating one as a replacement
@@ -41,6 +41,5 @@ covered by that corpus; they are not known intentional differences.
   Some handwritten failures after a partial PC/destination update retain that
   partial mutation instead.
 
-The generated implementation remains governed by its regeneration and
-provenance checks; independence of these snapshots does not relax those checks
-or the shared ISA/opcode constraints.
+The generated implementation remains governed by its regeneration and provenance checks;
+independence of these snapshots does not relax those checks or the shared textual ISA contract.

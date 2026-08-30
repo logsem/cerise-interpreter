@@ -83,42 +83,13 @@ let instructions =
   ]
 
 let codec () =
-  let vanilla = Vanilla.Codec.allocations in
-  let expected =
-    vanilla
-    @ [
-        ("IsUnique", 50, 1);
-        ("Hash", 51, 1);
-        ("HashConcat", 52, 4);
-        ("EInit", 56, 1);
-        ("EDeInit", 57, 1);
-        ("EStoreId", 58, 1);
-      ]
-  in
-  Alcotest.(check (list (triple string int int))) "allocations" expected Cerisier.Codec.allocations;
   List.iter
     (fun instruction ->
       let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
       Alcotest.(check bool)
         "codec round trip" true
         (Result.get_ok (Cerisier.Codec.decode encoded) = instruction))
-    instructions;
-  let open Cerisier.Ast in
-  List.iter
-    (fun (instruction, opcode) ->
-      let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
-      Alcotest.(check int) "opcode" opcode (Z.to_int (Z.extract encoded 0 8)))
-    [
-      (IsUnique (Reg 1, Reg 2), 50);
-      (Hash (Reg 1, Reg 2), 51);
-      (HashConcat (Reg 1, Register (Reg 2), Register (Reg 3)), 52);
-      (HashConcat (Reg 1, Constant Z.zero, Register (Reg 3)), 54);
-      (HashConcat (Reg 1, Register (Reg 2), Constant Z.zero), 53);
-      (HashConcat (Reg 1, Constant Z.zero, Constant Z.zero), 55);
-      (EInit (Reg 1, Reg 2), 56);
-      (EDeInit (Reg 1), 57);
-      (EStoreId (Reg 1, Reg 2), 58);
-    ]
+    instructions
 
 let base_state () =
   let open Cerisier in
@@ -1084,7 +1055,7 @@ let () =
   Alcotest.run "cerisier backend"
     [
       ("syntax", [ Alcotest.test_case "parser and printer" `Quick parser_and_printer ]);
-      ("codec", [ Alcotest.test_case "fixed allocations" `Quick codec ]);
+      ("codec", [ Alcotest.test_case "instruction round trips" `Quick codec ]);
       ( "machine",
         [
           Alcotest.test_case "initialization and view" `Quick initialization_and_view;

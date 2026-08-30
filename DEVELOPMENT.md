@@ -63,10 +63,12 @@ independent.
 5. **Add `printer.ml`.** It must print machine words in syntax accepted by `parse_word`; instruction
    text is also used when an integer in a `Machine_view.word` decodes successfully. Add round-trip
    tests rather than relying on display-only examples.
-6. **Declare `codec.ml`.** Define scalar codecs and typed operand shapes, then one symmetric
-   `Instruction_codec.case` per `Ast.instruction` constructor. Preserve historical fixed allocations
-   where the ISA requires them. Expose `encode`, `decode`, and `allocations`, plus scalar encodings
-   needed by instructions such as `restrict`, `getp`, or `getwtype`.
+6. **Declare `codec.ml`.** Define scalar codecs and typed operand codecs, then one symmetric
+   `Instruction_codec.encoding_pattern` declarations for the `Ast.instruction` constructors.
+   A constructor may use disjoint patterns when its operand alternatives need different codecs,
+   as handwritten Griotte does for register and signed-constant `Jmp` targets. Declare patterns in
+   the intended opcode order and expose `encode` and `decode`, plus scalar encodings needed by
+   instructions such as `restrict`, `getp`, or `getwtype`.
 7. **Implement `machine.ml`.** Keep its state limited to dynamic semantic state. Use the runtime
    configuration to initialize registers and finite sparse memory, then discard it; accept the
    configuration first in `read_memory`, `execute`, `step`, `step_n`, and any exposed `run`, and
@@ -86,46 +88,53 @@ independent.
     named parser engine. The root library uses `(include_subdirs qualified)`, so a correctly named
     backend group is discovered without flattening its modules. Update `src/dune` only when adding
     executable-side modules, not for an ordinary library backend.
-12. **Test the whole contract.** Cover fixed allocations, codec round trips and malformed values;
-    accepted and rejected parser forms; macro expansion and symbol resolution; concrete assembly;
-    initialization, transitions, failure, and finite memory; word/printer round trips;
-    `Machine_session` edits; `Machine_view` metadata; registry selection; and public API
-    compilation. Add CLI or TUI goldens only when output is intentionally changing.
+12. **Test the whole contract.** Cover every instruction constructor and operand variant with codec
+    round trips and malformed values; accepted and rejected parser forms; macro expansion and
+    symbol resolution; concrete assembly; initialization, transitions, failure, and finite memory;
+    word/printer round trips; `Machine_session` edits; `Machine_view` metadata; registry selection;
+    and public API compilation. Add CLI or TUI goldens only when output is intentionally changing.
 
 When extending an existing instruction, follow the same route end to end: grammar and `Asm_ir`,
-concrete assembly to `Ast`, codec case, printer, machine transition, view implications, signature,
-and tests. Changing only the parser or machine usually leaves an inconsistent assembly/encoding
-contract.
+concrete assembly to `Ast`, encoding pattern, printer, machine transition, view implications,
+signature, and tests. Changing only the parser or machine usually leaves an inconsistent
+assembly/encoding contract.
 
 ## Instruction codecs
 
-`Instruction_codec` builds one immutable bidirectional table from typed cases. A case contains a
-name, an operand `shape`, a constructor, a partial projector, and either `Auto` or `Fixed opcode`.
-The constructor and projector must be inverses for that instruction constructor.
+`Instruction_codec` has four explicit authoring layers:
+
+1. A `scalar_codec` encodes and decodes one atomic value.
+2. An `operand_codec` composes typed operands, payloads, and opcode variants.
+3. An `encoding_pattern` gives one operand codec a name, instruction constructor, and partial
+   projector. The constructor and projector must be inverses for that instruction constructor.
+4. `compile` builds the immutable bidirectional instruction codec and assigns opcode ranges.
 
 The low eight bits of an encoded instruction are the opcode; the non-negative arbitrary-precision
-payload occupies the remaining high bits. Shapes determine both:
+payload occupies the remaining high bits. Operand codecs determine both:
 
-- `unit` and `scalar` use one opcode variant. `register` is a scalar shape, while `signed_zarith`
-  maps signed integers to a non-negative payload.
+- `unit` and `scalar` use one opcode variant. `register` is a scalar operand codec, while
+  `signed_zarith` maps signed integers to a non-negative payload.
 - `register_or_constant` has span two: variant 0 is a register and variant 1 is a constant.
 - `pair` multiplies the spans of its children and combines their variant indexes. Its two signed
   payloads are encoded by bit interleaving with two low sign bits, so neither component is limited
   to a machine word. `triple` is a typed nested pair.
-- `variant_span` reports how many contiguous opcodes a shape requires.
 
-Compilation first reserves every fixed range in the 256-entry opcode space. It then visits auto
-cases in declaration order and assigns each the first contiguous free range at or after the moving
-cursor. Duplicate names, invalid fixed opcodes, collisions, and ranges that exceed 255 are errors.
-Consequently, inserting or reshaping an auto case can renumber later cases. Treat every backend's
-`Codec.allocations` table as an ISA artifact: pin historical ranges with `Fixed`, test the complete
-table, and review allocation diffs explicitly.
+Compilation visits patterns in declaration order and assigns consecutive ranges from opcode zero in
+the 256-entry opcode space. Duplicate names and ranges that exhaust that space are structured
+errors; composed span arithmetic saturates safely instead of overflowing a host integer.
+Consequently, inserting, reordering, or changing the operands of a pattern can renumber all later
+patterns. Test complete typed round trips and review intentional encoded-integer changes directly.
 
-Encoding requires exactly one projector to match. It adds the shape's variant to the case's first
-opcode and places the shape payload above bit 7. Decoding selects the case by its contiguous range,
-derives the variant from the range offset, decodes the payload with the same shape, and invokes the
-constructor. Scalar codecs should reject values outside their semantic domain in both directions;
-decoders must return errors for malformed external integers rather than raise exceptions.
+Encoding requires exactly one projector to match. It adds the operand codec's variant to the
+pattern's first opcode and places the payload above bit 7. Decoding selects the pattern by its
+contiguous range, derives the variant from the range offset, decodes the payload with the same
+operand codec, and invokes the constructor. Scalar codecs should reject values outside their
+semantic domain in both directions; decoders must return errors for malformed external integers
+rather than raise exceptions.
+
+Assembly text is the portable interchange form across backends that share an instruction set.
+Encoded instruction integers are backend-specific: in particular, handwritten Griotte uses this
+compact declaration-order codec while extracted Griotte retains its independent Rocq fixed layout.
 
 ## Building or extending a UI
 
@@ -206,5 +215,6 @@ nix build --no-link --print-build-logs --rebuild .#
 `make test` includes public contracts, backend suites, codec failures, differential Griotte coverage,
 and CLI/TUI goldens. The two Griotte checks verify provenance, byte identity, atomic installation,
 and offline idempotence. Before committing generated-sensitive work, also confirm that
-`git diff -- lib/backends/griotte_extracted/generated` is empty. Review public `.mli` and codec
-allocation diffs separately; successful execution tests alone do not prove API or ISA compatibility.
+`git diff -- lib/backends/griotte_extracted/generated` is empty. Review public `.mli` and intended
+instruction-integer changes separately; successful execution tests alone do not prove API or ISA
+compatibility.

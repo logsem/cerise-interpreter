@@ -36,118 +36,118 @@ let register_and_operand = Instruction_codec.pair register_encoding operand
 let register_and_two_operands = Instruction_codec.triple register_encoding operand operand
 let three_registers = Instruction_codec.triple register_encoding register_encoding register_encoding
 
-let fixed_case (name : string) (opcode : int) (shape : 'a Instruction_codec.shape) :
+let pattern (name : string) (operand_codec : 'a Instruction_codec.operand_codec) :
     construct:('a -> instruction) ->
     project:(instruction -> 'a option) ->
-    instruction Instruction_codec.case =
-  Instruction_codec.case ~name ~allocation:(Fixed opcode) shape
+    instruction Instruction_codec.encoding_pattern =
+  Instruction_codec.encoding_pattern ~name operand_codec
 
-let unit_case (name : string) (construct : 'a) (project : 'a -> bool) : 'a Instruction_codec.case =
-  Instruction_codec.case ~name Instruction_codec.unit
+let unit_pattern (name : string) (construct : 'a) (project : 'a -> bool) :
+    'a Instruction_codec.encoding_pattern =
+  Instruction_codec.encoding_pattern ~name Instruction_codec.unit
     ~construct:(fun () -> construct)
     ~project:(fun x -> if project x then Some () else None)
 
-let cases =
+let encoding_patterns =
   [
-    Instruction_codec.case ~name:"Jmp" register_encoding
+    Instruction_codec.encoding_pattern ~name:"Jmp" register_encoding
       ~construct:(fun x -> Jmp x)
       ~project:(function Jmp x -> Some x | _ -> None);
-    Instruction_codec.case ~name:"Jnz" two_registers
+    Instruction_codec.encoding_pattern ~name:"Jnz" two_registers
       ~construct:(fun (a, b) -> Jnz (a, b))
       ~project:(function Jnz (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Move" register_and_operand
+    Instruction_codec.encoding_pattern ~name:"Move" register_and_operand
       ~construct:(fun (a, b) -> Move (a, from_operand b))
       ~project:(function Move (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Load" two_registers
+    Instruction_codec.encoding_pattern ~name:"Load" two_registers
       ~construct:(fun (a, b) -> Load (a, b))
       ~project:(function Load (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Store" register_and_operand
+    Instruction_codec.encoding_pattern ~name:"Store" register_and_operand
       ~construct:(fun (a, b) -> Store (a, from_operand b))
       ~project:(function Store (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Add" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Add" register_and_two_operands
       ~construct:(fun (a, b, c) -> Add (a, from_operand b, from_operand c))
       ~project:(function Add (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Sub" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Sub" register_and_two_operands
       ~construct:(fun (a, b, c) -> Sub (a, from_operand b, from_operand c))
       ~project:(function Sub (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Mul" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Mul" register_and_two_operands
       ~construct:(fun (a, b, c) -> Mul (a, from_operand b, from_operand c))
       ~project:(function Mul (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Rem" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Rem" register_and_two_operands
       ~construct:(fun (a, b, c) -> Rem (a, from_operand b, from_operand c))
       ~project:(function Rem (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Div" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Div" register_and_two_operands
       ~construct:(fun (a, b, c) -> Div (a, from_operand b, from_operand c))
       ~project:(function Div (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Lt" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"Lt" register_and_two_operands
       ~construct:(fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
       ~project:(function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"Lea" register_and_operand
+    Instruction_codec.encoding_pattern ~name:"Lea" register_and_operand
       ~construct:(fun (a, b) -> Lea (a, from_operand b))
       ~project:(function Lea (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"Restrict" register_and_operand
+    Instruction_codec.encoding_pattern ~name:"Restrict" register_and_operand
       ~construct:(fun (a, b) -> Restrict (a, from_operand b))
       ~project:(function Restrict (a, b) -> Some (a, to_operand b) | _ -> None);
-    Instruction_codec.case ~name:"SubSeg" register_and_two_operands
+    Instruction_codec.encoding_pattern ~name:"SubSeg" register_and_two_operands
       ~construct:(fun (a, b, c) -> SubSeg (a, from_operand b, from_operand c))
       ~project:(function SubSeg (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    Instruction_codec.case ~name:"GetB" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetB" two_registers
       ~construct:(fun (a, b) -> GetB (a, b))
       ~project:(function GetB (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetE" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetE" two_registers
       ~construct:(fun (a, b) -> GetE (a, b))
       ~project:(function GetE (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetA" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetA" two_registers
       ~construct:(fun (a, b) -> GetA (a, b))
       ~project:(function GetA (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetP" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetP" two_registers
       ~construct:(fun (a, b) -> GetP (a, b))
       ~project:(function GetP (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetOType" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetOType" two_registers
       ~construct:(fun (a, b) -> GetOType (a, b))
       ~project:(function GetOType (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"GetWType" two_registers
+    Instruction_codec.encoding_pattern ~name:"GetWType" two_registers
       ~construct:(fun (a, b) -> GetWType (a, b))
       ~project:(function GetWType (a, b) -> Some (a, b) | _ -> None);
-    Instruction_codec.case ~name:"Seal" three_registers
+    Instruction_codec.encoding_pattern ~name:"Seal" three_registers
       ~construct:(fun (a, b, c) -> Seal (a, b, c))
       ~project:(function Seal (a, b, c) -> Some (a, b, c) | _ -> None);
-    Instruction_codec.case ~name:"UnSeal" three_registers
+    Instruction_codec.encoding_pattern ~name:"UnSeal" three_registers
       ~construct:(fun (a, b, c) -> UnSeal (a, b, c))
       ~project:(function UnSeal (a, b, c) -> Some (a, b, c) | _ -> None);
-    Instruction_codec.case ~name:"Invoke" two_registers
+    Instruction_codec.encoding_pattern ~name:"Invoke" two_registers
       ~construct:(fun (a, b) -> Invoke (a, b))
       ~project:(function Invoke (a, b) -> Some (a, b) | _ -> None);
-    unit_case "Fail" Fail (function Fail -> true | _ -> false);
-    unit_case "Halt" Halt (function Halt -> true | _ -> false);
-    fixed_case "IsUnique" 50 two_registers
+    unit_pattern "Fail" Fail (function Fail -> true | _ -> false);
+    unit_pattern "Halt" Halt (function Halt -> true | _ -> false);
+    pattern "IsUnique" two_registers
       ~construct:(fun (a, b) -> IsUnique (a, b))
       ~project:(function IsUnique (a, b) -> Some (a, b) | _ -> None);
-    fixed_case "Hash" 51 two_registers
+    pattern "Hash" two_registers
       ~construct:(fun (a, b) -> Hash (a, b))
       ~project:(function Hash (a, b) -> Some (a, b) | _ -> None);
-    fixed_case "HashConcat" 52 register_and_two_operands
+    pattern "HashConcat" register_and_two_operands
       ~construct:(fun (a, b, c) -> HashConcat (a, from_operand b, from_operand c))
       ~project:(function HashConcat (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    fixed_case "EInit" 56 two_registers
+    pattern "EInit" two_registers
       ~construct:(fun (a, b) -> EInit (a, b))
       ~project:(function EInit (a, b) -> Some (a, b) | _ -> None);
-    fixed_case "EDeInit" 57 register_encoding
+    pattern "EDeInit" register_encoding
       ~construct:(fun a -> EDeInit a)
       ~project:(function EDeInit a -> Some a | _ -> None);
-    fixed_case "EStoreId" 58 two_registers
+    pattern "EStoreId" two_registers
       ~construct:(fun (a, b) -> EStoreId (a, b))
       ~project:(function EStoreId (a, b) -> Some (a, b) | _ -> None);
   ]
 
 let table =
-  match Instruction_codec.compile cases with
+  match Instruction_codec.compile encoding_patterns with
   | Ok t -> t
   | Error errors -> failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
 
 let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
-let allocations = Instruction_codec.allocations table
 let encode_tag (tag : int) (scalar : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left scalar 3)
 
 let permission_scalar (codec_value : permission) : int =

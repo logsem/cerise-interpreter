@@ -1,18 +1,19 @@
-(** Runtime combinators for declaring symmetric instruction encoders and decoders. *)
+(** Runtime combinators for declaring symmetric instruction encoders and decoders.
 
-type allocation = Auto | Fixed of int
+    A declaration has four layers: a [scalar_codec] handles one atomic value; an [operand_codec]
+    composes typed operands and any opcode variants; an [encoding_pattern] associates one operand
+    codec with an instruction constructor; and [compile] assigns every pattern a contiguous opcode
+    range, starting at zero in declaration order. *)
 
 type error =
-  | Duplicate_case_name of string
-  | Invalid_fixed_opcode of { case_name : string; opcode : int }
-  | Opcode_collision of { opcode : int; first_case : string; second_case : string }
-  | Opcode_overflow of { case_name : string; first_opcode : int; span : int }
+  | Duplicate_pattern_name of string
+  | Opcode_overflow of { pattern_name : string; first_opcode : int; span : int }
   | Unrecognized_instruction
   | Ambiguous_instruction of string list
-  | Invalid_operand of { case_name : string; message : string }
+  | Invalid_operand of { pattern_name : string; message : string }
   | Negative_encoding of Z.t
   | Unknown_opcode of int
-  | Malformed_encoding of { opcode : int; case_name : string; message : string }
+  | Malformed_encoding of { opcode : int; pattern_name : string; message : string }
 
 val error_message : error -> string
 
@@ -31,41 +32,34 @@ val enum : name:string -> 'a list -> 'a scalar_codec
 (** [enum] uses the declaration order as the scalar encoding. Values are compared structurally. *)
 
 type ('register, 'constant) register_or_constant = Register of 'register | Constant of 'constant
-type 'a shape
+type 'a operand_codec
 
-val unit : unit shape
-val scalar : 'a scalar_codec -> 'a shape
-val register : 'register scalar_codec -> 'register shape
-val signed_zarith : Z.t shape
+val unit : unit operand_codec
+val scalar : 'a scalar_codec -> 'a operand_codec
+val register : 'register scalar_codec -> 'register operand_codec
+val signed_zarith : Z.t operand_codec
 
 val register_or_constant :
   'register scalar_codec ->
   'constant scalar_codec ->
-  ('register, 'constant) register_or_constant shape
+  ('register, 'constant) register_or_constant operand_codec
 
-val pair : 'a shape -> 'b shape -> ('a * 'b) shape
-val triple : 'a shape -> 'b shape -> 'c shape -> ('a * 'b * 'c) shape
-val variant_span : 'a shape -> int
-val encode_signed_pair : Z.t -> Z.t -> Z.t
+val pair : 'a operand_codec -> 'b operand_codec -> ('a * 'b) operand_codec
 
-val decode_signed_pair : Z.t -> Z.t * Z.t
-(** Bitwise interleaving with two low sign bits, matching the historical Cerise convention. *)
+val triple :
+  'a operand_codec -> 'b operand_codec -> 'c operand_codec -> ('a * 'b * 'c) operand_codec
 
-type 'instruction case
+type 'instruction encoding_pattern
 
-val case :
+val encoding_pattern :
   name:string ->
-  ?allocation:allocation ->
-  'operand shape ->
+  'operand operand_codec ->
   construct:('operand -> 'instruction) ->
   project:('instruction -> 'operand option) ->
-  'instruction case
+  'instruction encoding_pattern
 
 type 'instruction t
 
-val compile : 'instruction case list -> ('instruction t, error list) result
+val compile : 'instruction encoding_pattern list -> ('instruction t, error list) result
 val encode : 'instruction t -> 'instruction -> (Z.t, error) result
 val decode : 'instruction t -> Z.t -> ('instruction, error) result
-
-val allocations : 'instruction t -> (string * int * int) list
-(** Case name, first opcode, and contiguous opcode span, in declaration order. *)

@@ -31,8 +31,9 @@ The interpreter selects a backend with `--backend`; the default is `vanilla`. Av
 All runtimes use finite configured address bounds.
 
 `griotte` and `griotte-extracted` are independent sibling snapshots, not two universally equivalent
-implementations. They share the documented ISA and opcode constraints, while intentionally differing
-in some semantics; choose the snapshot you intend to study. See [Griotte sibling snapshots](griotte-snapshots.md).
+implementations. They share a textual instruction set, while encoded instruction integers and some
+semantics intentionally differ; choose the snapshot you intend to study. See
+[Griotte sibling snapshots](griotte-snapshots.md).
 
 Example:
 

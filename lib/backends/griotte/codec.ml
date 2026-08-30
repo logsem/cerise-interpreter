@@ -26,148 +26,146 @@ let operand = Instruction_codec.register_or_constant register_codec Instruction_
 
 let from_operand (value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const =
   match value with
-  | Instruction_codec.Register register_shape -> Register register_shape
+  | Instruction_codec.Register register -> Register register
   | Constant z -> Constant z
 
 let to_operand (value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant =
   match value with
-  | Register register_shape -> Instruction_codec.Register register_shape
+  | Register register -> Instruction_codec.Register register
   | Constant z -> Constant z
 
-let register_shape = Instruction_codec.register register_codec
-let system_register_shape = Instruction_codec.register system_register_codec
-let operand_shape = operand
-let register_pair_shape = Instruction_codec.pair register_shape register_shape
-let register_system_pair_shape = Instruction_codec.pair register_shape system_register_shape
+let register_operand_codec = Instruction_codec.register register_codec
+let system_register_operand_codec = Instruction_codec.register system_register_codec
+let value_operand_codec = operand
 
-let system_register_register_pair_shape =
-  Instruction_codec.pair system_register_shape register_shape
+let register_pair_operand_codec =
+  Instruction_codec.pair register_operand_codec register_operand_codec
 
-let register_operand_pair_shape = Instruction_codec.pair register_shape operand_shape
+let register_system_pair_operand_codec =
+  Instruction_codec.pair register_operand_codec system_register_operand_codec
 
-let register_operand_operand_shape =
-  Instruction_codec.triple register_shape operand_shape operand_shape
+let system_register_register_pair_operand_codec =
+  Instruction_codec.pair system_register_operand_codec register_operand_codec
 
-let register_triple_shape = Instruction_codec.triple register_shape register_shape register_shape
+let register_value_pair_operand_codec =
+  Instruction_codec.pair register_operand_codec value_operand_codec
 
-let case (name : string) (opcode : int) (codec : 'a Instruction_codec.shape) (construct : 'a -> 'b)
-    (project : 'b -> 'a option) : 'b Instruction_codec.case =
-  Instruction_codec.case ~name ~allocation:(Fixed opcode) codec ~construct ~project
+let register_two_values_operand_codec =
+  Instruction_codec.triple register_operand_codec value_operand_codec value_operand_codec
 
-let unit_case (name : string) (opcode : int) (construct : 'a) (project : 'a -> bool) :
-    'a Instruction_codec.case =
-  case name opcode Instruction_codec.unit
+let register_triple_operand_codec =
+  Instruction_codec.triple register_operand_codec register_operand_codec register_operand_codec
+
+let pattern (name : string) (codec : 'a Instruction_codec.operand_codec) (construct : 'a -> 'b)
+    (project : 'b -> 'a option) : 'b Instruction_codec.encoding_pattern =
+  Instruction_codec.encoding_pattern ~name codec ~construct ~project
+
+let unit_pattern (name : string) (construct : 'a) (project : 'a -> bool) :
+    'a Instruction_codec.encoding_pattern =
+  pattern name Instruction_codec.unit
     (fun () -> construct)
     (fun x -> if project x then Some () else None)
 
-let cases =
+let encoding_patterns =
   [
-    case "Jmp" 0x00 operand_shape
-      (fun x -> Jmp (from_operand x))
-      (function Jmp x -> Some (to_operand x) | _ -> None);
-    case "Jnz" 0x02 register_operand_pair_shape
+    pattern "Jmp-register" register_operand_codec
+      (fun register -> Jmp (Register register))
+      (function Jmp (Register register) -> Some register | _ -> None);
+    pattern "Jmp-constant" Instruction_codec.signed_zarith
+      (fun constant -> Jmp (Constant constant))
+      (function Jmp (Constant constant) -> Some constant | _ -> None);
+    pattern "Jnz" register_value_pair_operand_codec
       (fun (a, b) -> Jnz (a, from_operand b))
       (function Jnz (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Jalr" 0x04 register_pair_shape
+    pattern "Jalr" register_pair_operand_codec
       (fun (a, b) -> Jalr (a, b))
       (function Jalr (a, b) -> Some (a, b) | _ -> None);
-    case "ReadSR" 0x05 register_system_pair_shape
+    pattern "ReadSR" register_system_pair_operand_codec
       (fun (a, b) -> ReadSR (a, b))
       (function ReadSR (a, b) -> Some (a, b) | _ -> None);
-    case "WriteSR" 0x06 system_register_register_pair_shape
+    pattern "WriteSR" system_register_register_pair_operand_codec
       (fun (a, b) -> WriteSR (a, b))
       (function WriteSR (a, b) -> Some (a, b) | _ -> None);
-    case "Move" 0x07 register_operand_pair_shape
+    pattern "Move" register_value_pair_operand_codec
       (fun (a, b) -> Move (a, from_operand b))
       (function Move (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Load" 0x09 register_pair_shape
+    pattern "Load" register_pair_operand_codec
       (fun (a, b) -> Load (a, b))
       (function Load (a, b) -> Some (a, b) | _ -> None);
-    case "Store" 0x0a register_operand_pair_shape
+    pattern "Store" register_value_pair_operand_codec
       (fun (a, b) -> Store (a, from_operand b))
       (function Store (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Add" 0x0c register_operand_operand_shape
+    pattern "Add" register_two_values_operand_codec
       (fun (a, b, c) -> Add (a, from_operand b, from_operand c))
       (function Add (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Sub" 0x10 register_operand_operand_shape
+    pattern "Sub" register_two_values_operand_codec
       (fun (a, b, c) -> Sub (a, from_operand b, from_operand c))
       (function Sub (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Mul" 0x14 register_operand_operand_shape
+    pattern "Mul" register_two_values_operand_codec
       (fun (a, b, c) -> Mul (a, from_operand b, from_operand c))
       (function Mul (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Lt" 0x20 register_operand_operand_shape
+    pattern "Lt" register_two_values_operand_codec
       (fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
       (function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "Lea" 0x24 register_operand_pair_shape
+    pattern "Lea" register_value_pair_operand_codec
       (fun (a, b) -> Lea (a, from_operand b))
       (function Lea (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "Restrict" 0x26 register_operand_pair_shape
+    pattern "Restrict" register_value_pair_operand_codec
       (fun (a, b) -> Restrict (a, from_operand b))
       (function Restrict (a, b) -> Some (a, to_operand b) | _ -> None);
-    case "SubSeg" 0x28 register_operand_operand_shape
+    pattern "SubSeg" register_two_values_operand_codec
       (fun (a, b, c) -> SubSeg (a, from_operand b, from_operand c))
       (function SubSeg (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "GetL" 0x2c register_pair_shape
+    pattern "GetL" register_pair_operand_codec
       (fun (a, b) -> GetL (a, b))
       (function GetL (a, b) -> Some (a, b) | _ -> None);
-    case "GetB" 0x2d register_pair_shape
+    pattern "GetB" register_pair_operand_codec
       (fun (a, b) -> GetB (a, b))
       (function GetB (a, b) -> Some (a, b) | _ -> None);
-    case "GetE" 0x2e register_pair_shape
+    pattern "GetE" register_pair_operand_codec
       (fun (a, b) -> GetE (a, b))
       (function GetE (a, b) -> Some (a, b) | _ -> None);
-    case "GetA" 0x2f register_pair_shape
+    pattern "GetA" register_pair_operand_codec
       (fun (a, b) -> GetA (a, b))
       (function GetA (a, b) -> Some (a, b) | _ -> None);
-    case "GetP" 0x30 register_pair_shape
+    pattern "GetP" register_pair_operand_codec
       (fun (a, b) -> GetP (a, b))
       (function GetP (a, b) -> Some (a, b) | _ -> None);
-    case "GetOType" 0x31 register_pair_shape
+    pattern "GetOType" register_pair_operand_codec
       (fun (a, b) -> GetOType (a, b))
       (function GetOType (a, b) -> Some (a, b) | _ -> None);
-    case "GetWType" 0x32 register_pair_shape
+    pattern "GetWType" register_pair_operand_codec
       (fun (a, b) -> GetWType (a, b))
       (function GetWType (a, b) -> Some (a, b) | _ -> None);
-    case "Seal" 0x33 register_triple_shape
+    pattern "Seal" register_triple_operand_codec
       (fun (a, b, c) -> Seal (a, b, c))
       (function Seal (a, b, c) -> Some (a, b, c) | _ -> None);
-    case "UnSeal" 0x34 register_triple_shape
+    pattern "UnSeal" register_triple_operand_codec
       (fun (a, b, c) -> UnSeal (a, b, c))
       (function UnSeal (a, b, c) -> Some (a, b, c) | _ -> None);
-    unit_case "Fail" 0x35 Fail (function Fail -> true | _ -> false);
-    unit_case "Halt" 0x36 Halt (function Halt -> true | _ -> false);
-    case "LAnd" 0x37 register_operand_operand_shape
+    unit_pattern "Fail" Fail (function Fail -> true | _ -> false);
+    unit_pattern "Halt" Halt (function Halt -> true | _ -> false);
+    pattern "LAnd" register_two_values_operand_codec
       (fun (a, b, c) -> LAnd (a, from_operand b, from_operand c))
       (function LAnd (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LOr" 0x3b register_operand_operand_shape
+    pattern "LOr" register_two_values_operand_codec
       (fun (a, b, c) -> LOr (a, from_operand b, from_operand c))
       (function LOr (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LShiftL" 0x3f register_operand_operand_shape
+    pattern "LShiftL" register_two_values_operand_codec
       (fun (a, b, c) -> LShiftL (a, from_operand b, from_operand c))
       (function LShiftL (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
-    case "LShiftR" 0x43 register_operand_operand_shape
+    pattern "LShiftR" register_two_values_operand_codec
       (fun (a, b, c) -> LShiftR (a, from_operand b, from_operand c))
       (function LShiftR (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
   ]
 
 let table =
-  match Instruction_codec.compile cases with
+  match Instruction_codec.compile encoding_patterns with
   | Ok table -> table
   | Error errors -> failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
 
-let encode (value : instruction) : (Z.t, Instruction_codec.error) result =
-  match value with
-  | Jmp (Constant immediate) when Z.sign immediate < 0 -> Ok Z.(logor one (shift_left immediate 8))
-  | instruction -> Instruction_codec.encode table instruction
-
-let decode (encoded : Z.t) : (instruction, Instruction_codec.error) result =
-  if Z.sign encoded < 0 then
-    let opcode = Z.to_int (Z.extract encoded 0 8) in
-    if opcode = 0x01 then Ok (Jmp (Constant (Z.shift_right encoded 8)))
-    else Error (Instruction_codec.Negative_encoding encoded)
-  else Instruction_codec.decode table encoded
-
-let allocations = Instruction_codec.allocations table
+let encode = Instruction_codec.encode table
+let decode = Instruction_codec.decode table
 
 (* Capability-metadata encoding. These fixed tags are part of the assembly and
    machine contract, so decoding deliberately rejects rather than normalizes them. *)
