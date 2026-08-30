@@ -1,4 +1,7 @@
 {
+(** Shared assembly lexer. It preserves each keyword's original spelling for diagnostics and
+    backend parsers while classifying case-insensitively for compatibility. *)
+
 open Generated_parser
 
 exception Error of Diagnostic.source_location * string
@@ -88,6 +91,8 @@ let directive (name : string) : Generated_parser.token =
   | _ -> CALL name
 }
 
+(** Lexical classes intentionally exclude punctuation accepted by directives and parameters so a
+    missing name can receive a targeted diagnostic below. *)
 let letter = ['A'-'Z' 'a'-'z' '_']
 let digit = ['0'-'9']
 let name = letter (letter | digit)*

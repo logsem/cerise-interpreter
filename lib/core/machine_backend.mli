@@ -14,7 +14,10 @@ module type S = sig
   val parse_program : ?filename:string -> string -> (asm_program, Diagnostic.t list) result
   val parse_regfile : ?filename:string -> string -> (asm_regfile, Diagnostic.t list) result
   val parse_word : ?filename:string -> string -> (asm_word, Diagnostic.t list) result
-  val init : Runtime_config.t -> asm_program -> asm_regfile option -> (state, Diagnostic.t list) result
+
+  val init :
+    Runtime_config.t -> asm_program -> asm_regfile option -> (state, Diagnostic.t list) result
+
   val step : state -> (state, execution_error) result
   val step_n : int -> state -> (state, execution_error) result
   val inspect : state -> Machine_view.t

@@ -1,3 +1,5 @@
+(** Maps stable CLI names, including compatibility aliases, to backend first-class modules. *)
+
 type entry = { requested_name : string; backend : (module Machine_backend.S) }
 
 let vanilla = (module Backends.Vanilla.Backend : Machine_backend.S)
@@ -8,7 +10,7 @@ let cerisier = (module Backends.Cerisier.Backend : Machine_backend.S)
 let griotte = (module Backends.Griotte.Backend : Machine_backend.S)
 let griotte_extracted = (module Backends.Griotte_extracted.Backend : Machine_backend.S)
 
-let backends =
+let backends : entry list =
   [
     { requested_name = "vanilla"; backend = vanilla };
     { requested_name = "cerise"; backend = vanilla };
@@ -21,7 +23,9 @@ let backends =
   ]
 
 let default_backend_name = "vanilla"
-let available_backend_names (() : unit) : string list = List.map (fun entry -> entry.requested_name) backends
+
+let available_backend_names (() : unit) : string list =
+  List.map (fun entry -> entry.requested_name) backends
 
 let find_backend (name : string) : (module Machine_backend.S) option =
   List.find_map

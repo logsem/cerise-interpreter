@@ -1,3 +1,9 @@
+(** Declarative instruction encoding.
+
+    Operand shapes translate typed values to opcode variants and arbitrary-precision payloads.
+    Compilation allocates the finite eight-bit opcode space; encoding and decoding then use that
+    immutable allocation table. *)
+
 type allocation = Auto | Fixed of int
 
 type error =
@@ -12,7 +18,8 @@ type error =
   | Unknown_opcode of int
   | Malformed_encoding of { opcode : int; case_name : string; message : string }
 
-let error_message (matched_value : error) : string = match matched_value with
+let error_message (error : error) : string =
+  match error with
   | Duplicate_case_name name -> Printf.sprintf "Duplicate instruction case name %S." name
   | Invalid_fixed_opcode { case_name; opcode } ->
       Printf.sprintf "Instruction case %S has invalid fixed opcode %d." case_name opcode
@@ -39,7 +46,8 @@ type 'a scalar_codec = {
   decode_scalar : Z.t -> ('a, string) result;
 }
 
-let scalar_codec ~name:(name : string) ~encode:(encode : ('a -> (Z.t, string) result)) ~decode:(decode : (Z.t -> ('a, string) result)) : 'a scalar_codec =
+let scalar_codec ~(name : string) ~(encode : 'a -> (Z.t, string) result)
+    ~(decode : Z.t -> ('a, string) result) : 'a scalar_codec =
   { scalar_name = name; encode_scalar = encode; decode_scalar = decode }
 
 let zarith = scalar_codec ~name:"integer" ~encode:Result.ok ~decode:Result.ok
@@ -50,8 +58,9 @@ let nonnegative_zarith =
   in
   scalar_codec ~name:"non-negative integer" ~encode:check ~decode:check
 
-let enum ~name:(name : string) (values : 'a list) : 'a scalar_codec =
-  let rec encode (index : int) (value : 'a) (matched_value : 'a list) : (Z.t, string) result = match matched_value with
+let enum ~(name : string) (values : 'a list) : 'a scalar_codec =
+  let rec encode (index : int) (value : 'a) (remaining_values : 'a list) : (Z.t, string) result =
+    match remaining_values with
     | [] -> Error (Printf.sprintf "unknown %s value" name)
     | candidate :: _ when candidate = value -> Ok (Z.of_int index)
     | _ :: rest -> encode (index + 1) value rest
@@ -68,14 +77,15 @@ let enum ~name:(name : string) (values : 'a list) : 'a scalar_codec =
 
 type ('register, 'constant) register_or_constant = Register of 'register | Constant of 'constant
 
-let spread_nibble =
+(* Pair payloads by interleaving bits, rather than bounding either component to a machine word. *)
+let spread_nibble : int array =
   Array.init 16 (fun nibble ->
       nibble land 1
       lor ((nibble land 2) lsl 1)
       lor ((nibble land 4) lsl 2)
       lor ((nibble land 8) lsl 3))
 
-let compact_even_bits =
+let compact_even_bits : int array =
   Array.init 256 (fun byte ->
       byte land 1 lor ((byte lsr 1) land 2) lor ((byte lsr 2) land 4) lor ((byte lsr 3) land 8))
 
@@ -143,7 +153,7 @@ type 'a shape = {
 
 let variant_span (shape : 'a shape) : int = shape.span
 
-let unit =
+let unit : unit shape =
   {
     span = 1;
     encode_shape = (fun () -> Ok (0, Z.zero));
@@ -167,7 +177,7 @@ let scalar (codec : 'a scalar_codec) : 'a shape =
 
 let register (type value) (codec : value scalar_codec) : value shape = scalar codec
 
-let signed_zarith =
+let signed_zarith : Z.t shape =
   let encode (value : Z.t) : Z.t =
     if Z.sign value < 0 then Z.pred (Z.mul (Z.abs value) (Z.of_int 2)) else Z.mul value (Z.of_int 2)
   in
@@ -178,7 +188,8 @@ let signed_zarith =
   in
   scalar (scalar_codec ~name:"signed integer" ~encode:(fun value -> Ok (encode value)) ~decode)
 
-let register_or_constant (register_codec : 'a scalar_codec) (constant_codec : 'b scalar_codec) : ('a, 'b) register_or_constant shape =
+let register_or_constant (register_codec : 'a scalar_codec) (constant_codec : 'b scalar_codec) :
+    ('a, 'b) register_or_constant shape =
   {
     span = 2;
     encode_shape =
@@ -244,8 +255,8 @@ type 'instruction case =
     }
       -> 'instruction case
 
-let case ~name:(name : string) ?(allocation : allocation = Auto) (shape : 'a shape)
-    ~construct:(construct : 'a -> 'b) ~project:(project : 'b -> 'a option) : 'b case =
+let case ~(name : string) ?(allocation : allocation = Auto) (shape : 'a shape)
+    ~(construct : 'a -> 'b) ~(project : 'b -> 'a option) : 'b case =
   Case { name; allocation; shape; construct; project }
 
 type 'instruction compiled_case =
@@ -269,7 +280,7 @@ type 'instruction projection =
     }
       -> 'instruction projection
 
-let case_name ((Case case) : 'a case) : string = case.name
+let case_name (Case case : 'a case) : string = case.name
 
 let duplicate_name_errors (cases : 'a case list) : error list =
   let seen = Hashtbl.create (List.length cases) in
@@ -311,8 +322,7 @@ let compile (cases : 'a case list) : ('a t, error list) result =
   let cursor = ref 0 in
   let rec find_free (span : int) (candidate : int) : int option =
     if
-      span <= 0
-      || candidate < 0
+      span <= 0 || candidate < 0
       || candidate > Array.length owners
       || span > Array.length owners - candidate
     then None

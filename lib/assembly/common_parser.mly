@@ -1,4 +1,8 @@
 %{
+(** Shared assembly grammar fragments. Backend grammars supply concrete statements, words, macro
+    arguments, and register-file entries; these rules add locations and construct the common
+    expression, declaration, and macro nodes consumed by [Assembly_construction]. *)
+
 open Assembly_construction
 
 let at (position : Lexing.position) : Diagnostic.source_location =
@@ -28,6 +32,8 @@ let parameter (position : Lexing.position) (name : string) (kind : string) :
 %start <Asm_ir.word> word
 
 %%
+
+/* Source program and macro structure. */
 
 program:
   | items = list(source_item); EOF { items }
@@ -125,8 +131,9 @@ expression_primary:
       { Expression.Subtract (Expression.Integer Z.zero, value) }
   | LPAREN; value = expression; RPAREN { value }
 
-(** The old operand parser treats a leading [$parameter] as an unresolved value operand.
-    Parenthesized parameter expressions remain available through the final production. *)
+/* A leading [$parameter] is reserved for backend operand parameters. Parenthesized parameter
+   expressions remain available through the final production. This precedence distinction keeps
+   the historical assembly language unambiguous. */
 %public operand_expression:
   | value = operand_expression_primary { value }
   | left = operand_expression; PLUS; right = expression_primary { Expression.Add (left, right) }

@@ -1,26 +1,38 @@
 (** Backend-neutral source construction and expansion for generated assembly parsers. *)
 
 module Expression : sig
-  type t = Integer of Z.t | Current_address | Max_address | Stack_address | Symbol of string | Parameter of string
-    | Add of t * t | Subtract of t * t | Multiply of t * t | Logand of t * t | Logor of t * t
-    | Shift_left of t * t | Shift_right of t * t
-  (** Rewrite every symbolic name while preserving the expression's arithmetic structure. *)
+  type t =
+    | Integer of Z.t
+    | Current_address
+    | Max_address
+    | Stack_address
+    | Symbol of string
+    | Parameter of string
+    | Add of t * t
+    | Subtract of t * t
+    | Multiply of t * t
+    | Logand of t * t
+    | Logor of t * t
+    | Shift_left of t * t
+    | Shift_right of t * t
+
   val map_symbol_references : (string -> t) -> t -> t
+  (** Rewrite every symbolic name while preserving the expression's arithmetic structure. *)
 
-  (** Substitute macro parameters for which the callback supplies an expression. *)
   val map_parameter_references : (string -> t option) -> t -> t
+  (** Substitute macro parameters for which the callback supplies an expression. *)
 
-  (** Fold operations whose operands are integer literals, leaving symbolic values intact. *)
   val fold_constant_operations : t -> t
+  (** Fold operations whose operands are integer literals, leaving symbolic values intact. *)
 
+  val evaluate_with_runtime_config : Runtime_config.t -> t -> (Z.t, string) result
   (** Evaluate a fully resolved expression using the runtime-configured address constants. *)
-  val evaluate_with_runtime_config : Runtime_config.t -> t -> (Z.t,string) result
 end
 
 exception Parse_error of Diagnostic.source_location * string
 
-(** Convert a lexer position to the source-location representation used in diagnostics. *)
 val source_location_of_lexing_position : Lexing.position -> Diagnostic.source_location
+(** Convert a lexer position to the source-location representation used in diagnostics. *)
 
 type 'kind parameter = { name : string; kind : 'kind }
 
@@ -62,18 +74,13 @@ module type SYNTAX = sig
   val validate_statement :
     parameters:(string * parameter_kind) list -> statement -> Diagnostic.t list
 
-  val validate_raw_word :
-    parameters:(string * parameter_kind) list -> raw_word -> Diagnostic.t list
+  val validate_raw_word : parameters:(string * parameter_kind) list -> raw_word -> Diagnostic.t list
 
   val substitute_statement :
-    arguments:(string * macro_argument) list ->
-    statement ->
-    (statement, Diagnostic.t list) result
+    arguments:(string * macro_argument) list -> statement -> (statement, Diagnostic.t list) result
 
   val substitute_raw_word :
-    arguments:(string * macro_argument) list ->
-    raw_word ->
-    (raw_word, Diagnostic.t list) result
+    arguments:(string * macro_argument) list -> raw_word -> (raw_word, Diagnostic.t list) result
 
   val substitute_argument :
     arguments:(string * macro_argument) list ->
@@ -85,6 +92,6 @@ module Make (Syntax : SYNTAX) : sig
   type source_program =
     (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind) item list
 
-  (** Validate and expand macros, resolve declarations and labels, and return emitted statements. *)
   val assemble_source_program : source_program -> (Syntax.statement list, Diagnostic.t list) result
+  (** Validate and expand macros, resolve declarations and labels, and return emitted statements. *)
 end

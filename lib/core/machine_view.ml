@@ -1,3 +1,5 @@
+(** Backend-independent, ordered machine snapshots consumed by sessions and renderers. *)
+
 type status = Running | Halted | Failed
 type register_bank = General | System
 
@@ -24,12 +26,7 @@ type capability = {
   locality : string option;
 }
 
-type seal_range = {
-  base : Z.t;
-  limit : Z.t;
-  cursor : Z.t;
-  locality : string option;
-}
+type seal_range = { base : Z.t; limit : Z.t; cursor : Z.t; locality : string option }
 
 type sealing = {
   object_type : Z.t option;
@@ -73,6 +70,7 @@ let find_register (id : register_id) (view : t) : register option =
   List.find_opt (fun (register : register) -> Register_id.equal id register.id) view.registers
 
 let find_memory_word (address : Z.t) (view : t) : word option =
+  (* Rejecting out-of-range addresses here keeps sparse default memory finite to callers. *)
   if Z.sign address < 0 || Z.compare address view.address_limit >= 0 then None
   else
     match List.find_opt (fun cell -> Z.equal address cell.address) view.memory with

@@ -23,12 +23,7 @@ type capability = {
   locality : string option;
 }
 
-type seal_range = {
-  base : Z.t;
-  limit : Z.t;
-  cursor : Z.t;
-  locality : string option;
-}
+type seal_range = { base : Z.t; limit : Z.t; cursor : Z.t; locality : string option }
 
 type sealing = {
   object_type : Z.t option;
@@ -41,7 +36,7 @@ type word = {
   edit_text : string;
   short_text : string;
   detail_text : string;
-  (** Human-readable instruction text when this integer decodes in the owning backend. *)
+      (** Human-readable instruction text when this integer decodes in the owning backend. *)
   decoded_instruction : string option;
   fingerprint : string;
   kind : semantic_kind;

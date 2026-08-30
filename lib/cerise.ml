@@ -1,3 +1,5 @@
+(** Stable public façade for backends and shared interpreter services. *)
+
 module Vanilla = Backends.Vanilla
 module Locality_cerise = Backends.Locality_cerise
 module Ucerise = Backends.Ucerise
