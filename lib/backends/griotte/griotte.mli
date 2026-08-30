@@ -172,14 +172,14 @@ module Asm_ir : sig
   type regfile = regfile_entry list
 
   val parse_register_name : string -> Ast.register option
-  val lower_word : Runtime_config.t -> word -> (Ast.word, Diagnostic.t list) result
+  val assemble_word : Runtime_config.t -> word -> (Ast.word, Diagnostic.t list) result
 
-  val lower_instruction :
+  val assemble_instruction :
     Runtime_config.t -> instruction_term -> (Ast.instruction, Diagnostic.t list) result
 
-  val lower_program : Runtime_config.t -> program -> (Ast.word list, Diagnostic.t list) result
+  val assemble_program : Runtime_config.t -> program -> (Ast.word list, Diagnostic.t list) result
 
-  val lower_regfile :
+  val assemble_regfile :
     Runtime_config.t ->
     regfile ->
     ( (Ast.register * Ast.word) list * (Ast.system_register * Ast.word) list,

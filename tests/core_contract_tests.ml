@@ -114,7 +114,7 @@ let test_registry_and_shared_frontend (() : unit) : unit =
   Alcotest.(check string)
     "requested spelling reaches the view" "vanilla" (Machine_session.view session).backend_name;
   let stepped = Machine_session.step session |> Result.get_ok in
-  check_z "macro and label resolved before lowering" (Z.of_int 2)
+  check_z "macro and label resolved before concrete assembly" (Z.of_int 2)
     (int_word (register_word Machine_view.General "r1" stepped));
   let config = Runtime_config.create ~max_addr:(Z.of_int 100) ~stack_addr:(Z.of_int 75) () in
   let configured =

@@ -328,19 +328,19 @@ let parser_ownership_and_corpus (() : unit) : unit =
            %typed(ca1, 9, -3, [R W DL DRO], S, Global, Cap) halt"));
   let original_word =
     ok
-      (Griotte_extracted.Asm_ir.lower_word config
+      (Griotte_extracted.Asm_ir.assemble_word config
          (ok (Griotte_extracted.Parser.parse_word "{3: ([R W DL DRO], Local, 0, 8, 1)}")))
   in
   let printed_word = Griotte_extracted.Printer.word original_word in
   let reparsed_word =
     ok
-      (Griotte_extracted.Asm_ir.lower_word config
+      (Griotte_extracted.Asm_ir.assemble_word config
          (ok (Griotte_extracted.Parser.parse_word printed_word)))
   in
   Alcotest.(check bool) "extracted word round trip" true (original_word = reparsed_word);
   let original_regfile =
     ok
-      (Griotte_extracted.Asm_ir.lower_regfile config
+      (Griotte_extracted.Asm_ir.assemble_regfile config
          (ok
             (Griotte_extracted.Parser.parse_regfile
                "cra := {3: ([R W DL DRO], Local, 0, 8, 1)} mtdc := [SU, Global, 0, 15, 2]")))
@@ -363,7 +363,7 @@ let parser_ownership_and_corpus (() : unit) : unit =
   in
   let reparsed_regfile =
     ok
-      (Griotte_extracted.Asm_ir.lower_regfile config
+      (Griotte_extracted.Asm_ir.assemble_regfile config
          (ok (Griotte_extracted.Parser.parse_regfile printed_regfile)))
   in
   Alcotest.(check bool) "extracted regfile round trip" true (original_regfile = reparsed_regfile);
@@ -389,9 +389,9 @@ let nested_composite_macro_arguments (() : unit) : unit =
   let handwritten (source : string) : Z.t =
     match ok (Griotte.Parser.parse_program source) with
     | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] -> (
-        match ok (Griotte.Asm_ir.lower_instruction config instruction) with
+        match ok (Griotte.Asm_ir.assemble_instruction config instruction) with
         | Griotte.Ast.Restrict (_, Griotte.Ast.Constant value) -> value
-        | _ -> Alcotest.fail "handwritten Griotte lowered a different nested instruction")
+        | _ -> Alcotest.fail "handwritten Griotte assembled a different nested instruction")
     | _ -> Alcotest.fail "handwritten Griotte did not resolve the nested restriction"
   in
   let extracted (source : string) : Z.t =
@@ -400,9 +400,9 @@ let nested_composite_macro_arguments (() : unit) : unit =
      Griotte_extracted.Asm_ir.Op instruction;
      Griotte_extracted.Asm_ir.Op Griotte_extracted.Asm_ir.Halt_term;
     ] -> (
-        match ok (Griotte_extracted.Asm_ir.lower_instruction config instruction) with
+        match ok (Griotte_extracted.Asm_ir.assemble_instruction config instruction) with
         | Griotte_extracted.Ast.Restrict (_, Griotte_extracted.Ast.Constant value) -> value
-        | _ -> Alcotest.fail "extracted Griotte lowered a different nested instruction")
+        | _ -> Alcotest.fail "extracted Griotte assembled a different nested instruction")
     | _ -> Alcotest.fail "extracted Griotte did not resolve the nested restriction"
   in
   let check (label : string) (expected : Z.t) (source : string) : unit =

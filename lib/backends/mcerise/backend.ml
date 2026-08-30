@@ -34,11 +34,11 @@ let init (config : Runtime_config.t) (program : Asm_ir.statement list)
       (continuation : value -> (next, error) result) : (next, error) result =
     Result.bind result continuation
   in
-  let* program = Asm_ir.lower_program config program in
+  let* program = Asm_ir.assemble_program config program in
   let* regfile =
     match regfile with
     | None -> Ok None
-    | Some entries -> Result.map Option.some (Asm_ir.lower_regfile config entries)
+    | Some entries -> Result.map Option.some (Asm_ir.assemble_regfile config entries)
   in
   Ok (Machine.init config program regfile)
 
@@ -157,7 +157,9 @@ let ( let* ) (type value next error) (result : (value, error) result)
 let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) :
     (state, Diagnostic.t list) result =
   let* r = register_of_id id in
-  Result.map (fun w -> Machine.set_register r w state) (Asm_ir.lower_word state.Machine.config term)
+  Result.map
+    (fun w -> Machine.set_register r w state)
+    (Asm_ir.assemble_word state.Machine.config term)
 
 let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result
     =
@@ -173,4 +175,4 @@ let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagn
   else
     Result.map
       (fun w -> Machine.set_memory_raw address w state)
-      (Asm_ir.lower_word state.Machine.config term)
+      (Asm_ir.assemble_word state.Machine.config term)

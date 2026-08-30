@@ -31,6 +31,7 @@ module Mcerise_machine = Cerise.Mcerise.Machine
 module Mcerise_backend = Cerise.Mcerise.Backend
 
 module Cerisier_ast = Cerise.Cerisier.Ast
+module Cerisier_asm_ir = Cerise.Cerisier.Asm_ir
 module Cerisier_parser = Cerise.Cerisier.Parser
 module Cerisier_printer = Cerise.Cerisier.Printer
 module Cerisier_codec = Cerise.Cerisier.Codec
@@ -68,6 +69,30 @@ module Extracted_printer = Cerise.Griotte_extracted.Printer
 module Extracted_codec = Cerise.Griotte_extracted.Codec
 module Extracted_backend = Cerise.Griotte_extracted.Backend
 
+let vanilla_assemble_word = Vanilla_asm_ir.assemble_word
+let vanilla_assemble_program = Vanilla_asm_ir.assemble_program
+let vanilla_assemble_regfile = Vanilla_asm_ir.assemble_regfile
+let locality_assemble_word = Locality_asm_ir.assemble_word
+let locality_assemble_program = Locality_asm_ir.assemble_program
+let locality_assemble_regfile = Locality_asm_ir.assemble_regfile
+let ucerise_assemble_word = Ucerise_asm_ir.assemble_word
+let ucerise_assemble_program = Ucerise_asm_ir.assemble_program
+let ucerise_assemble_regfile = Ucerise_asm_ir.assemble_regfile
+let mcerise_assemble_word = Mcerise_asm_ir.assemble_word
+let mcerise_assemble_program = Mcerise_asm_ir.assemble_program
+let mcerise_assemble_regfile = Mcerise_asm_ir.assemble_regfile
+let cerisier_assemble_word = Cerisier_asm_ir.assemble_word
+let cerisier_assemble_program = Cerisier_asm_ir.assemble_program
+let cerisier_assemble_regfile = Cerisier_asm_ir.assemble_regfile
+let griotte_assemble_word = Griotte_asm_ir.assemble_word
+let griotte_assemble_instruction = Griotte_asm_ir.assemble_instruction
+let griotte_assemble_program = Griotte_asm_ir.assemble_program
+let griotte_assemble_regfile = Griotte_asm_ir.assemble_regfile
+let extracted_assemble_word = Extracted_asm_ir.assemble_word
+let extracted_assemble_instruction = Extracted_asm_ir.assemble_instruction
+let extracted_assemble_program = Extracted_asm_ir.assemble_program
+let extracted_assemble_regfile = Extracted_asm_ir.assemble_regfile
+
 let machine_alias (state : Cerise.Vanilla.Machine.t) : Cerise.Machine.t = state
 
 let typed_seal_range (word : Cerise.Machine_view.word) : Cerise.Machine_view.seal_range option =
@@ -102,6 +127,29 @@ let () =
   ignore cerisier_hash;
   ignore cerisier_hash_concat;
   ignore cerisier_einit;
+  ignore vanilla_assemble_word;
+  ignore vanilla_assemble_program;
+  ignore vanilla_assemble_regfile;
+  ignore locality_assemble_word;
+  ignore locality_assemble_program;
+  ignore locality_assemble_regfile;
+  ignore ucerise_assemble_word;
+  ignore ucerise_assemble_program;
+  ignore ucerise_assemble_regfile;
+  ignore mcerise_assemble_word;
+  ignore mcerise_assemble_program;
+  ignore mcerise_assemble_regfile;
+  ignore cerisier_assemble_word;
+  ignore cerisier_assemble_program;
+  ignore cerisier_assemble_regfile;
+  ignore griotte_assemble_word;
+  ignore griotte_assemble_instruction;
+  ignore griotte_assemble_program;
+  ignore griotte_assemble_regfile;
+  ignore extracted_assemble_word;
+  ignore extracted_assemble_instruction;
+  ignore extracted_assemble_program;
+  ignore extracted_assemble_regfile;
   ignore available_backend_names;
   ignore selected_backend;
   ignore find_memory_word;

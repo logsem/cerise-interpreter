@@ -14,8 +14,9 @@ the readability rewrite.
   that describe syntax or position (`matched_value`, `x`, `sr`) when the role is not already
   obvious from a small local pattern.
 - Start substantial modules with a responsibility and data-flow comment. Use section comments
-  for parsing, macro processing, lowering, execution, and rendering phases. Inline comments
-  explain invariants and non-obvious failure branches, not assignments or constructor names.
+  for parsing, macro expansion, symbol resolution, concrete assembly, execution, and rendering
+  phases. Inline comments explain invariants and non-obvious failure branches, not assignments or
+  constructor names.
 - Keep backend semantics independent. New implementation modules remain private behind the
   existing `Assembly_construction`, backend `Asm_ir`, `Application_model`, and `Interactive_ui`
   facades.

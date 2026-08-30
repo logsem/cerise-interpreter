@@ -305,17 +305,17 @@ let parser (() : unit) : unit =
   let parser_config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) () in
   let original_word =
     ok
-      (Griotte.Asm_ir.lower_word parser_config
+      (Griotte.Asm_ir.assemble_word parser_config
          (ok (Griotte.Parser.parse_word "{3: ([R W DL DRO], Local, 0, 8, 1)}")))
   in
   let printed_word = Griotte.Printer.word original_word in
   let reparsed_word =
-    ok (Griotte.Asm_ir.lower_word parser_config (ok (Griotte.Parser.parse_word printed_word)))
+    ok (Griotte.Asm_ir.assemble_word parser_config (ok (Griotte.Parser.parse_word printed_word)))
   in
   Alcotest.(check bool) "word printer round trip" true (original_word = reparsed_word);
   let original_regfile =
     ok
-      (Griotte.Asm_ir.lower_regfile parser_config
+      (Griotte.Asm_ir.assemble_regfile parser_config
          (ok
             (Griotte.Parser.parse_regfile
                "cra := {3: ([R W DL DRO], Local, 0, 8, 1)} mtdc := [SU, Global, 0, 15, 2]")))
@@ -336,7 +336,7 @@ let parser (() : unit) : unit =
   in
   let reparsed_regfile =
     ok
-      (Griotte.Asm_ir.lower_regfile parser_config
+      (Griotte.Asm_ir.assemble_regfile parser_config
          (ok (Griotte.Parser.parse_regfile printed_regfile)))
   in
   Alcotest.(check bool) "regfile printer round trip" true (original_regfile = reparsed_regfile);
@@ -364,7 +364,7 @@ let nested_composite_macro_arguments (() : unit) : unit =
     | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] ->
         Alcotest.(check bool)
           label true
-          (ok (Griotte.Asm_ir.lower_instruction parser_config instruction)
+          (ok (Griotte.Asm_ir.assemble_instruction parser_config instruction)
           = Griotte.Ast.Restrict (Griotte.Ast.cgp, Griotte.Ast.Constant expected))
     | _ -> Alcotest.failf "%s did not resolve to a restriction" label
   in

@@ -90,10 +90,10 @@ module Asm_ir : sig
 
   type macro_argument = Register_argument of Ast.register | Constant_argument of constant_term
 
-  val lower_word : Runtime_config.t -> word -> (Ast.word, Diagnostic.t list) result
-  val lower_program : Runtime_config.t -> program -> (Ast.word list, Diagnostic.t list) result
+  val assemble_word : Runtime_config.t -> word -> (Ast.word, Diagnostic.t list) result
+  val assemble_program : Runtime_config.t -> program -> (Ast.word list, Diagnostic.t list) result
 
-  val lower_regfile :
+  val assemble_regfile :
     Runtime_config.t -> regfile -> ((Ast.register * Ast.word) list, Diagnostic.t list) result
 end
 

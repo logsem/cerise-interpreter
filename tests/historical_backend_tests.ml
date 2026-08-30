@@ -128,7 +128,7 @@ let nested_composite_macro_arguments (() : unit) : unit =
   let check_u (() : unit) : unit =
     match
       ok (Ucerise.Parser.parse_program source)
-      |> Ucerise.Asm_ir.lower_program config |> ok
+      |> Ucerise.Asm_ir.assemble_program config |> ok
     with
     | Ucerise.Ast.I encoded :: _ ->
         let expected =
@@ -140,12 +140,12 @@ let nested_composite_macro_arguments (() : unit) : unit =
         Alcotest.(check bool)
           "uCerise resolved nested permission/locality" true
           (Ucerise.Codec.decode encoded = Ok expected)
-    | _ -> Alcotest.fail "uCerise did not lower the nested restriction"
+    | _ -> Alcotest.fail "uCerise did not assemble the nested restriction"
   in
   let check_m (() : unit) : unit =
     match
       ok (Mcerise.Parser.parse_program source)
-      |> Mcerise.Asm_ir.lower_program config |> ok
+      |> Mcerise.Asm_ir.assemble_program config |> ok
     with
     | Mcerise.Ast.I encoded :: _ ->
         let expected =
@@ -157,7 +157,7 @@ let nested_composite_macro_arguments (() : unit) : unit =
         Alcotest.(check bool)
           "mCerise resolved nested permission/locality" true
           (Mcerise.Codec.decode encoded = Ok expected)
-    | _ -> Alcotest.fail "mCerise did not lower the nested restriction"
+    | _ -> Alcotest.fail "mCerise did not assemble the nested restriction"
   in
   check_u ();
   check_m ();
@@ -202,17 +202,17 @@ let generated_construction_and_locations (() : unit) : unit =
   |> check_location "m parser" 2 8;
   let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
   let u_word = ok (Ucerise.Parser.parse_word "(URWLX, LOCAL, 1, 9, 4)") in
-  let u_concrete = ok (Ucerise.Asm_ir.lower_word config u_word) in
+  let u_concrete = ok (Ucerise.Asm_ir.assemble_word config u_word) in
   let u_round_trip =
     ok (Ucerise.Parser.parse_word (Ucerise.Printer.word u_concrete))
-    |> Ucerise.Asm_ir.lower_word config |> ok
+    |> Ucerise.Asm_ir.assemble_word config |> ok
   in
   Alcotest.(check bool) "u word round trip" true (u_concrete = u_round_trip);
   let m_word = ok (Mcerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)") in
-  let m_concrete = ok (Mcerise.Asm_ir.lower_word config m_word) in
+  let m_concrete = ok (Mcerise.Asm_ir.assemble_word config m_word) in
   let m_round_trip =
     ok (Mcerise.Parser.parse_word (Mcerise.Printer.word m_concrete))
-    |> Mcerise.Asm_ir.lower_word config |> ok
+    |> Mcerise.Asm_ir.assemble_word config |> ok
   in
   Alcotest.(check bool) "m word round trip" true (m_concrete = m_round_trip)
 

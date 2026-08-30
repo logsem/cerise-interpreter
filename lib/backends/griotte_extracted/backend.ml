@@ -511,11 +511,11 @@ let init (config : Runtime_config.t) (program : Asm_ir.statement list)
          (Z.to_string (Runtime_config.max_addr config))
          (Z.to_string extracted_bound))
   else
-    let* program = Asm_ir.lower_program config program in
+    let* program = Asm_ir.assemble_program config program in
     let* regfile =
       match regfile with
       | None -> Ok None
-      | Some regfile -> Result.map Option.some (Asm_ir.lower_regfile config regfile)
+      | Some regfile -> Result.map Option.some (Asm_ir.assemble_regfile config regfile)
     in
     let* snapshot = State.init config program regfile in
     match raw_of_snapshot snapshot with
@@ -558,12 +558,12 @@ let rec step_n (count : int) (state : state) : (state, Machine_backend.execution
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as error -> error
 
-let lower_edit (state : state) (term : asm_word) : (Ast.word, Diagnostic.t list) result =
-  Asm_ir.lower_word state.config term
+let assemble_edit (state : state) (term : asm_word) : (Ast.word, Diagnostic.t list) result =
+  Asm_ir.assemble_word state.config term
 
 let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) :
     (state, Diagnostic.t list) result =
-  let* word = lower_edit state term in
+  let* word = assemble_edit state term in
   match (id.Machine_view.Register_id.bank, id.key) with
   | System, "mtdc" -> (
       match word_to_e word with
@@ -592,7 +592,7 @@ let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagn
       (Printf.sprintf "Memory address %s is outside the configured address space."
          (Z.to_string address))
   else
-    let* word = lower_edit state term in
+    let* word = assemble_edit state term in
     match (finz_to_e "memory address" address, word_to_e word) with
     | Error message, _ | _, Error message ->
         diagnostic ("Cannot represent extracted Griotte memory edit: " ^ message)

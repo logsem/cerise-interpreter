@@ -633,7 +633,7 @@ module Make (Syntax : SYNTAX) = struct
       expand_item_sequence [] items
   end
 
-  module Concrete_lowering = struct
+  module Symbol_resolution = struct
     (* Resolve integer definitions, labels, and current-address expressions, then discard source-only
       declarations. The first pass records addresses; the second rewrites emitted statements. *)
     let resolve_symbols_and_remove_declarations
@@ -790,5 +790,5 @@ module Make (Syntax : SYNTAX) = struct
     | Ok macros -> (
         match Macro_processing.expand_macro_calls macros items with
         | Error _ as error -> error
-        | Ok items -> Concrete_lowering.resolve_symbols_and_remove_declarations items)
+        | Ok items -> Symbol_resolution.resolve_symbols_and_remove_declarations items)
 end

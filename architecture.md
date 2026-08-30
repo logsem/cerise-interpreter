@@ -10,10 +10,11 @@ one backend's AST, assembler IR, generated lexer/parser composition, printer, co
 The main library uses Dune's qualified-subdirectory layout internally. Each backend has a small
 group index and signature beside its implementation; `lib/cerise.ml` aliases those groups to the
 stable public modules such as `Cerise.Vanilla` and `Cerise.Cerisier`. `Ast` is the semantic machine
-representation; `Asm_ir` is the backend-owned syntax representation lowered into it. Shared token
-and construction fragments live in `lib/assembly/` and are composed by Menhir with each backend
-grammar. Expressions, labels, definitions, and typed macros are implemented by
-`Assembly_construction`; exact instruction syntax remains backend-owned.
+representation; `Asm_ir` is the backend-owned syntax representation concretely assembled into it.
+Shared token and construction fragments live in `lib/assembly/` and are composed by Menhir with
+each backend grammar. Expressions, labels, definitions, and typed macros are implemented by
+`Assembly_construction`; exact instruction syntax remains backend-owned. The execution pipeline is
+`parse → macro expansion → symbol resolution → concrete assembly → execution`.
 
 `Machine_session` owns persistent execution and edits, and `Machine_view` is the pure rendering
 snapshot boundary. Terminal/Notty code is source-only and does not enter the library API. Codec

@@ -1,6 +1,6 @@
 (* This facade owns Griotte assembly syntax and its translation to executable words.
    Parsed terms flow through macro validation and hygienic substitution before the
-   concrete lowering phase evaluates expressions and encodes instructions. *)
+   concrete-assembly phase evaluates expressions and encodes instructions. *)
 
 open Ast
 open Assembly_construction
@@ -686,91 +686,92 @@ let assemble_source_program (program : source_program) : (statement list, Diagno
     =
   Assembly_pipeline.assemble_source_program program
 
-(* Concrete lowering: reject any unexpanded terms, evaluate expressions, and emit
+(* Concrete assembly: reject any unexpanded terms, evaluate expressions, and emit
    the handwritten machine's words without changing the public [Asm_ir] paths. *)
-module Concrete_lowering = struct
+module Concrete_assembly = struct
   let eval (config : Runtime_config.t) (expression : expression) : (Z.t, Diagnostic.t list) result =
     match Assembly_construction.Expression.evaluate_with_runtime_config config expression with
     | Ok value -> Ok value
     | Error message -> diagnostic message
 
-  let lower_register (term : register_term) : (register, Diagnostic.t list) result =
+  let assemble_register (term : register_term) : (register, Diagnostic.t list) result =
     match term with
     | Named register -> Ok register
     | Register_parameter name ->
         diagnostic (Printf.sprintf "Unexpanded register parameter $%s." name)
 
-  let lower_permission (term : permission_term) : (permission, Diagnostic.t list) result =
+  let assemble_permission (term : permission_term) : (permission, Diagnostic.t list) result =
     match term with
     | Permission_literal permission -> Ok permission
     | Permission_parameter name ->
         diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." name)
 
-  let lower_seal_permission (term : seal_permission_term) :
+  let assemble_seal_permission (term : seal_permission_term) :
       (seal_permission, Diagnostic.t list) result =
     match term with
     | Seal_permission_literal permission -> Ok permission
     | Seal_permission_parameter name ->
         diagnostic (Printf.sprintf "Unexpanded seal permission parameter $%s." name)
 
-  let lower_locality (term : locality_term) : (locality, Diagnostic.t list) result =
+  let assemble_locality (term : locality_term) : (locality, Diagnostic.t list) result =
     match term with
     | Locality_literal locality -> Ok locality
     | Locality_parameter name ->
         diagnostic (Printf.sprintf "Unexpanded locality parameter $%s." name)
 
-  let lower_constant (config : Runtime_config.t) (term : constant_term) :
+  let assemble_constant (config : Runtime_config.t) (term : constant_term) :
       (Z.t, Diagnostic.t list) result =
     match term with
     | Expression expression -> eval config expression
     | Permission permission -> Ok (Codec.encode_permission permission)
     | Seal_permission permission -> Ok (Codec.encode_seal_permission permission)
     | Permission_locality (permission, locality) ->
-        let* permission = lower_permission permission in
-        Result.map (Codec.encode_permission_locality permission) (lower_locality locality)
+        let* permission = assemble_permission permission in
+        Result.map (Codec.encode_permission_locality permission) (assemble_locality locality)
     | Seal_permission_locality (permission, locality) ->
-        let* permission = lower_seal_permission permission in
-        Result.map (Codec.encode_seal_permission_locality permission) (lower_locality locality)
+        let* permission = assemble_seal_permission permission in
+        Result.map (Codec.encode_seal_permission_locality permission) (assemble_locality locality)
     | Word_type word_type -> Ok (Codec.encode_word_type word_type)
     | Locality locality -> Ok (Codec.encode_locality locality)
     | Value_parameter name -> diagnostic (Printf.sprintf "Unexpanded value parameter $%s." name)
 
-  let lower_operand (config : Runtime_config.t) (term : operand_term) :
+  let assemble_operand (config : Runtime_config.t) (term : operand_term) :
       (reg_or_const, Diagnostic.t list) result =
     match term with
     | Register_term register ->
-        Result.map (fun register -> Register register) (lower_register register)
+        Result.map (fun register -> Register register) (assemble_register register)
     | Constant_term constant ->
-        Result.map (fun constant -> Constant constant) (lower_constant config constant)
+        Result.map (fun constant -> Constant constant) (assemble_constant config constant)
 
-  let lower_sealable (config : Runtime_config.t) (term : sealable_term) :
+  let assemble_sealable (config : Runtime_config.t) (term : sealable_term) :
       (sealable, Diagnostic.t list) result =
     match term with
     | Cap_term (permission, locality, base, limit, cursor) ->
-        let* permission = lower_permission permission in
-        let* locality = lower_locality locality in
+        let* permission = assemble_permission permission in
+        let* locality = assemble_locality locality in
         let* base = eval config base in
         let* limit = eval config limit in
         Result.map
           (fun cursor -> Cap (permission, locality, base, limit, cursor))
           (eval config cursor)
     | Seal_range_term (permission, locality, base, limit, cursor) ->
-        let* permission = lower_seal_permission permission in
-        let* locality = lower_locality locality in
+        let* permission = assemble_seal_permission permission in
+        let* locality = assemble_locality locality in
         let* base = eval config base in
         let* limit = eval config limit in
         Result.map
           (fun cursor -> SealRange (permission, locality, base, limit, cursor))
           (eval config cursor)
 
-  let lower_word (config : Runtime_config.t) (term : word) : (Ast.word, Diagnostic.t list) result =
+  let assemble_word (config : Runtime_config.t) (term : word) : (Ast.word, Diagnostic.t list) result
+      =
     match term with
     | I_term expression -> Result.map (fun value -> I value) (eval config expression)
     | Sealable_term sealable ->
-        Result.map (fun value -> Sealable value) (lower_sealable config sealable)
+        Result.map (fun value -> Sealable value) (assemble_sealable config sealable)
     | Sentry_term (permission, locality, base, limit, cursor) ->
-        let* permission = lower_permission permission in
-        let* locality = lower_locality locality in
+        let* permission = assemble_permission permission in
+        let* locality = assemble_locality locality in
         let* base = eval config base in
         let* limit = eval config limit in
         Result.map
@@ -778,29 +779,29 @@ module Concrete_lowering = struct
           (eval config cursor)
     | Sealed_term (object_type, sealable) ->
         let* object_type = eval config object_type in
-        Result.map (fun value -> Sealed (object_type, value)) (lower_sealable config sealable)
+        Result.map (fun value -> Sealed (object_type, value)) (assemble_sealable config sealable)
 
-  let lower_instruction (config : Runtime_config.t) (instruction : instruction_term) :
+  let assemble_instruction (config : Runtime_config.t) (instruction : instruction_term) :
       (instruction, Diagnostic.t list) result =
-    let register = lower_register and operand = lower_operand config in
-    let lower_register_pair (construct : register * register -> 'a) (first : register_term)
+    let register = assemble_register and operand = assemble_operand config in
+    let assemble_register_pair (construct : register * register -> 'a) (first : register_term)
         (second : register_term) : ('a, Diagnostic.t list) result =
       let* first = register first in
       Result.map (fun second -> construct (first, second)) (register second)
     in
-    let lower_register_and_operand (construct : register * reg_or_const -> 'a)
+    let assemble_register_and_operand (construct : register * reg_or_const -> 'a)
         (destination : register_term) (source : operand_term) : ('a, Diagnostic.t list) result =
       let* destination = register destination in
       Result.map (fun source -> construct (destination, source)) (operand source)
     in
-    let lower_register_and_two_operands (construct : register * reg_or_const * reg_or_const -> 'a)
-        (destination : register_term) (left : operand_term) (right : operand_term) :
-        ('a, Diagnostic.t list) result =
+    let assemble_register_and_two_operands
+        (construct : register * reg_or_const * reg_or_const -> 'a) (destination : register_term)
+        (left : operand_term) (right : operand_term) : ('a, Diagnostic.t list) result =
       let* destination = register destination in
       let* left = operand left in
       Result.map (fun right -> construct (destination, left, right)) (operand right)
     in
-    let lower_three_registers (construct : register * register * register -> 'a)
+    let assemble_three_registers (construct : register * register * register -> 'a)
         (destination : register_term) (source : register_term) (sealing : register_term) :
         ('a, Diagnostic.t list) result =
       let* destination = register destination in
@@ -809,10 +810,10 @@ module Concrete_lowering = struct
     in
     match instruction with
     | Jalr_term (first, second) ->
-        lower_register_pair (fun (first, second) -> Jalr (first, second)) first second
+        assemble_register_pair (fun (first, second) -> Jalr (first, second)) first second
     | Jmp_term target -> Result.map (fun target -> Jmp target) (operand target)
     | Jnz_term (condition, target) ->
-        lower_register_and_operand
+        assemble_register_and_operand
           (fun (condition, target) -> Jnz (condition, target))
           condition target
     | ReadSR_term (destination, system_register) ->
@@ -820,118 +821,118 @@ module Concrete_lowering = struct
     | WriteSR_term (system_register, source) ->
         Result.map (fun source -> WriteSR (system_register, source)) (register source)
     | Move_term (destination, source) ->
-        lower_register_and_operand
+        assemble_register_and_operand
           (fun (destination, source) -> Move (destination, source))
           destination source
     | Load_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> Load (destination, source))
           destination source
     | Store_term (destination, source) ->
-        lower_register_and_operand
+        assemble_register_and_operand
           (fun (destination, source) -> Store (destination, source))
           destination source
     | Add_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> Add (destination, left, right))
           destination left right
     | Sub_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> Sub (destination, left, right))
           destination left right
     | Mul_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> Mul (destination, left, right))
           destination left right
     | LAnd_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> LAnd (destination, left, right))
           destination left right
     | LOr_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> LOr (destination, left, right))
           destination left right
     | LShiftL_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> LShiftL (destination, left, right))
           destination left right
     | LShiftR_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> LShiftR (destination, left, right))
           destination left right
     | Lt_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> Lt (destination, left, right))
           destination left right
     | Lea_term (destination, source) ->
-        lower_register_and_operand
+        assemble_register_and_operand
           (fun (destination, source) -> Lea (destination, source))
           destination source
     | Restrict_term (destination, source) ->
-        lower_register_and_operand
+        assemble_register_and_operand
           (fun (destination, source) -> Restrict (destination, source))
           destination source
     | SubSeg_term (destination, left, right) ->
-        lower_register_and_two_operands
+        assemble_register_and_two_operands
           (fun (destination, left, right) -> SubSeg (destination, left, right))
           destination left right
     | GetL_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetL (destination, source))
           destination source
     | GetB_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetB (destination, source))
           destination source
     | GetE_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetE (destination, source))
           destination source
     | GetA_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetA (destination, source))
           destination source
     | GetP_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetP (destination, source))
           destination source
     | GetOType_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetOType (destination, source))
           destination source
     | GetWType_term (destination, source) ->
-        lower_register_pair
+        assemble_register_pair
           (fun (destination, source) -> GetWType (destination, source))
           destination source
     | Seal_term (destination, source, sealing) ->
-        lower_three_registers
+        assemble_three_registers
           (fun (destination, source, sealing) -> Seal (destination, source, sealing))
           destination source sealing
     | UnSeal_term (destination, source, sealing) ->
-        lower_three_registers
+        assemble_three_registers
           (fun (destination, source, sealing) -> UnSeal (destination, source, sealing))
           destination source sealing
     | Fail_term -> Ok Fail
     | Halt_term -> Ok Halt
 
-  let lower_program (config : Runtime_config.t) (program : statement list) :
+  let assemble_program (config : Runtime_config.t) (program : statement list) :
       (Ast.word list, Diagnostic.t list) result =
     let rec loop (words : Ast.word list) (term : statement list) :
         (Ast.word list, Diagnostic.t list) result =
       match term with
       | [] -> Ok (List.rev words)
       | Op instruction :: rest -> (
-          let* instruction = lower_instruction config instruction in
+          let* instruction = assemble_instruction config instruction in
           match Codec.encode instruction with
           | Ok encoded -> loop (I encoded :: words) rest
           | Error error -> diagnostic (Instruction_codec.error_message error))
       | Word word :: rest ->
-          let* word = lower_word config word in
+          let* word = assemble_word config word in
           loop (word :: words) rest
     in
     loop [] program
 
-  let lower_regfile (config : Runtime_config.t) (entries : regfile_entry list) :
+  let assemble_regfile (config : Runtime_config.t) (entries : regfile_entry list) :
       ((register * Ast.word) list * (system_register * Ast.word) list, Diagnostic.t list) result =
     List.fold_left
       (fun result entry ->
@@ -940,15 +941,15 @@ module Concrete_lowering = struct
         | Register_entry (register, word) ->
             Result.map
               (fun word -> ((register, word) :: registers, system_registers))
-              (lower_word config word)
+              (assemble_word config word)
         | System_register_entry (register, word) ->
             Result.map
               (fun word -> (registers, (register, word) :: system_registers))
-              (lower_word config word))
+              (assemble_word config word))
       (Ok ([], []))
       entries
     |> Result.map (fun (registers, system_registers) ->
         (List.rev registers, List.rev system_registers))
 end
 
-include Concrete_lowering
+include Concrete_assembly

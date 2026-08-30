@@ -20,10 +20,10 @@ let parser_and_printer () =
   List.iter
     (fun text ->
       let term = ok (Cerisier.Parser.parse_word text) in
-      let word = ok (Cerisier.Asm_ir.lower_word config term) in
+      let word = ok (Cerisier.Asm_ir.assemble_word config term) in
       let printed = Cerisier.Printer.word word in
       let reparsed = ok (Cerisier.Parser.parse_word printed) in
-      Alcotest.(check bool) text true (word = ok (Cerisier.Asm_ir.lower_word config reparsed)))
+      Alcotest.(check bool) text true (word = ok (Cerisier.Asm_ir.assemble_word config reparsed)))
     [ "-17"; "(RW, 0, MAX_ADDR, 4)"; "[SU, 0, 8, 1]"; "{3: (RX, 0, 8, 1)}" ];
   List.iter
     (fun source ->

@@ -366,19 +366,19 @@ let generated_parser_locations_and_round_trips (() : unit) : unit =
   |> check_location "parser" 2 8;
   let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
   let vanilla_term = ok (Vanilla.Parser.parse_word "{7: (RW, 0, MAX_ADDR, 3)}") in
-  let vanilla_word = ok (Vanilla.Asm_ir.lower_word config vanilla_term) in
+  let vanilla_word = ok (Vanilla.Asm_ir.assemble_word config vanilla_term) in
   let vanilla_round_trip =
     Vanilla.Printer.word vanilla_word |> Vanilla.Parser.parse_word |> ok
-    |> Vanilla.Asm_ir.lower_word config |> ok
+    |> Vanilla.Asm_ir.assemble_word config |> ok
   in
   Alcotest.(check bool) "vanilla word round trip" true (vanilla_word = vanilla_round_trip);
   let locality_term =
     ok (Locality_cerise.Parser.parse_word "[SU, LOCAL, 0, STK_ADDR, 3]")
   in
-  let locality_word = ok (Locality_cerise.Asm_ir.lower_word config locality_term) in
+  let locality_word = ok (Locality_cerise.Asm_ir.assemble_word config locality_term) in
   let locality_round_trip =
     Locality_cerise.Printer.word locality_word |> Locality_cerise.Parser.parse_word |> ok
-    |> Locality_cerise.Asm_ir.lower_word config |> ok
+    |> Locality_cerise.Asm_ir.assemble_word config |> ok
   in
   Alcotest.(check bool) "locality word round trip" true (locality_word = locality_round_trip);
   ignore (ok (Vanilla.Parser.parse_regfile "r1 := 1 ; comment with spaces\n r2 := (RO, 0, 4, 0)"))

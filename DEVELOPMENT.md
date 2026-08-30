@@ -12,15 +12,18 @@ The executable is intentionally thin. Data flows through it as follows:
    executable's arguments, including a `Runtime_config.t`, backend name, program path, optional
    register-file path, and batch or interactive mode.
 2. `src/interpreter.ml` reads the files and calls `Machine_session.create_with_filenames`. Filenames
-   are retained so lexer, parser, macro, and lowering diagnostics can report source locations.
+   are retained so lexer, parser, macro-expansion, symbol-resolution, and concrete-assembly
+   diagnostics can report source locations.
 3. `lib/backend_registry.ml` resolves the requested name to a first-class module satisfying
    `Machine_backend.S`. Compatibility names such as `cerise` select the same module while the
    session retains the spelling requested by the user.
 4. `Machine_session` asks that backend to parse the program and optional register file, then calls
    `Backend.init`. A typical backend parser runs the shared lexer and its merged Menhir grammar,
-   expands labels, definitions, and typed macros through `Assembly_construction`, and returns its
-   backend-owned `Asm_ir`. `Backend.init` lowers that syntax IR using the runtime configuration and
-   initializes the machine's semantic `Ast.word` values.
+   expands typed macros and resolves labels and definitions through `Assembly_construction`, and
+   returns its backend-owned `Asm_ir`. `Backend.init` concretely assembles that syntax IR using the
+   runtime configuration and initializes the machine's semantic `Ast.word` values. In short, the
+   execution pipeline is `parse → macro expansion → symbol resolution → concrete assembly →
+   execution`.
 5. `Machine_session` existentially packages the selected backend module with its private state.
    Calls to `step`, `step_n`, text edits, and `view` always unpack and repack that same backend, so
    backend-specific state and word types never leak into shared clients.
@@ -41,11 +44,11 @@ and machine are closest, but keep the new backend's semantic types, parsing, cod
 independent.
 
 1. **Define semantic types in `ast.ml`.** Add registers, permissions, words, and instructions used
-   by execution. These are post-lowering values: source expressions, parameters, and labels do not
-   belong here.
-2. **Define source syntax and lowering in `asm_ir.ml`.** Represent parser-facing expressions,
+   by execution. These are post-concrete-assembly values: source expressions, parameters, and
+   labels do not belong here.
+2. **Define source syntax and concrete assembly in `asm_ir.ml`.** Represent parser-facing expressions,
    register/constant alternatives, words, instructions, definitions, and typed macro arguments.
-   Its `Syntax` module supplies the hooks required by `Assembly_construction`; its lowering
+   Its `Syntax` module supplies the hooks required by `Assembly_construction`; its `assemble_*`
    functions resolve configuration-dependent values and produce `Ast` values with diagnostics.
 3. **Declare assembly syntax in `grammar.mly`.** The backend grammar supplies public productions
    such as `statement`, `raw_word`, `regfile_entry`, and `macro_argument`. It is merged with
@@ -66,10 +69,10 @@ independent.
 7. **Implement `machine.ml`.** Store the runtime configuration in the state, initialize registers
    and finite sparse memory, implement transitions, and decode fetched integer words with the
    backend codec. Preserve stopped-state and error behavior in `step` and `step_n`.
-8. **Adapt through `backend.ml`.** Implement `Machine_backend.S`: parser delegation, lowering and
-   initialization, stepping, word/register mapping, `inspect`, and checked text edits. `inspect`
-   should return registers in stable order and enough structured metadata for renderers; do not
-   make UI code parse `short_text` to recover capability semantics.
+8. **Adapt through `backend.ml`.** Implement `Machine_backend.S`: parser delegation, concrete
+   assembly and initialization, stepping, word/register mapping, `inspect`, and checked text edits.
+   `inspect` should return registers in stable order and enough structured metadata for renderers;
+   do not make UI code parse `short_text` to recover capability semantics.
 9. **Expose the backend group.** Add `<backend>.ml` as the group index, a matching explicit
    `<backend>.mli` public surface, and an alias in `lib/cerise.ml` if it is public. Keep private
    implementation helpers out of the signature.
@@ -81,14 +84,15 @@ independent.
     backend group is discovered without flattening its modules. Update `src/dune` only when adding
     executable-side modules, not for an ordinary library backend.
 12. **Test the whole contract.** Cover fixed allocations, codec round trips and malformed values;
-    accepted and rejected parser forms; macro/label lowering; initialization, transitions, failure,
-    and finite memory; word/printer round trips; `Machine_session` edits; `Machine_view` metadata;
-    registry selection; and public API compilation. Add CLI or TUI goldens only when output is
-    intentionally changing.
+    accepted and rejected parser forms; macro expansion and symbol resolution; concrete assembly;
+    initialization, transitions, failure, and finite memory; word/printer round trips;
+    `Machine_session` edits; `Machine_view` metadata; registry selection; and public API
+    compilation. Add CLI or TUI goldens only when output is intentionally changing.
 
 When extending an existing instruction, follow the same route end to end: grammar and `Asm_ir`,
-lowering to `Ast`, codec case, printer, machine transition, view implications, signature, and tests.
-Changing only the parser or machine usually leaves an inconsistent assembly/encoding contract.
+concrete assembly to `Ast`, codec case, printer, machine transition, view implications, signature,
+and tests. Changing only the parser or machine usually leaves an inconsistent assembly/encoding
+contract.
 
 ## Instruction codecs
 
@@ -124,7 +128,7 @@ decoders must return errors for malformed external integers rather than raise ex
 
 Start with `Machine_session`, not a concrete backend. It is the stable execution façade:
 
-- `create`/`create_with_filenames` select, parse, lower, and initialize a backend;
+- `create`/`create_with_filenames` select, parse, concretely assemble, and initialize a backend;
 - `step`, `step_n`, and `run` return new persistent sessions;
 - `set_register_text` and `set_memory_text` parse edits with the owning backend;
 - `view` returns the renderer-independent `Machine_view.t`.

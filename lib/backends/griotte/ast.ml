@@ -1,5 +1,5 @@
-(* Core values and instructions for the handwritten Griotte machine. Assembly terms
-   lower to these values; the codec, machine, printer, and UI adapter consume them. *)
+(* Core values and instructions for the handwritten Griotte machine. Assembly terms are concretely
+   assembled into these values; the codec, machine, printer, and UI adapter consume them. *)
 
 type register = PC | Reg of int
 type system_register = MTDC
