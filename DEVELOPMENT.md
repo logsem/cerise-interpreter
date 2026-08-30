@@ -2,7 +2,8 @@
 
 This guide is for engineers extending the interpreter. See [assembler.md](assembler.md) for the
 assembly language itself and [architecture.md](architecture.md) for the shorter architectural
-overview.
+overview. See [INTERNALS.md](INTERNALS.md) for worked traces through assembly construction,
+instruction encoding, and tagged metadata.
 
 ## From the CLI to rendered output
 
@@ -38,7 +39,7 @@ The important boundary is `Machine_view`: backends describe registers, memory, s
 word metadata, and optional enclave data as pure backend-neutral values. Neither the installable
 library nor a backend depends on terminal rendering.
 
-## Adding or extending a backend
+## Backend change-impact checklist
 
 The existing directories under `lib/backends/` are the templates. Choose the backend whose syntax
 and machine are closest, but keep the new backend's semantic types, parsing, codec, and behavior
@@ -100,67 +101,67 @@ concrete assembly to `Ast`, encoding pattern, printer, machine transition, view 
 signature, and tests. Changing only the parser or machine usually leaves an inconsistent
 assembly/encoding contract.
 
-## Instruction codecs
+## Instruction, metadata, and syntax change-impact checklists
 
-`Instruction_codec` has four explicit authoring layers:
+For an instruction change, account for every consumer of the instruction rather than treating its
+constructor as the feature boundary:
 
-1. A `scalar_codec` encodes and decodes one atomic value.
-2. An `operand_codec` composes typed operands, payloads, and opcode variants.
-3. An `encoding_pattern` gives one operand codec a name, instruction constructor, and partial
-   projector. The constructor and projector must be inverses for that instruction constructor.
-4. `compile` builds the immutable bidirectional instruction codec and assigns opcode ranges.
+1. Add the concrete constructor and operand types to the backend `Ast`, and the unresolved term plus
+   macro validation, expression mapping, and substitution cases to `Asm_ir`.
+2. Add the backend grammar production and concrete-assembly case. If the mnemonic needs a new shared
+   lexer token, add it to `token_spec.mly` and `lexer.mll`, then mark it as unused in every backend
+   Dune stanza whose grammar does not consume it. Token recognition is not permission to accept it.
+3. Add a symmetric codec pattern and printer support. Pattern order is encoding state: inserting or
+   widening a compact-codec pattern can renumber later opcodes, so review integer goldens as an ISA
+   change rather than accepting regenerated expectations mechanically.
+4. Implement success, failure, stopped-state, PC-update, and finite-memory behavior in the machine;
+   extend `inspect` when the instruction introduces semantic state a renderer needs.
+5. Update the group signature if the public types changed, the exact ISA in `assembler.md`, and tests
+   for parsing, macros, concrete assembly, all operand variants, encoding failures, execution, view
+   data, and public API compilation.
 
-The low eight bits of an encoded instruction are the opcode; the non-negative arbitrary-precision
-payload occupies the remaining high bits. Operand codecs determine both:
+For a metadata value or layout change, update the semantic type, parser/`Asm_ir` constant handling,
+printer, machine consumers, and structured `Machine_view` projection together. Extend the existing
+finite scalar declaration and compiled tagged layout instead of adding a separate reverse decoder.
+Treat scalar numbers, field widths, tags, and established error strings as encoding compatibility;
+cover every value, composite pair, wrong tag, extra high bits, and public wrapper with explicit
+goldens before accepting a layout change.
 
-- `unit` and `scalar` use one opcode variant. `register` is a scalar operand codec, while
-  `signed_zarith` maps signed integers to a non-negative payload.
-- `register_or_constant` has span two: variant 0 is a register and variant 1 is a constant.
-- `pair` multiplies the spans of its children and combines their variant indexes. Its two signed
-  payloads are encoded by bit interleaving with two low sign bits, so neither component is limited
-  to a machine word. `triple` is a typed nested pair.
+For an assembly-language change, first decide its ownership. Expressions, declarations, labels,
+placement, and macro containers are shared construction concepts; instruction and architectural
+value shapes are backend grammar concepts. Then:
 
-Compilation visits patterns in declaration order and assigns consecutive ranges from opcode zero in
-the 256-entry opcode space. Duplicate names and ranges that exhaust that space are structured
-errors; composed span arithmetic saturates safely instead of overflowing a host integer.
-Consequently, inserting, reordering, or changing the operands of a pattern can renumber all later
-patterns. Test complete typed round trips and review intentional encoded-integer changes directly.
+1. Keep the shared lexer a classifier only. Add backend acceptance in its `grammar.mly`, and add
+   negative parser cases for other backends that can now receive the same token.
+2. Exercise all affected entry points independently: program, register file, and single-word edits.
+   Preserve source filenames and locations when translating lexer, Menhir, expansion, resolution,
+   and concrete-assembly failures to diagnostics.
+3. If a new form can occur inside a macro, update the backend's `Assembly_construction.SYNTAX`
+   mappings, validation, and substitution together; test nested calls, typed arguments, private
+   labels, and `&CURRENT_ADDR` after expansion where relevant.
+4. Update accepted and rejected fixtures for every affected backend, run Menhir with strict unused
+   token accounting, and document the exact selected-backend behavior in `assembler.md`.
 
-Encoding requires exactly one projector to match. It adds the operand codec's variant to the
-pattern's first opcode and places the payload above bit 7. Decoding selects the pattern by its
-contiguous range, derives the variant from the range offset, decodes the payload with the same
-operand codec, and invokes the constructor. Scalar codecs should reject values outside their
-semantic domain in both directions; decoders must return errors for malformed external integers
-rather than raise exceptions.
+## Codec authoring boundaries
 
-Assembly text is the portable interchange form across backends that share an instruction set.
-Encoded instruction integers are backend-specific: in particular, handwritten Griotte uses this
-compact declaration-order codec while extracted Griotte retains its independent Rocq fixed layout.
+[INTERNALS.md](INTERNALS.md) explains opcode spans, arbitrary-precision payload pairing, the low
+eight-bit opcode layout, and tagged metadata validation in detail. For extension work, keep these
+authoring contracts in view:
 
-## Tagged metadata codecs
-
-The six handwritten backends encode capability metadata through the repository-private
-`Tagged_metadata_codec`; extracted Griotte deliberately retains its independent implementation.
-Author a handwritten metadata layout in four layers:
-
-1. A finite scalar declaration lists each semantic value and its non-negative numeric encoding.
-   Decoding is derived from the same list, so do not add a reverse table or matching decoder.
-2. A scalar payload carries one declaration directly. A packed payload combines two scalar
-   declarations into explicit fixed-width low and high fields—for example, five permission bits
-   below two locality bits.
-3. A typed encoding pattern gives the payload a unique name, one of the fixed three-bit tags, and
-   the backend's exact wrong-tag and malformed-payload messages.
-4. One compiled metadata layout contains every pattern supported by that backend. Public named
-   wrappers delegate to their typed pattern; keep existing wrapper types and decoder visibility.
-
-In short, the authoring flow is
-`scalar declaration → packed payload → tagged encoding pattern → compiled metadata layout`.
-Compilation rejects empty or duplicate pattern names, invalid or duplicate tags, duplicate or
-negative scalar encodings, and values that do not fit their declared packed field. Decoding uses
-arbitrary-precision `Z.t` operations throughout and treats negative inputs, extra high bits,
-unknown scalar values, and wrong tags as errors. Preserve the established numeric scalars, field
-widths, tags, and error strings when changing a backend; add exhaustive scalar and composite
-goldens so the layout cannot silently drift.
+- A handwritten instruction codec is declared as scalar codecs, typed operand codecs, and named
+  encoding patterns, then compiled once. A pattern's constructor and projector must be inverses,
+  and projectors for different patterns must not overlap. Declaration order and operand span assign
+  opcode ranges, so inserting, reordering, or widening a pattern is an integer-encoding change.
+- Decoding handles external `Z.t` values and must return structured errors for negative values,
+  unknown opcodes, invalid variants, and malformed payloads rather than raise. Cover each operand
+  variant and constructor/projector direction, not only one successful instruction per mnemonic.
+- The six handwritten backends use the repository-private `Tagged_metadata_codec`. Declare each
+  semantic scalar mapping once, compose any fixed-width payload, compile the typed tagged patterns,
+  and have named public wrappers reuse those exact pattern values. Do not maintain a separate
+  decoding table.
+- Assembly text is the interchange form between backends with a shared textual ISA; encoded
+  instruction and metadata integers remain backend-owned. Extracted Griotte retains an independent
+  fixed adapter codec and extracted representation rather than using either shared authoring engine.
 
 ## Building or extending a UI
 
@@ -192,6 +193,44 @@ and word snapshot helpers support deterministic tests. Preserve behavior at narr
 for both viewport sides; update `tests/tui_fidelity_tests.ml` and goldens only for intended visual
 changes. A non-terminal frontend can stop at `Machine_session`/`Machine_view`, or reuse the
 application model if its history and viewport behavior fit.
+
+### Terminal UI contract
+
+Treat these layout and navigation rules as behavior, not incidental rendering details:
+
+- Registers are dense and column-major. When space is limited, retain the program counter first,
+  then the valid stack pointer, backend-specific registers, and the selected capability; show an
+  omitted-register count instead of silently clipping. Word layout comes from structured semantic
+  fields, uses Zarith-safe widths, and falls back to elided neutral text for incomplete metadata.
+- The primary `HEAP` panel follows the program counter. The mirrored secondary panel is `STACK`
+  when a valid `Stack_pointer` capability exists, otherwise the selected capability. Capability
+  limits are exclusive, cursor and range indicators belong to their panel, and decoded instruction
+  text is shown only where an integer lies inside the panel capability's authority.
+- A wide layout shows both memory panels only when each half fits all fixed semantic fields. A
+  narrower layout removes the secondary panel first and gives the primary the full width. The
+  normal-height layout reserves at least three memory data rows; very short terminals use a minimal
+  status/HEAP/footer layout. The `machine state:` status is right-aligned and the backend footer is
+  retained. Rendering must always return the requested dimensions.
+- Initial display follows both targets. A successful one- or ten-step command creates one undo
+  entry and follows both panels; an execution error leaves UI state and history unchanged. Undo
+  removes one command entry, follows the restored primary target, and preserves the secondary
+  viewport.
+- Following leaves an already visible target in place. An off-screen target receives up to two
+  rows of leading context. A page moves `max 1 (rows - 2)` addresses, preserving a two-row overlap,
+  while row moves use one address. Every start address is clamped to
+  `[0, address_limit - 1]`.
+- A valid stack pointer always wins as the secondary target. Capability cycling changes the
+  fallback selection and follows it only when no valid stack pointer exists. Hiding the secondary
+  panel preserves its viewport; showing it again refollows the active secondary target.
+- Mouse scrolling targets the secondary viewport only when the pointer is in the secondary panel
+  of the layout that was actually rendered; narrow layouts always target primary. `Ctrl` changes a
+  wheel row move into a page move.
+
+When changing the TUI, keep the pure state transition in `Application_model` or
+`Interactive_ui.transition`, then update event mapping and rendering. Add transition tests for both
+panels, text and ANSI snapshots for intentional visuals, malformed-metadata fallbacks, narrow/wide
+and zero-size dimensions, and the terminal release smoke test. If `Machine_view` gains a field,
+populate it in every backend and verify the batch renderer as well as the TUI.
 
 ## Machine conventions and invariants
 

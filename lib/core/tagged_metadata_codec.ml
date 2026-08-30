@@ -1,4 +1,5 @@
-(** Declarative tagged-metadata encoding shared by the handwritten backends. *)
+(** Declarative tagged-metadata encoding shared by the handwritten backends. The low three bits are
+    a fixed pattern tag; the remaining arbitrary-precision bits hold the typed payload. *)
 
 type error =
   | Invalid_pattern_name of string
@@ -46,6 +47,10 @@ let error_message (error : error) : string =
 
 type 'a finite_scalar = { name : string; mappings : ('a * Z.t) list }
 
+(* Keeping the forward and reverse directions as one finite relation is the central maintenance
+   invariant. Compilation checks uniqueness before the linear searches below are allowed, making
+   structural lookup deterministic without a backend-owned reverse decoder. *)
+
 let finite_scalar ~(name : string) (mappings : ('a * Z.t) list) : 'a finite_scalar =
   { name; mappings }
 
@@ -58,6 +63,10 @@ type 'a payload_codec =
       high : 'b finite_scalar;
     }
       -> ('a * 'b) payload_codec
+
+(* This GADT records the semantic type described by a layout. In the pair case it also proves that
+   the low and high scalar declarations correspond to the two components supplied to [encode] and
+   reconstructed by [decode]. *)
 
 let scalar_payload (scalar : 'a finite_scalar) : 'a payload_codec = Scalar_payload scalar
 
@@ -74,6 +83,9 @@ type 'a encoding_pattern = {
   payload_codec : 'a payload_codec;
 }
 
+(* Pattern identity is generative. A compiled codec stores identities rather than existential typed
+   records, so membership can be checked without unsafe casts or relying on names/tags as proxies for
+   type equality. Creating another equal-looking declaration does not make it part of the layout. *)
 let next_pattern_id = ref 0
 
 let encoding_pattern ~(name : string) ~(tag : int) ~(wrong_tag_error : string)
@@ -83,6 +95,9 @@ let encoding_pattern ~(name : string) ~(tag : int) ~(wrong_tag_error : string)
   { id; name; tag; wrong_tag_error; malformed_payload_error; payload_codec }
 
 type pattern = Pattern : 'a encoding_pattern -> pattern
+
+(* The existential wrapper erases only the payload type needed by clients; validation itself needs
+   names, tags, and payload layouts but never constructs a value of that hidden type. *)
 
 let pattern (pattern : 'a encoding_pattern) : pattern = Pattern pattern
 
@@ -128,6 +143,9 @@ let payload_errors (type value) ~(pattern_name : string) (payload : value payloa
       @ field_errors ~pattern_name ~width:high_width high
 
 let compile (patterns : pattern list) : (t, error list) result =
+  (* Walk every declaration so callers receive the whole layout audit at once. No partially valid
+     pattern set escapes: identities become usable only when every name, tag, scalar mapping, and
+     packed width has passed validation. *)
   let errors = ref [] in
   let names = Hashtbl.create (List.length patterns) in
   let tags = Hashtbl.create (List.length patterns) in
@@ -166,6 +184,9 @@ let encode_payload (type value) (payload : value payload_codec) (value : value) 
   match payload with
   | Scalar_payload scalar -> encode_scalar scalar value
   | Packed_pair { low_width; low; high; _ } ->
+      (* Compilation proves both scalar encodings fit. Placing the high field above [low_width] and
+         combining with [logor] is therefore concatenation rather than a potentially overlapping
+         merge. *)
       let low_value, high_value = value in
       Result.bind (encode_scalar low low_value) (fun low_encoding ->
           Result.map
@@ -177,6 +198,8 @@ let decode_payload (type value) (payload : value payload_codec) (encoding : Z.t)
   match payload with
   | Scalar_payload scalar -> decode_scalar scalar encoding
   | Packed_pair { low_width; high_width; low; high } ->
+      (* Check the untruncated high remainder first. This rejects negative values and any bits beyond
+         the declared pair instead of silently discarding them when the low field is extracted. *)
       let high_encoding = Z.shift_right encoding low_width in
       if Z.sign encoding < 0 || Z.numbits high_encoding > high_width then
         Error "packed payload exceeds its declared fields"
@@ -188,6 +211,8 @@ let decode_payload (type value) (payload : value payload_codec) (encoding : Z.t)
               (decode_scalar high high_encoding))
 
 let encode (codec : t) (pattern : 'a encoding_pattern) (value : 'a) : (Z.t, string) result =
+  (* Membership by identity prevents using an individually well-formed pattern which was not part of
+     the backend's validated layout. The fixed low tag remains independent of payload size. *)
   if not (compiled codec pattern) then
     Error (Printf.sprintf "tagged-metadata pattern %S was not compiled" pattern.name)
   else
@@ -196,6 +221,9 @@ let encode (codec : t) (pattern : 'a encoding_pattern) (value : 'a) : (Z.t, stri
       (encode_payload pattern.payload_codec value)
 
 let decode (codec : t) (pattern : 'a encoding_pattern) (encoded : Z.t) : ('a, string) result =
+  (* Public backends historically expose exact decoder strings. Tag failures and all internal
+     payload failures are deliberately collapsed to the two messages stored on the pattern while
+     declaration-time problems remain structured [error] values from [compile]. *)
   if not (compiled codec pattern) then
     Error (Printf.sprintf "tagged-metadata pattern %S was not compiled" pattern.name)
   else if Z.sign encoded < 0 || not (Z.equal (Z.extract encoded 0 3) (Z.of_int pattern.tag)) then

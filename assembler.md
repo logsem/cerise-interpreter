@@ -3,6 +3,11 @@
 This document describes the assembly and register-file syntax accepted by the Cerise interpreter.
 Assembly examples are available under `tests/test_files`.
 
+The shared lexer recognizes the combined vocabulary of all backends, so the reference tables below
+describe available forms, not a promise that every selected backend accepts every row. Acceptance
+is decided by that backend's grammar and `Asm_ir`; the exact current differences are summarized in
+[Backends](#backends) and [Exact backend ISA](#exact-backend-isa).
+
 ## Source text
 
 Whitespace separates tokens but is otherwise insignificant to ordinary assembly. A semicolon starts
@@ -17,22 +22,24 @@ Integer literals are lexed as arbitrary-sized Zarith `Z.t` values; they do not n
 machine integer. Later backend/runtime bounds, operand widths, and codec tables may impose finite
 limits and reject an otherwise valid lexical integer. Negative integers use unary `-`.
 Identifiers start with a letter or underscore and continue with letters, digits, or underscores.
-Labels are case-sensitive. Instruction names are lowercase; `loadU`, `storeU`, and `promoteU` also
-accept a lowercase `u`. Registers are case-insensitive. Permissions and word types are case-sensitive.
-Localities accept uppercase or title-case spellings, such as `GLOBAL` and `Global`.
+Labels are case-sensitive. Mnemonics and registers are classified case-insensitively; the examples
+use the conventional lowercase mnemonic spelling. Case rules for architectural constants are
+backend-owned: Cerise-family permissions and word types use the spellings shown below, while
+localities accept forms such as `GLOBAL` and `Global`; Griotte normalizes its own permission,
+locality, and word-type components.
 
 ## Registers and values
 
-Registers are `r0` through `r31`, plus these aliases:
+Every backend accepts `pc` and `r0` through `r31`. Additional accepted names are backend-specific:
 
-| Name | Register |
-|---|---:|
-| `pc` | program counter |
-| `ddc` | `r0` |
-| `stk` | `r31` |
+| Backend | Additional names |
+|---|---|
+| `vanilla`, `locality-cerise`, `ucerise`, `mcerise` | `ddc` for `r0`; `stk` for `r31` |
+| `cerisier` | `ddc` for `r0` |
+| `griotte`, `griotte-extracted` | CHERI aliases `cnull`, `cra`, `csp`, `cgp`, `ctp`, `ct0`–`ct6`, `cs0`–`cs11`, and `ca0`–`ca7`; `MTDC` in system-register positions |
 
-An instruction `value` operand accepts a register, an integer expression, or one of the encoded
-architectural constants below.
+Depending on the backend, an instruction `value` operand accepts a register, an integer expression,
+or one of the encoded architectural constants below.
 
 | Category | Accepted syntax |
 |---|---|
@@ -95,7 +102,8 @@ ocamllex lexer defines the
 token universe and the shared Menhir construction fragment composes expression, label, definition,
 and typed-macro syntax into each backend's exact grammar. Lexical recognition is deliberately not
 backend acceptance: each backend validates its own instructions, values, permissions, localities,
-and word shapes.
+and word shapes. For example, `DIRECTED`, `loadU`, and `seal` can all be tokenized for every parser,
+while an individual grammar accepts only the subset represented by its own `Asm_ir`.
 Use parentheses around compound expressions when they occur as an instruction operand:
 
 ```asm
@@ -256,7 +264,8 @@ Restrict SubSeg IsPtr GetP GetL GetB GetE GetA Fail Halt LoadU StoreU PromoteU`.
 not contain `Mul Rem Div Invoke GetOType GetWType Seal UnSeal`. Vanilla is global-only and supports
 sealing; the locality extension adds `GetL`, `RWL`, and `RWLX` locality forms only. Vanilla capability
 syntax therefore has no locality field, while locality syntax uses `Global`/`Local` (not `Directed` or
-`U`). Historical uCerise/mCerise retain their distinct locality and uninitialized semantics.
+`U`). Historical uCerise and mCerise retain independent ASTs, codecs, and machines despite their
+similar instruction lists; mCerise alone adds `Directed` locality.
 Cerisier uses vanilla capability and sealing-range syntax and extends vanilla's complete ISA with
 `IsUnique Hash HashConcat EInit EDeInit EStoreId`.
 

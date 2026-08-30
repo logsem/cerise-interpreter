@@ -1,3 +1,6 @@
+/* Shared lexical token universe for every generated backend parser. A token's presence here means
+   the lexer can classify it; only a backend's own [grammar.mly] can make that token valid syntax. */
+
 %token <Z.t> INTEGER
 %token <string> IDENT REGISTER PARAMETER CALL PERMISSION SEAL_PERMISSION LOCALITY WORD_TYPE
 %token DEFINE MACRO ENDMACRO

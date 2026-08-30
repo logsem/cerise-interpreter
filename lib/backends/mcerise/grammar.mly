@@ -1,7 +1,7 @@
 %{
 (** mCerise grammar actions construct symbolic assembly terms. Semantic checks
     retain token positions so invalid register and capability names point to the
-    original source location. *)
+    original source location. The shared lexer recognizes more tokens than this backend accepts. *)
 
 open Asm_ir
 

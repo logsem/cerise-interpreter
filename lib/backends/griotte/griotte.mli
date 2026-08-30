@@ -1,3 +1,6 @@
+(** Public handwritten-Griotte backend group. It is an independent sibling of extracted Griotte,
+    with its own codec and machine semantics. *)
+
 module Ast : sig
   type register = PC | Reg of int
   type system_register = MTDC

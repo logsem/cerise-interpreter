@@ -1,3 +1,6 @@
+(** Public Cerisier backend group. Its concrete machine extends Vanilla with attestation while its
+    source syntax and runtime state remain backend-owned. *)
+
 module Ast : sig
   type register = PC | Reg of int
   type permission = O | E | RO | RX | RW | RWX

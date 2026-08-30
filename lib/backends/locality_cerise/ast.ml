@@ -1,9 +1,8 @@
-type register =
-  | PC
-  | Reg of int
-      (** Concrete locality-aware machine vocabulary shared by the assembler, codec, interpreter,
-          and printer. *)
+(** Concrete Locality-Cerise machine vocabulary shared by concrete assembly, instruction encoding,
+    execution, printing, and backend inspection. Source expressions and macro parameters belong in
+    [Asm_ir], not in these semantic types. *)
 
+type register = PC | Reg of int
 type permission = O | E | RO | RX | RW | RWX | RWL | RWLX
 type locality = Global | Local
 type seal_permission = bool * bool

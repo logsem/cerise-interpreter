@@ -1,8 +1,9 @@
-(** Backend-neutral assembly construction.
+(** Backend-neutral source construction.
 
     Generated parsers produce located source items. Expression processing keeps symbolic values
-    intact until macro expansion is complete; the pipeline then validates definitions, expands calls
-    hygienically, resolves symbols, and returns backend statements. *)
+    intact until macro expansion is complete; the pipeline validates every macro declaration,
+    expands calls hygienically, resolves definitions and labels, and returns parser-facing backend
+    statements. Configuration-dependent concrete assembly happens later in each backend. *)
 
 module Expression = struct
   type t =
@@ -186,26 +187,51 @@ and ('statement, 'word, 'argument, 'kind) macro_definition = {
   declaration_location : Diagnostic.source_location;
 }
 
+(* This is the common located IR produced by the merged grammars. Statements and raw words each
+   consume one address; all other nodes are source structure and consume none. Macro bodies may
+   contain integer definitions but the grammar does not permit nested macro definitions. *)
+
 module type SYNTAX = sig
+  (* These hooks are the traversal boundary between the common construction algorithm and a
+     backend's source IR. Missing an expression or placeholder here can leak a source-only node into
+     concrete assembly, so every parameter-bearing position must be represented. *)
+
   type statement
   type raw_word
   type macro_argument
   type parameter_kind
 
+  (* Wrap a fully rewritten raw word as its one-word emitted statement. *)
   val statement_of_raw_word : raw_word -> statement
+
+  (* Stable source spelling used in type-mismatch diagnostics. *)
   val parameter_kind_name : parameter_kind -> string
+
+  (* Classify the argument itself; this need not equal a broader kind accepted below. *)
   val argument_kind : macro_argument -> parameter_kind
+
+  (* Authoritative call-site type check, including any deliberate parameter super-kinds. *)
   val accepts_argument : parameter_kind -> macro_argument -> bool
+
+  (* Expose only arguments which can directly replace [Expression.Parameter] nodes. *)
   val expression_of_argument : macro_argument -> Expression.t option
+
+  (* Each mapper must visit every complete embedded expression exactly once and otherwise preserve
+     the value. Argument traversal is what makes outer substitutions reach nested macro calls. *)
   val map_statement_expressions : (Expression.t -> Expression.t) -> statement -> statement
   val map_raw_word_expressions : (Expression.t -> Expression.t) -> raw_word -> raw_word
   val map_argument_expressions : (Expression.t -> Expression.t) -> macro_argument -> macro_argument
 
+  (* Validate all macro placeholders against the complete declaration list. Diagnostics without a
+     location inherit the containing item's location; precise backend locations are preserved. *)
   val validate_statement :
     parameters:(string * parameter_kind) list -> statement -> Diagnostic.t list
 
   val validate_raw_word : parameters:(string * parameter_kind) list -> raw_word -> Diagnostic.t list
 
+  (* These hooks run after expression-valued parameters and private-label references were rewritten.
+     They replace backend-specific parameter positions using already type-checked bindings. An
+     impossible substitution is an error, not permission to leave a placeholder behind. *)
   val substitute_statement :
     arguments:(string * macro_argument) list -> statement -> (statement, Diagnostic.t list) result
 
@@ -238,7 +264,8 @@ module Make (Syntax : SYNTAX) = struct
           (Diagnostic.message diagnostic)
 
   module Macro_processing = struct
-    (* Validate every declaration before expansion so malformed unused macros are still rejected. *)
+    (* Macro definitions are collected before calls are expanded, so calls may precede declarations.
+       Validation also happens up front so an unused malformed definition is still rejected. *)
 
     (* Report every repeated parameter name in one macro declaration. *)
     let find_duplicate_macro_parameters
@@ -388,7 +415,9 @@ module Make (Syntax : SYNTAX) = struct
                bindings)
         else Error errors
 
-    (* Substitute expression-valued macro parameters and rewrite macro-local label references. *)
+    (* Substitute expression-valued macro parameters and rewrite macro-local label references.
+       Current-address expressions deliberately remain untouched: symbol resolution assigns them an
+       address only after the expanded body has been inserted at its call site. *)
     let rewrite_macro_expression (bindings : (string * Syntax.macro_argument) list)
         (renamed_local_labels : (string, string) Hashtbl.t) (expression : Expression.t) :
         Expression.t =
@@ -401,7 +430,8 @@ module Make (Syntax : SYNTAX) = struct
           | None -> Expression.Symbol name)
 
     (* Replace every macro call with a validated, substituted copy of its body. Expansion is
-      recursive, rejects call cycles, and gives each invocation fresh names for its local labels. *)
+       recursive, rejects call cycles, and gives each invocation fresh names for its local labels.
+       Only labels are invocation-private; integer-definition names retain their global meaning. *)
     let expand_macro_calls
         (macro_definitions :
           ( string,
@@ -415,6 +445,9 @@ module Make (Syntax : SYNTAX) = struct
         ( (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list,
           Diagnostic.t list )
         result =
+      (* Generated label bases contain an invocation number, but a source symbol can legally use the
+         same spelling. Reserving all global labels/definitions and probing suffixes makes freshness
+         a semantic guarantee rather than a naming convention. *)
       let invocation_counter = ref 0 in
       let reserved_symbol_names = Hashtbl.create 32 in
       let reserve_symbol_name (name : string) : unit =
@@ -635,7 +668,8 @@ module Make (Syntax : SYNTAX) = struct
 
   module Symbol_resolution = struct
     (* Resolve integer definitions, labels, and current-address expressions, then discard source-only
-      declarations. The first pass records addresses; the second rewrites emitted statements. *)
+       declarations. The first pass records every declaration and computes labels using the emitted
+       one-word items; the second rewrites statements using their post-expansion addresses. *)
     let resolve_symbols_and_remove_declarations
         (items : (Syntax.statement, Syntax.raw_word, 'a, 'b) item list) :
         (Syntax.statement list, Diagnostic.t list) result =
@@ -672,6 +706,9 @@ module Make (Syntax : SYNTAX) = struct
                    name)
               :: !errors)
         integer_definitions;
+      (* Integer definitions are expression aliases, not pre-evaluated constants: resolving them in
+         the use-site context gives a current-address node inside a definition the address of that
+         use. The active-name stack detects cycles without memoizing these contextual results. *)
       let rec resolve_expression_symbols (definitions_being_resolved : string list)
           (current_address : int) (location : Diagnostic.source_location)
           (expression : Expression.t) : Expression.t =

@@ -1,3 +1,6 @@
+(** Public adapter group for the checked-in Rocq-extracted Griotte snapshot. Handwritten adapter
+    types isolate clients from the generated representation and regeneration boundary. *)
+
 module Ast : sig
   type register = PC | Reg of int
   type system_register = MTDC

@@ -1,9 +1,8 @@
-type register =
-  | PC
-  | Reg of int
-      (** Concrete machine vocabulary shared by the Vanilla assembler, codec, interpreter, and
-          printer. *)
+(** Concrete Vanilla machine vocabulary shared by concrete assembly, instruction encoding,
+    execution, printing, and backend inspection. Source expressions and macro parameters belong in
+    [Asm_ir], not in these semantic types. *)
 
+type register = PC | Reg of int
 type permission = O | E | RO | RX | RW | RWX
 type seal_permission = bool * bool
 type word_type = Integer | Capability | Seal_range | Sealed

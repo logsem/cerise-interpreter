@@ -1,6 +1,7 @@
 %{
 (* Backend-specific grammar actions validate Griotte names immediately so parse
-   diagnostics retain the token's precise source position. *)
+   diagnostics retain the token's precise source position. The shared lexer recognizes
+   cross-backend tokens that this grammar intentionally rejects. *)
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =

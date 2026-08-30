@@ -1,4 +1,8 @@
 %{
+(** Cerisier grammar actions construct only the source forms this backend accepts. The shared lexer
+    recognizes a wider cross-backend token vocabulary; recognition alone never grants Cerisier
+    syntax. *)
+
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =

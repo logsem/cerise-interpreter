@@ -1,12 +1,11 @@
+(** Adapts Cerisier to the uniform machine backend and view interfaces consumed by sessions and the
+    terminal application. *)
+
 module Ast = Ast
 module Asm_ir = Asm_ir
 module Parser = Parser
 module Printer = Printer
-
 module Codec = Codec
-(** Adapts Cerisier to the uniform machine backend and view interfaces consumed by sessions and the
-    terminal application. *)
-
 module Machine = Machine
 
 let name = "cerisier"

@@ -1,34 +1,66 @@
 # Architecture
 
-For the practical end-to-end extension workflow, see [DEVELOPMENT.md](DEVELOPMENT.md).
+For the practical end-to-end extension workflow, see [DEVELOPMENT.md](DEVELOPMENT.md). For a
+worked tour of assembly construction and the codecs, see [INTERNALS.md](INTERNALS.md).
 
 The `src/` tree contains the CLI, session-oriented application model, and Notty terminal UI.
 `lib/` contains the installable library: `core/` provides backend-neutral assembly construction,
 diagnostics, codecs, and machine interfaces, while each `lib/backends/<backend>/` directory owns
 one backend's AST, assembler IR, generated lexer/parser composition, printer, codec, and machine.
 
-The main library uses Dune's qualified-subdirectory layout internally. Each backend has a small
-group index and signature beside its implementation; `lib/cerise.ml` aliases those groups to the
-stable public modules such as `Cerise.Vanilla` and `Cerise.Cerisier`. `Ast` is the semantic machine
-representation; `Asm_ir` is the backend-owned syntax representation concretely assembled into it.
-Shared token and construction fragments live in `lib/assembly/` and are composed by Menhir with
-each backend grammar. Expressions, labels, definitions, and typed macros are implemented by
-`Assembly_construction`; exact instruction syntax remains backend-owned. The execution pipeline is
-`parse → macro expansion → symbol resolution → concrete assembly → execution`.
+## Library and backend boundaries
+
+The main library uses Dune's qualified-subdirectory layout. Internally, each backend is a group such
+as `Backends.Vanilla`; `lib/cerise.ml` aliases the sealed groups to the stable public modules
+`Cerise.Vanilla`, `Cerise.Locality_cerise`, `Cerise.Ucerise`, `Cerise.Mcerise`, `Cerise.Cerisier`,
+`Cerise.Griotte`, and `Cerise.Griotte_extracted`. `Cerise.Machine` remains the public alias for
+`Cerise.Vanilla.Machine`. The CLI name `cerise` is a registry alias for `vanilla`, not another
+implementation directory. There are no flat compatibility modules such as `Cerise.Vanilla_ast`.
+
+Each backend's group `.mli` is its public boundary. It exposes the backend-owned `Ast`, `Asm_ir`,
+`Parser`, `Printer`, `Codec`, machine surface where applicable, and `Backend`; qualified helper
+modules and generated parser engines stay private. In particular, clients call `Parser` entry
+points rather than depending on Menhir-generated modules or shared lexer tokens.
+
+`Ast` contains values that the machine can execute: concrete registers, words, capabilities, and
+instructions. `Asm_ir` contains source-facing and unresolved forms, including expressions, macro
+parameters, and terms that still need the runtime configuration. It is concretely assembled into
+`Ast`; unresolved assembly concepts must not be added to `Ast`. Shared token and construction
+fragments live in `lib/assembly/` and are composed by Menhir with each backend grammar.
+`Assembly_construction` owns backend-neutral expressions, labels, definitions, typed macros,
+hygienic expansion, and symbol resolution, but no cross-backend instruction or capability union.
+The shared lexer therefore recognizes a superset of backend words: a token being recognized does
+not mean that every backend grammar accepts it.
+
+The execution pipeline is
+`parse → macro expansion → symbol resolution → concrete assembly → execution`. Similarity
+between backends does not create shared semantics. In particular, uCerise and mCerise deliberately
+keep duplicated `Ast`, `Asm_ir`, codec, and machine implementations: mCerise's directed locality
+must not silently alter the historical uCerise snapshot.
+
+## Session and rendering boundaries
 
 `Machine_session` is the sole long-lived owner of runtime configuration and packages it beside the
-backend's persistent dynamic state. It supplies that same immutable execution context to stepping,
-inspection, and edits; concrete machine states remain configuration-free. `Machine_view` is the
-pure rendering snapshot boundary. Terminal/Notty code is source-only and does not enter the library
-API. Codec tables are backend-owned and provide the exact ISA encodings.
+selected first-class `Machine_backend.S` module and its persistent dynamic state. It supplies that
+same immutable execution context to stepping, inspection, and checked edits; concrete machine
+states remain configuration-free and backend-specific types do not escape the existential session.
+
+`Machine_view` is the pure-data rendering boundary. A backend's `inspect` callback supplies stable
+register identities and order, sparse-memory behavior, semantic word metadata, status, and optional
+enclave data. Batch output and the Notty UI consume that snapshot without decoding backend text.
+Terminal/Notty and application-history code stays under `src/` and does not enter the installed
+library API. Codec tables remain backend-owned and define each backend's exact integer encoding.
+
+## Extracted Griotte boundary
 
 `Griotte_extracted` contains generated Rocq output plus a handwritten adapter. Generated bytes are
 trusted only at the checked-in regeneration boundary: use `make regenerate-griotte-extracted` or
 `make regeneration-gate`; the backend-owned tooling in
 `lib/backends/griotte_extracted/scripts/` verifies byte identity and provenance.
 
-`Griotte` and `Griotte_extracted` are independent sibling snapshots with independent parsers and
-the same documented ISA/opcode constraints; they are not required to be semantically identical.
-Their per-step differential tests protect an explicitly shared subset, rather than universally
-authorizing either backend. See [Griotte sibling snapshots](griotte-snapshots.md) for the accepted
-differences and backend-selection guidance.
+`Griotte` and `Griotte_extracted` are independent sibling snapshots with independent parsers,
+adapters, and instruction codecs. They share the documented textual ISA, not encoded instruction
+integers or a requirement of semantic identity. Their per-step differential tests protect an
+explicitly shared subset rather than making either backend authoritative. See
+[Griotte sibling snapshots](griotte-snapshots.md) for the current differences, trust boundary, and
+backend-selection guidance.

@@ -1,6 +1,7 @@
 %{
 (* Extracted-Griotte grammar actions retain token positions while constructing the
-   independent adapter AST used by its assembly facade. *)
+   independent adapter AST used by its assembly facade. The shared lexer recognizes
+   cross-backend tokens that this grammar intentionally rejects. *)
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =

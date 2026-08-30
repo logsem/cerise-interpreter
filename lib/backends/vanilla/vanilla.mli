@@ -1,3 +1,6 @@
+(** Public Vanilla backend group. Semantic machine types live in [Ast], unresolved source terms in
+    [Asm_ir], and [Backend] is the uniform session-facing adapter. *)
+
 module Ast : sig
   type register = PC | Reg of int
   type permission = O | E | RO | RX | RW | RWX

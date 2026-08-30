@@ -2,7 +2,8 @@
 
     Authors build a codec in four layers: scalar codecs encode atomic values, operand codecs compose
     operands and their opcode variants, encoding patterns associate operands with instruction
-    constructors, and compilation assigns contiguous opcode ranges in declaration order. *)
+    constructors, and compilation assigns contiguous opcode ranges in declaration order. Encoded
+    integers use an eight-bit opcode followed by an arbitrary-precision payload. *)
 
 type error =
   | Duplicate_pattern_name of string
@@ -40,6 +41,10 @@ type 'a scalar_codec = {
   decode_scalar : Z.t -> ('a, string) result;
 }
 
+(* A scalar codec is intentionally just a pair of checked directions. The author owns the inverse
+   law: delaying validation until a value crosses the boundary allows codecs for backend-specific
+   domains without requiring equality witnesses or enumerating every possible scalar here. *)
+
 let scalar_codec ~(name : string) ~(encode : 'a -> (Z.t, string) result)
     ~(decode : Z.t -> ('a, string) result) : 'a scalar_codec =
   { scalar_name = name; encode_scalar = encode; decode_scalar = decode }
@@ -71,7 +76,10 @@ let enum ~(name : string) (values : 'a list) : 'a scalar_codec =
 
 type ('register, 'constant) register_or_constant = Register of 'register | Constant of 'constant
 
-(* Pair payloads by interleaving bits, rather than bounding either component to a machine word. *)
+(* Pair payloads by interleaving bits, rather than bounding either component to a machine word.
+   Zarith's [to_bits] representation is little-endian. These tables spread four consecutive input
+   bits into one parity lane of a byte, or compact one parity lane back into four consecutive bits;
+   processing nibbles keeps the loop independent of the host integer width. *)
 let spread_nibble : int array =
   Array.init 16 (fun nibble ->
       nibble land 1
@@ -123,6 +131,9 @@ let interleave_unsigned (first : Z.t) (second : Z.t) : Z.t =
   done;
   Z.of_bits (Bytes.unsafe_to_string interleaved)
 
+(* Bits zero and one preserve the component signs. Above them, even bit positions carry the first
+   magnitude and odd positions the second. Leading zero bytes may disappear in [Z.t], but the two
+   inverse loops treat absent bytes as zero, so arbitrarily large and unequal magnitudes round-trip. *)
 let encode_signed_pair (first : Z.t) (second : Z.t) : Z.t =
   let signs =
     match (Z.sign second < 0, Z.sign first < 0) with
@@ -144,6 +155,10 @@ type 'a operand_codec = {
   encode_operand : 'a -> (int * Z.t, string) result;
   decode_operand : int -> Z.t -> ('a, string) result;
 }
+
+(* [span] is how many consecutive opcodes a pattern using this operand reserves. [variant] selects
+   one of those opcodes; [payload] occupies every bit above the opcode field. Keeping these fields
+   private forces all public compositions to update the three operations together. *)
 
 let opcode_count = 256
 
@@ -179,6 +194,9 @@ let scalar (codec : 'a scalar_codec) : 'a operand_codec =
 let register (type value) (codec : value scalar_codec) : value operand_codec = scalar codec
 
 let signed_zarith : Z.t operand_codec =
+  (* This even/odd transform is a bijection from signed integers to non-negative integers. It exists
+     separately from the identity [zarith] scalar for instructions whose entire top-level operand is
+     one signed constant rather than a component protected by pair packing. *)
   let encode (value : Z.t) : Z.t =
     if Z.sign value < 0 then Z.pred (Z.mul (Z.abs value) (Z.of_int 2)) else Z.mul value (Z.of_int 2)
   in
@@ -207,6 +225,9 @@ let register_or_constant (register_codec : 'a scalar_codec) (constant_codec : 'b
         | _ -> Error "register-or-constant operand has an invalid opcode variant");
   }
 
+(* Product variants use mixed-radix numbering, so each child combination receives a contiguous
+   opcode offset. Payload interleaving is signed because a child scalar may intentionally use a
+   negative representation even though the final instruction integer may not. *)
 let pair (left : 'a operand_codec) (right : 'b operand_codec) : ('a * 'b) operand_codec =
   {
     span = multiply_spans left.span right.span;
@@ -256,6 +277,11 @@ type 'instruction encoding_pattern =
     }
       -> 'instruction encoding_pattern
 
+(* The operand type differs between patterns and therefore cannot appear in the surrounding list's
+   type. Each GADT constructor hides that type while proving that the operand codec, constructor,
+   and projector all use the same one. [compiled_pattern] preserves the proof after allocation, and
+   [projection] carries a successfully projected operand through the untyped list search. *)
+
 let encoding_pattern ~(name : string) (operand_codec : 'a operand_codec) ~(construct : 'a -> 'b)
     ~(project : 'b -> 'a option) : 'b encoding_pattern =
   Encoding_pattern { name; operand_codec; construct; project }
@@ -295,6 +321,10 @@ let duplicate_name_errors (patterns : 'a encoding_pattern list) : error list =
     patterns
 
 let compile (patterns : 'a encoding_pattern list) : ('a t, error list) result =
+  (* Allocation is deterministic and intentionally declaration-order-sensitive. We continue after a
+     duplicate or overflow to report all declaration errors, but never expose the partially compiled
+     table. Advancing the cursor beyond 256 after overflow prevents later patterns from appearing to
+     fit. *)
   let errors = ref (duplicate_name_errors patterns) in
   let cursor = ref 0 in
   let compiled = ref [] in
@@ -326,6 +356,9 @@ let compile (patterns : 'a encoding_pattern list) : ('a t, error list) result =
   | [] -> Ok { patterns = List.rev !compiled }
 
 let encode (codec : 'a t) (instruction : 'a) : (Z.t, error) result =
+  (* Projection is a dynamic exhaustiveness/disjointness check over otherwise type-safe pattern
+     packages. A codec bug which returns an out-of-span variant or negative final payload is caught
+     here before it can overlap another pattern or a sign representation. *)
   let projected =
     List.filter_map
       (fun (Compiled_pattern pattern) ->
@@ -369,6 +402,9 @@ let encode (codec : 'a t) (instruction : 'a) : (Z.t, error) result =
       Error (Ambiguous_instruction names)
 
 let decode (codec : 'a t) (encoded : Z.t) : ('a, error) result =
+  (* The low byte alone chooses the pattern and operand variant. Because compiled ranges are
+     contiguous and disjoint, the first matching range is unique; everything above the low byte is
+     delegated to the exact operand codec packaged with that pattern. *)
   if Z.sign encoded < 0 then Error (Negative_encoding encoded)
   else
     let opcode = Z.to_int (Z.extract encoded 0 8) in

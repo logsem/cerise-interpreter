@@ -1,3 +1,6 @@
+(** Public mCerise backend group. It remains an independent historical machine snapshot even where
+    its surface resembles uCerise. *)
+
 module Ast : sig
   type register = PC | Reg of int
   type permission = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWX | URWL | URWLX

@@ -1,5 +1,5 @@
-(* Public backend adapter for the handwritten Griotte machine. It lowers parsed
-   assembly, drives execution, and converts machine state into editable UI views. *)
+(* Public backend adapter for the handwritten Griotte machine. It concretely assembles parsed
+   syntax, drives execution, and converts machine state into editable UI views. *)
 
 module Ast = Ast
 module Asm_ir = Asm_ir

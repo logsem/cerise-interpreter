@@ -25,6 +25,9 @@ definition, and sequence-macro reference.
 See [DEVELOPMENT.md](DEVELOPMENT.md) for the implementation data flow, backend and UI extension
 checklists, codec rules, machine conventions, and validation commands.
 
+See [INTERNALS.md](INTERNALS.md) for worked tours of assembly construction, instruction encoding,
+tagged capability metadata, machine execution, and the boundaries between backend-owned modules.
+
 The interpreter selects a backend with `--backend`; the default is `vanilla`. Available backends are
 `vanilla`, `cerise` (an alias for vanilla), `locality-cerise`, `ucerise`, `mcerise`, `cerisier`,
 `griotte`, and `griotte-extracted`. Each backend owns its AST, parser, printer, machine, and codec.
