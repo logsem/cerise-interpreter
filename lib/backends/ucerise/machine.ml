@@ -51,6 +51,9 @@ let read_memory (a : Z.t) (state : t) : word option =
       Some (I Z.zero)
   | None -> None
 
+let ( @! ) (register : register) (state : t) : word = read_register register state
+let ( @? ) (address : Z.t) (state : t) : word option = read_memory address state
+
 let set_register (r : register) (w : word) (state : t) : t =
   { state with registers = RegMap.add r w state.registers }
 
@@ -60,15 +63,14 @@ let set_memory_raw (a : Z.t) (w : word) (state : t) : t =
 let mark_failed (state : t) : t = { state with status = Failed }
 
 let advance_program_counter (state : t) : t =
-  match read_register PC state with
+  match PC @! state with
   | Cap (Cap (p, l, b, e, a)) -> set_register PC (Cap (Cap (p, l, b, e, Z.succ a))) state
   | _ -> mark_failed state
 
-let write_register_and_advance (r : register) (w : word) (state : t) : t =
-  advance_program_counter (set_register r w state)
+let ( !> ) (state : t) : t = advance_program_counter state
 
 let evaluate_operand (state : t) (term : reg_or_const) : word =
-  match term with Register r -> read_register r state | Constant z -> I z
+  match term with Register r -> r @! state | Constant z -> I z
 
 let is_uninitialized_permission (term : permission) : bool =
   match term with URW | URWX | URWL | URWLX -> true | _ -> false
@@ -110,25 +112,23 @@ let locality_flows (requested : locality) (current : locality) : bool =
   | _ -> false
 
 let has_valid_program_counter (state : t) : bool =
-  match read_register PC state with
+  match PC @! state with
   | Cap (Cap (p, _, b, e, a)) when is_executable_permission p ->
-      b <= a && a < e && Option.is_some (read_memory a state)
+      b <= a && a < e && Option.is_some (a @? state)
   | _ -> false
 
 (** Instruction execution preserves persistence by returning a fresh state. *)
 let rec execute (instruction : instruction) (state : t) : t =
-  let read (r : register) : word = read_register r state
+  let read (r : register) : word = r @! state
   and operand_value (operand : reg_or_const) : word = evaluate_operand state operand in
   match instruction with
   | Fail -> mark_failed state
   | Halt -> { state with status = Halted }
-  | Move (r, o) -> write_register_and_advance r (operand_value o) state
+  | Move (r, o) -> !>(set_register r (operand_value o) state)
   | Load (d, r) -> (
       match read r with
       | Cap (Cap (p, _, b, e, a)) when can_read_memory p && b <= a && a < e -> (
-          match read_memory a state with
-          | Some w -> write_register_and_advance d w state
-          | None -> mark_failed state)
+          match a @? state with Some w -> !>(set_register d w state) | None -> mark_failed state)
       | _ -> mark_failed state)
   | Store (r, o) -> (
       match read r with
@@ -139,16 +139,14 @@ let rec execute (instruction : instruction) (state : t) : t =
              through ordinary writable memory. *)
           | Cap (Cap (_, Local, _, _, _)) when not (has_write_local_permission p) ->
               mark_failed state
-          | _ -> advance_program_counter (set_memory_raw a w state))
+          | _ -> !>(set_memory_raw a w state))
       | _ -> mark_failed state)
   | Jmp r -> (
       match read r with
       | Cap (Cap (E, l, b, e, a)) -> set_register PC (Cap (Cap (RX, l, b, e, a))) state
       | w -> set_register PC w state)
   | Jnz (r, t) -> (
-      match read t with
-      | I z when Z.equal z Z.zero -> advance_program_counter state
-      | _ -> execute (Jmp r) state)
+      match read t with I z when Z.equal z Z.zero -> !>state | _ -> execute (Jmp r) state)
   | Add (r, a, b) | Sub (r, a, b) | Lt (r, a, b) -> (
       match (operand_value a, operand_value b) with
       | I x, I y ->
@@ -158,58 +156,56 @@ let rec execute (instruction : instruction) (state : t) : t =
             | Sub _ -> Z.sub x y
             | _ -> if Z.lt x y then Z.one else Z.zero
           in
-          write_register_and_advance r (I z) state
+          !>(set_register r (I z) state)
       | _ -> mark_failed state)
   | Lea (r, o) -> (
       match (read r, operand_value o) with
       | Cap (Cap (E, _, _, _, _)), _ -> mark_failed state
       | Cap (Cap (p, l, b, e, a)), I z ->
-          write_register_and_advance r (Cap (Cap (p, l, b, e, Z.add a z))) state
+          !>(set_register r (Cap (Cap (p, l, b, e, Z.add a z))) state)
       | _ -> mark_failed state)
   | Restrict (r, o) -> (
       match (read r, operand_value o) with
       | Cap (Cap (p, l, b, e, a)), I z -> (
           match Codec.decode_permission_locality z with
           | Ok (p', l') when permission_flows p' p && locality_flows l' l ->
-              write_register_and_advance r (Cap (Cap (p', l', b, e, a))) state
+              !>(set_register r (Cap (Cap (p', l', b, e, a))) state)
           | _ -> mark_failed state)
       | _ -> mark_failed state)
   | SubSeg (r, o1, o2) -> (
       match (read r, operand_value o1, operand_value o2) with
       | Cap (Cap (E, _, _, _, _)), _, _ -> mark_failed state
       | Cap (Cap (p, l, b, e, a)), I b', I e' when b <= b' && Z.sign e' >= 0 && Z.sign e >= 0 ->
-          write_register_and_advance r (Cap (Cap (p, l, b', e', a))) state
+          !>(set_register r (Cap (Cap (p, l, b', e', a))) state)
       | _ -> mark_failed state)
   | IsPtr (r, x) ->
-      write_register_and_advance r (I (match read x with Cap _ -> Z.one | I _ -> Z.zero)) state
+      !>(set_register r (I (match read x with Cap _ -> Z.one | I _ -> Z.zero)) state)
   | GetP (r, x) -> (
       match read x with
-      | Cap (Cap (p, _, _, _, _)) ->
-          write_register_and_advance r (I (Codec.encode_permission p)) state
+      | Cap (Cap (p, _, _, _, _)) -> !>(set_register r (I (Codec.encode_permission p)) state)
       | _ -> mark_failed state)
   | GetL (r, x) -> (
       match read x with
-      | Cap (Cap (_, l, _, _, _)) ->
-          write_register_and_advance r (I (Codec.encode_locality l)) state
+      | Cap (Cap (_, l, _, _, _)) -> !>(set_register r (I (Codec.encode_locality l)) state)
       | _ -> mark_failed state)
   | GetB (r, x) -> (
       match read x with
-      | Cap (Cap (_, _, b, _, _)) -> write_register_and_advance r (I b) state
+      | Cap (Cap (_, _, b, _, _)) -> !>(set_register r (I b) state)
       | _ -> mark_failed state)
   | GetE (r, x) -> (
       match read x with
-      | Cap (Cap (_, _, _, e, _)) -> write_register_and_advance r (I e) state
+      | Cap (Cap (_, _, _, e, _)) -> !>(set_register r (I e) state)
       | _ -> mark_failed state)
   | GetA (r, x) -> (
       match read x with
-      | Cap (Cap (_, _, _, _, a)) -> write_register_and_advance r (I a) state
+      | Cap (Cap (_, _, _, _, a)) -> !>(set_register r (I a) state)
       | _ -> mark_failed state)
   | LoadU (d, r, o) -> (
       match (read r, operand_value o) with
       | Cap (Cap (p, _, b, e, a)), I off
         when is_uninitialized_permission p && b <= Z.add a off && Z.add a off < a && a <= e -> (
-          match read_memory (Z.add a off) state with
-          | Some w -> write_register_and_advance d w state
+          match Z.add a off @? state with
+          | Some w -> !>(set_register d w state)
           | None -> mark_failed state)
       | _ -> mark_failed state)
   | StoreU (r, o, w) -> (
@@ -225,12 +221,12 @@ let rec execute (instruction : instruction) (state : t) : t =
                 if Z.equal off Z.zero then set_register r (Cap (Cap (p, l, b, e, Z.succ a))) state
                 else state
               in
-              advance_program_counter (set_memory_raw (Z.add a off) w state))
+              !>(set_memory_raw (Z.add a off) w state))
       | _ -> mark_failed state)
   | PromoteU r -> (
       match read r with
       | Cap (Cap (p, l, b, e, a)) when is_uninitialized_permission p ->
-          write_register_and_advance r (Cap (Cap (promote_permission p, l, b, Z.min e a, a))) state
+          !>(set_register r (Cap (Cap (promote_permission p, l, b, Z.min e a, a))) state)
       | _ -> mark_failed state)
 
 let step (state : t) : (t, Machine_backend.execution_error) result =
@@ -240,9 +236,9 @@ let step (state : t) : (t, Machine_backend.execution_error) result =
          (if state.status = Halted then Machine_view.Halted else Machine_view.Failed))
   else if not (has_valid_program_counter state) then Ok (mark_failed state)
   else
-    match read_register PC state with
+    match PC @! state with
     | Cap (Cap (_, _, _, _, a)) -> (
-        match read_memory a state with
+        match a @? state with
         | Some (I z) -> (
             match Codec.decode z with
             | Ok instruction -> Ok (execute instruction state)

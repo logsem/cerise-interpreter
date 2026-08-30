@@ -64,6 +64,9 @@ let read_memory (a : Z.t) (state : t) : word option =
       Some (I Z.zero)
   | None -> None
 
+let ( @! ) (register : register) (state : t) : word = read_register register state
+let ( @? ) (address : Z.t) (state : t) : word option = read_memory address state
+
 let set_register (r : register) (word : word) (state : t) : t =
   { state with registers = RegMap.add r word state.registers }
 
@@ -71,15 +74,16 @@ let set_memory_raw (a : Z.t) (word : word) (state : t) : t =
   { state with memory = MemMap.add a word state.memory }
 
 let pc_next (state : t) : t =
-  match read_register PC state with
+  match PC @! state with
   | Sealable (Cap (p, b, e, a)) ->
       { state with registers = RegMap.add PC (Sealable (Cap (p, b, e, Z.succ a))) state.registers }
   | _ -> { state with status = Failed }
 
+let ( !> ) (state : t) : t = pc_next state
 let fail (state : t) : t = { state with status = Failed }
 
 let word_of_operand (state : t) (operand_or_word : reg_or_const) : word =
-  match operand_or_word with Register r -> read_register r state | Constant z -> I z
+  match operand_or_word with Register r -> r @! state | Constant z -> I z
 
 let permission_flows (requested : permission) (current : permission) : bool =
   match requested with
@@ -133,7 +137,7 @@ let overlaps (left : word) (right : word) : bool =
   | _ -> false
 
 let unique_register (state : t) (source : register) : bool =
-  let candidate = read_register source state in
+  let candidate = source @! state in
   RegMap.for_all
     (fun register other -> register = source || not (overlaps candidate other))
     state.registers
@@ -146,41 +150,37 @@ let rec integer_region (state : t) (address : Z.t) (limit : Z.t) (acc : word lis
     word list option =
   if Z.geq address limit then Some (List.rev acc)
   else
-    match read_memory address state with
+    match address @? state with
     | Some (I _ as word) -> integer_region state (Z.succ address) limit (word :: acc)
     | _ -> None
 
 let valid_pc (state : t) : bool =
-  match read_register PC state with
-  | Sealable (Cap ((RX | RWX), b, e, a)) -> b <= a && a < e && Option.is_some (read_memory a state)
+  match PC @! state with
+  | Sealable (Cap ((RX | RWX), b, e, a)) -> b <= a && a < e && Option.is_some (a @? state)
   | _ -> false
 
-let write_next (r : register) (w : word) (state : t) : t = pc_next (set_register r w state)
-
 let rec execute (instruction : instruction) (state : t) : t =
-  let read = read_register and resolve_operand = word_of_operand state in
+  let resolve_operand = word_of_operand state in
   match instruction with
   | Fail -> fail state
   | Halt -> { state with status = Halted }
-  | Move (r, o) -> write_next r (resolve_operand o) state
+  | Move (r, o) -> !>(set_register r (resolve_operand o) state)
   | Load (dst, src) -> (
-      match read src state with
+      match src @! state with
       | Sealable (Cap (p, b, e, a)) when can_read p && b <= a && a < e -> (
-          match read_memory a state with Some w -> write_next dst w state | None -> fail state)
+          match a @? state with Some w -> !>(set_register dst w state) | None -> fail state)
       | _ -> fail state)
   | Store (dst, o) -> (
-      match read dst state with
+      match dst @! state with
       | Sealable (Cap (p, b, e, a)) when can_write p && b <= a && a < e ->
-          pc_next (set_memory_raw a (resolve_operand o) state)
+          !>(set_memory_raw a (resolve_operand o) state)
       | _ -> fail state)
   | Jmp r -> (
-      match read r state with
+      match r @! state with
       | Sealable (Cap (E, b, e, a)) -> set_register PC (Sealable (Cap (RX, b, e, a))) state
       | w -> set_register PC w state)
   | Jnz (r, test) -> (
-      match read test state with
-      | I z when Z.equal z Z.zero -> pc_next state
-      | _ -> execute (Jmp r) state)
+      match test @! state with I z when Z.equal z Z.zero -> !>state | _ -> execute (Jmp r) state)
   | Add (r, a, b) | Sub (r, a, b) | Mul (r, a, b) | Rem (r, a, b) | Div (r, a, b) | Lt (r, a, b)
     -> (
       match (resolve_operand a, resolve_operand b) with
@@ -195,84 +195,87 @@ let rec execute (instruction : instruction) (state : t) : t =
             | Lt _ -> Some (if Z.lt x y then Z.one else Z.zero)
             | _ -> None
           in
-          match result with Some z -> write_next r (I z) state | None -> fail state)
+          match result with Some z -> !>(set_register r (I z) state) | None -> fail state)
       | _ -> fail state)
   | Lea (r, o) -> (
-      match (read r state, resolve_operand o) with
+      match (r @! state, resolve_operand o) with
       | Sealable s, I z -> (
           match s with
           | Cap (E, _, _, _) -> fail state
           | _ ->
-              write_next r
-                (Sealable
-                   (with_cursor s
-                      Z.(
-                        let _, _, a = bounds s in
-                        a + z)))
-                state)
+              !>(set_register r
+                   (Sealable
+                      (with_cursor s
+                         Z.(
+                           let _, _, a = bounds s in
+                           a + z)))
+                   state))
       | _ -> fail state)
   | Restrict (r, o) -> (
-      match (read r state, resolve_operand o) with
+      match (r @! state, resolve_operand o) with
       | Sealable (Cap (p, b, e, a)), I z -> (
           match Codec.decode_permission z with
-          | Ok p' when permission_flows p' p -> write_next r (Sealable (Cap (p', b, e, a))) state
+          | Ok p' when permission_flows p' p ->
+              !>(set_register r (Sealable (Cap (p', b, e, a))) state)
           | _ -> fail state)
       | Sealable (SealRange (p, b, e, a)), I z -> (
           match Codec.decode_seal_permission z with
           | Ok p' when seal_permission_flows p' p ->
-              write_next r (Sealable (SealRange (p', b, e, a))) state
+              !>(set_register r (Sealable (SealRange (p', b, e, a))) state)
           | _ -> fail state)
       | _ -> fail state)
   | SubSeg (r, o1, o2) -> (
-      match (read r state, resolve_operand o1, resolve_operand o2) with
+      match (r @! state, resolve_operand o1, resolve_operand o2) with
       | Sealable (Cap (E, _, _, _)), _, _ -> fail state
       | Sealable s, I b', I e' ->
           let b, e, _ = bounds s in
           if b <= b' && Z.sign e' >= 0 && Z.sign e >= 0 then
-            write_next r (Sealable (with_bounds s b' e')) state
+            !>(set_register r (Sealable (with_bounds s b' e')) state)
           else fail state
       | _ -> fail state)
   | GetB (r, s) -> (
-      match read s state with
+      match s @! state with
       | Sealable sb ->
           let b, _, _ = bounds sb in
-          write_next r (I b) state
+          !>(set_register r (I b) state)
       | _ -> fail state)
   | GetE (r, s) -> (
-      match read s state with
+      match s @! state with
       | Sealable sb ->
           let _, e, _ = bounds sb in
-          write_next r (I e) state
+          !>(set_register r (I e) state)
       | _ -> fail state)
   | GetA (r, s) -> (
-      match read s state with
+      match s @! state with
       | Sealable sb ->
           let _, _, a = bounds sb in
-          write_next r (I a) state
+          !>(set_register r (I a) state)
       | _ -> fail state)
   | GetP (r, s) -> (
-      match read s state with
-      | Sealable (Cap (p, _, _, _)) -> write_next r (I (Codec.encode_permission p)) state
-      | Sealable (SealRange (p, _, _, _)) -> write_next r (I (Codec.encode_seal_permission p)) state
+      match s @! state with
+      | Sealable (Cap (p, _, _, _)) -> !>(set_register r (I (Codec.encode_permission p)) state)
+      | Sealable (SealRange (p, _, _, _)) ->
+          !>(set_register r (I (Codec.encode_seal_permission p)) state)
       | _ -> fail state)
   | GetOType (r, s) -> (
-      match read s state with
-      | Sealed (o, _) -> write_next r (I o) state
-      | _ -> write_next r (I Z.minus_one) state)
-  | GetWType (r, s) -> write_next r (I (Codec.encode_word_type (word_type (read s state)))) state
+      match s @! state with
+      | Sealed (o, _) -> !>(set_register r (I o) state)
+      | _ -> !>(set_register r (I Z.minus_one) state))
+  | GetWType (r, s) ->
+      !>(set_register r (I (Codec.encode_word_type (word_type (s @! state)))) state)
   | Seal (dst, seal, value_reg) -> (
-      match (read seal state, read value_reg state) with
+      match (seal @! state, value_reg @! state) with
       | Sealable (SealRange ((true, _), b, e, a)), Sealable sb when b <= a && a < e ->
-          write_next dst (Sealed (a, sb)) state
+          !>(set_register dst (Sealed (a, sb)) state)
       | _ -> fail state)
   | UnSeal (dst, seal, value_reg) -> (
-      match (read seal state, read value_reg state) with
+      match (seal @! state, value_reg @! state) with
       | Sealable (SealRange ((_, true), b, e, a)), Sealed (o, sb)
         when b <= a && a < e && Z.equal a o ->
-          write_next dst (Sealable sb) state
+          !>(set_register dst (Sealable sb) state)
       | _ -> fail state)
   | Invoke (code, data) -> (
-      match (read code state, read data state) with
+      match (code @! state, data @! state) with
       | Sealed (o, Cap (p, b, e, a)), Sealed (o', sb) when Z.equal o o' && is_exec p -> (
           match sb with
           | Cap (p', _, _, _) when not (is_exec p') ->
@@ -281,18 +284,21 @@ let rec execute (instruction : instruction) (state : t) : t =
           | _ -> fail state)
       | _ -> fail state)
   | Hash (destination, source) ->
-      write_next destination (I (Z.of_int (Hashtbl.hash (read source state)))) state
+      !>(set_register destination (I (Z.of_int (Hashtbl.hash (source @! state)))) state)
   | HashConcat (destination, left, right) -> (
       match (resolve_operand left, resolve_operand right) with
-      | I left, I right -> write_next destination (I (Z.of_int (Hashtbl.hash (left, right)))) state
+      | I left, I right ->
+          !>(set_register destination (I (Z.of_int (Hashtbl.hash (left, right)))) state)
       | _ -> fail state)
   | IsUnique (destination, source) -> (
-      match read source state with
+      match source @! state with
       | Sealable (Cap _) | Sealed (_, Cap _) ->
-          write_next destination (I (if unique_register state source then Z.one else Z.zero)) state
+          !>(set_register destination
+               (I (if unique_register state source then Z.one else Z.zero))
+               state)
       | _ -> fail state)
   | EInit (code, data) -> (
-      match (read code state, read data state) with
+      match (code @! state, data @! state) with
       | ( Sealable (Cap (RX, code_base, code_end, _)),
           (Sealable (Cap (RW, data_base, data_end, _)) as data_capability) )
         when code <> PC && data <> PC && code <> data
@@ -320,27 +326,26 @@ let rec execute (instruction : instruction) (state : t) : t =
               |> set_register code (Sealable (Cap (E, code_base, code_end, Z.succ code_base)))
               |> set_register data (I Z.zero)
               |> fun state ->
-              pc_next
-                {
+              !>{
                   state with
                   enclave_table = ETableMap.add counter identity state.enclave_table;
                   enclave_counter = Z.succ counter;
                 })
       | _ -> fail state)
   | EDeInit source -> (
-      match read source state with
+      match source @! state with
       | Sealable (SealRange ((true, true), object_type, limit, _))
         when Z.equal limit (Z.add object_type (Z.of_int 2)) ->
           let table_id = Z.fdiv object_type (Z.of_int 2) in
           if ETableMap.mem table_id state.enclave_table then
-            pc_next { state with enclave_table = ETableMap.remove table_id state.enclave_table }
+            !>{ state with enclave_table = ETableMap.remove table_id state.enclave_table }
           else fail state
       | _ -> fail state)
   | EStoreId (destination, source) -> (
-      match read source state with
+      match source @! state with
       | I object_type -> (
           match ETableMap.find_opt (Z.fdiv object_type (Z.of_int 2)) state.enclave_table with
-          | Some identity -> write_next destination (I identity) state
+          | Some identity -> !>(set_register destination (I identity) state)
           | None -> fail state)
       | _ -> fail state)
 
@@ -351,9 +356,9 @@ let step (state : t) : (t, Machine_backend.execution_error) result =
   | Running -> (
       if not (valid_pc state) then Ok (fail state)
       else
-        match read_register PC state with
+        match PC @! state with
         | Sealable (Cap (_, _, _, a)) -> (
-            match read_memory a state with
+            match a @? state with
             | Some (I encoded) -> (
                 match Codec.decode encoded with
                 | Ok instruction -> Ok (execute instruction state)
