@@ -29,6 +29,28 @@ let ( let* ) = Result.bind
 let arch_root_memory_permission = (R, WL, LG, LM)
 let arch_root_executable_permission = (XSR, Ow, LG, LM)
 
+(* The Rocq machine represents both addresses and object types as [FinZ 2000000]. *)
+let finite_address_bound = Z.of_int 2_000_000
+let finite_object_type_bound = Z.of_int 2_000_000
+let in_finite_domain bound value = Z.sign value >= 0 && Z.compare value bound < 0
+
+(* A right shift beyond every representable bit has already reached its
+   sign-extension fixed point, so it needs no machine-integer conversion. *)
+let shift_right_nonnegative value count =
+  if Z.fits_int count then try Some (Z.shift_right value (Z.to_int count)) with _ -> None
+  else Some (if Z.sign value < 0 then Z.minus_one else Z.zero)
+
+let shift_left_z value count =
+  match Z.sign count with
+  | 0 -> Some value
+  | -1 -> shift_right_nonnegative value (Z.neg count)
+  | _ when Z.equal value Z.zero -> Some Z.zero
+  (* A nonzero result this wide cannot be represented by the runtime. *)
+  | _ when not (Z.fits_int count) -> None
+  | _ -> ( try Some (Z.shift_left value (Z.to_int count)) with _ -> None)
+
+let shift_right_z value count = shift_left_z value (Z.neg count)
+
 let rx_flows requested current =
   match (requested, current) with
   | Orx, _ -> true
@@ -264,11 +286,15 @@ let rec execute instruction state =
       | _ -> fail state)
   | SubSeg (r, o1, o2) -> (
       match (get r, v o1, v o2) with
-      | Sealable (Cap (p, l, b, e, a)), I b', I e' when b <= b' && Z.sign e' >= 0 && Z.sign e >= 0
-        ->
+      | Sealable (Cap (p, l, b, e, a)), I b', I e'
+        when in_finite_domain finite_address_bound b'
+             && in_finite_domain finite_address_bound e'
+             && b <= b' && e' <= e ->
           write_next r (Sealable (Cap (p, l, b', e', a))) state
       | Sealable (SealRange (p, l, b, e, a)), I b', I e'
-        when b <= b' && Z.sign e' >= 0 && Z.sign e >= 0 ->
+        when in_finite_domain finite_object_type_bound b'
+             && in_finite_domain finite_object_type_bound e'
+             && b <= b' && e' <= e ->
           write_next r (Sealable (SealRange (p, l, b', e', a))) state
       | _ -> fail state)
   | Lea (r, o) -> (
@@ -284,14 +310,8 @@ let rec execute instruction state =
   | Lt (r, a, b) -> arithmetic (fun x y -> Some (if Z.lt x y then Z.one else Z.zero)) r a b state
   | LAnd (r, a, b) -> arithmetic (fun x y -> Some (Z.logand x y)) r a b state
   | LOr (r, a, b) -> arithmetic (fun x y -> Some (Z.logor x y)) r a b state
-  | LShiftL (r, a, b) ->
-      arithmetic
-        (fun x y -> try Some (Z.of_int (Z.to_int x lsl Z.to_int y)) with _ -> None)
-        r a b state
-  | LShiftR (r, a, b) ->
-      arithmetic
-        (fun x y -> try Some (Z.of_int (Z.to_int x lsr Z.to_int y)) with _ -> None)
-        r a b state
+  | LShiftL (r, a, b) -> arithmetic shift_left_z r a b state
+  | LShiftR (r, a, b) -> arithmetic shift_right_z r a b state
   | GetL (dst, src) -> (
       match locality_of_word (get src) with
       | Some l -> write_next dst (I (Codec.encode_locality l)) state

@@ -386,13 +386,13 @@ let sessions ?regfile source =
   ( ok (Machine_session.create ~backend:"griotte" ~config ~source ~regfile),
     ok (Machine_session.create ~backend:"griotte-extracted" ~config ~source ~regfile) )
 
-let differential ?regfile label source =
+let differential_final ?regfile label source =
   let rec loop step_number handwritten extracted =
     compare_view
       (Printf.sprintf "%s after %d instruction steps" label step_number)
       handwritten extracted;
     match (Machine_session.view handwritten).status with
-    | Machine_view.Halted | Failed -> ()
+    | Machine_view.Halted | Failed -> (handwritten, extracted)
     | Running when step_number >= 100 -> Alcotest.fail (label ^ " did not stop")
     | Running ->
         let handwritten = Result.get_ok (Machine_session.step handwritten) in
@@ -401,6 +401,53 @@ let differential ?regfile label source =
   in
   let handwritten, extracted = sessions ?regfile source in
   loop 0 handwritten extracted
+
+let differential ?regfile label source = ignore (differential_final ?regfile label source)
+
+let general_word key session =
+  Option.get
+    (Machine_view.find_register
+       { Machine_view.Register_id.bank = General; key }
+       (Machine_session.view session))
+
+let check_terminal_integer label expected (handwritten, extracted) =
+  List.iter
+    (fun (backend, session) ->
+      let view = Machine_session.view session in
+      Alcotest.(check bool)
+        (label ^ " " ^ backend ^ " halted")
+        true
+        (view.status = Machine_view.Halted);
+      Alcotest.(check (option string))
+        (label ^ " " ^ backend ^ " result")
+        (Some (Z.to_string expected))
+        (Option.map Z.to_string (general_word "ca0" session).word.integer))
+    [ ("handwritten", handwritten); ("extracted", extracted) ]
+
+let check_subseg_result label expected_status expected_base expected_limit expected_cursor
+    (handwritten, extracted) =
+  List.iter
+    (fun (backend, session) ->
+      let view = Machine_session.view session in
+      Alcotest.(check bool) (label ^ " " ^ backend ^ " status") true (view.status = expected_status);
+      let word = (general_word "ca0" session).word in
+      let base, limit, cursor =
+        match word.capability with
+        | Some capability -> (capability.base, capability.limit, capability.cursor)
+        | None ->
+            let annotation name = Z.of_string (Option.get (List.assoc_opt name word.annotations)) in
+            (annotation "base", annotation "limit", annotation "cursor")
+      in
+      Alcotest.(check string)
+        (label ^ " " ^ backend ^ " base")
+        (Z.to_string expected_base) (Z.to_string base);
+      Alcotest.(check string)
+        (label ^ " " ^ backend ^ " limit")
+        (Z.to_string expected_limit) (Z.to_string limit);
+      Alcotest.(check string)
+        (label ^ " " ^ backend ^ " cursor")
+        (Z.to_string expected_cursor) (Z.to_string cursor))
+    [ ("handwritten", handwritten); ("extracted", extracted) ]
 
 let architectural_pc = "pc := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 0) "
 
@@ -411,6 +458,44 @@ let arithmetic_logic_control () =
   differential "jalr/sentry"
     ~regfile:(architectural_pc ^ "ca0 := (E-[X Ow LG LM], Global, 0, 4, 2)")
     "jalr cra ca0 fail halt"
+
+let shift_boundaries () =
+  differential_final "arbitrary-precision left shift" "lshiftl ca0 4611686018427387904 1 halt"
+  |> check_terminal_integer "arbitrary-precision left shift" (Z.of_string "9223372036854775808");
+  differential_final "arithmetic right shift" "lshiftr ca0 -1 1 halt"
+  |> check_terminal_integer "arithmetic right shift" Z.minus_one;
+  let handwritten, extracted =
+    differential_final "signed and large shift counts"
+      "lshiftl ca0 8 (-1)\n\
+       lshiftr ca1 8 (-1)\n\
+       lshiftr ca2 (-3) 1\n\
+       lshiftl ca3 (-3) 1\n\
+       lshiftl ca4 7 0\n\
+       lshiftr ca5 (-1) 100000\n\
+       lshiftl ca6 7 (-100000)\n\
+       halt"
+  in
+  List.iter
+    (fun (backend, session) ->
+      Alcotest.(check bool)
+        (backend ^ " signed shifts halt") true
+        ((Machine_session.view session).status = Machine_view.Halted);
+      List.iter
+        (fun (register, expected) ->
+          Alcotest.(check (option string))
+            (backend ^ " " ^ register)
+            (Some (Z.to_string expected))
+            (Option.map Z.to_string (general_word register session).word.integer))
+        [
+          ("ca0", z 4);
+          ("ca1", z 16);
+          ("ca2", z (-2));
+          ("ca3", z (-6));
+          ("ca4", z 7);
+          ("ca5", Z.minus_one);
+          ("ca6", Z.zero);
+        ])
+    [ ("handwritten", handwritten); ("extracted", extracted) ]
 
 let memory_and_locality () =
   differential "load/store"
@@ -446,6 +531,30 @@ let capabilities_and_sealing () =
   differential "malformed seal-range Restrict"
     ~regfile:(architectural_pc ^ "ca3 := [SU, Global, 0, 15, 0]")
     "restrict ca3 999 halt"
+
+let subseg_boundaries () =
+  let capability = architectural_pc ^ "ca0 := ([R WL LG LM], Global, 1, 10, 4)" in
+  let seal_range = architectural_pc ^ "ca0 := [SU, Global, 1, 10, 4]" in
+  let check label regfile source status base limit =
+    differential_final label ~regfile source
+    |> check_subseg_result label status (z base) (z limit) (z 4)
+  in
+  check "capability SubSeg rejects enlarged limit" capability "subseg ca0 2 20 halt"
+    Machine_view.Failed 1 10;
+  check "seal-range SubSeg rejects enlarged limit" seal_range "subseg ca0 2 20 halt"
+    Machine_view.Failed 1 10;
+  check "capability SubSeg narrows" capability "subseg ca0 2 9 halt" Machine_view.Halted 2 9;
+  check "seal-range SubSeg narrows" seal_range "subseg ca0 2 9 halt" Machine_view.Halted 2 9;
+  check "capability SubSeg rejects non-finite base" capability "subseg ca0 2000000 9 halt"
+    Machine_view.Failed 1 10;
+  check "seal-range SubSeg rejects non-finite base" seal_range "subseg ca0 2000000 9 halt"
+    Machine_view.Failed 1 10;
+  (* Rocq's [isWithin] constrains each new endpoint against the corresponding
+     old endpoint; it deliberately does not impose [new_base <= new_limit]. *)
+  check "capability SubSeg preserves exact endpoint rule" capability "subseg ca0 8 2 halt"
+    Machine_view.Halted 8 2;
+  check "seal-range SubSeg preserves exact endpoint rule" seal_range "subseg ca0 8 2 halt"
+    Machine_view.Halted 8 2
 
 let system_halt_fail_and_malformed () =
   differential "system authorization"
@@ -563,8 +672,10 @@ let () =
       ( "differential",
         [
           Alcotest.test_case "arithmetic, logic, and control" `Quick arithmetic_logic_control;
+          Alcotest.test_case "shift boundaries" `Quick shift_boundaries;
           Alcotest.test_case "memory and locality" `Quick memory_and_locality;
           Alcotest.test_case "capabilities and sealing" `Quick capabilities_and_sealing;
+          Alcotest.test_case "SubSeg boundaries" `Quick subseg_boundaries;
           Alcotest.test_case "system, terminal, malformed" `Quick system_halt_fail_and_malformed;
           Alcotest.test_case "edits and boundaries" `Quick edits_and_boundaries;
           Alcotest.test_case "step_n contract" `Quick step_n_contract;
