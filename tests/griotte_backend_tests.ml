@@ -352,6 +352,42 @@ let parser () =
   | Error [] -> Alcotest.fail "located lexer failure returned no diagnostic"
   | Ok _ -> Alcotest.fail "invalid character was accepted"
 
+let nested_composite_macro_arguments () =
+  let parser_config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) () in
+  let nested kind argument =
+    Printf.sprintf
+      "%%macro inner(v: value) restrict cgp $v %%endmacro %%macro outer(p: %s, l: locality) \
+       %%inner(($p, $l)) %%endmacro %%outer(%s, Global) halt"
+      kind argument
+  in
+  let check label expected source =
+    match ok (Griotte.Parser.parse_program source) with
+    | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] ->
+        Alcotest.(check bool)
+          label true
+          (ok (Griotte.Asm_ir.lower_instruction parser_config instruction)
+          = Griotte.Ast.Restrict (Griotte.Ast.cgp, Griotte.Ast.Constant expected))
+    | _ -> Alcotest.failf "%s did not resolve to a restriction" label
+  in
+  let permission = (Griotte.Ast.R, Griotte.Ast.WL, Griotte.Ast.LG, Griotte.Ast.LM) in
+  check "nested permission/locality"
+    (Griotte.Codec.encode_permission_locality permission Griotte.Ast.Global)
+    (nested "perm" "[R WL LG LM]");
+  check "nested seal-permission/locality"
+    (Griotte.Codec.encode_seal_permission_locality (true, true) Griotte.Ast.Global)
+    (nested "sealperm" "SU");
+  let wrong_kind = nested "wtype" "Cap" in
+  Alcotest.(check bool)
+    "reject wrong nested permission kind" true
+    (Result.is_error (Griotte.Parser.parse_program wrong_kind));
+  let missing =
+    "%macro inner(v: value) restrict cgp $v %endmacro %macro outer(l: locality) %inner(($missing, \
+     $l)) %endmacro %outer(Global) halt"
+  in
+  Alcotest.(check bool)
+    "reject missing nested permission argument" true
+    (Result.is_error (Griotte.Parser.parse_program missing))
+
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
 let session ?regfile source =
@@ -621,6 +657,8 @@ let () =
       ( "parser",
         [
           Alcotest.test_case "acceptance and rejection" `Quick parser;
+          Alcotest.test_case "nested composite macro arguments" `Quick
+            nested_composite_macro_arguments;
           Alcotest.test_case "historical examples" `Quick examples;
         ] );
       ( "machine",

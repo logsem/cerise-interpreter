@@ -309,7 +309,13 @@ module Syntax = struct
             Word_type_kind;
           ]
           n "Invalid value parameter $%s." acc
-    | Permission_locality (p, l) -> vl parameters (vp parameters acc p) l
+    | Permission_locality (Permission_literal _, l) -> vl parameters acc l
+    | Permission_locality (Permission_parameter n, l) ->
+        vl parameters
+          (valid_param parameters
+             [ Permission_kind; Seal_permission_kind ]
+             n "Invalid permission parameter $%s." acc)
+          l
     | Seal_permission_locality (p, l) -> vl parameters (vsp parameters acc p) l
     | _ -> acc
 
@@ -419,19 +425,30 @@ module Syntax = struct
         | Some (Constant_argument (Locality l)) -> Ok (Locality_literal l)
         | _ -> diagnostic (Printf.sprintf "No locality argument for $%s." n))
 
+  let sub_constant args = function
+    | Permission_locality ((Permission_literal _ as p), l) ->
+        Result.map (fun l -> Permission_locality (p, l)) (sl args l)
+    | Permission_locality (Permission_parameter n, l) -> (
+        match lookup args n with
+        | Some (Constant_argument (Permission p)) ->
+            Result.map (fun l -> Permission_locality (Permission_literal p, l)) (sl args l)
+        | Some (Constant_argument (Seal_permission p)) ->
+            Result.map
+              (fun l -> Seal_permission_locality (Seal_permission_literal p, l))
+              (sl args l)
+        | _ -> diagnostic (Printf.sprintf "No permission argument for $%s." n))
+    | Seal_permission_locality (p, l) ->
+        let* p = ssp args p in
+        Result.map (fun l -> Seal_permission_locality (p, l)) (sl args l)
+    | c -> Ok c
+
   let sc args = function
     | Value_parameter n -> (
         match lookup args n with
         | Some (Constant_argument c) -> Ok (Constant_term c)
         | Some (Register_argument r) -> Ok (Register_term (Named r))
         | None -> diagnostic (Printf.sprintf "No value argument for $%s." n))
-    | Permission_locality (p, l) ->
-        let* p = sp args p in
-        Result.map (fun l -> Constant_term (Permission_locality (p, l))) (sl args l)
-    | Seal_permission_locality (p, l) ->
-        let* p = ssp args p in
-        Result.map (fun l -> Constant_term (Seal_permission_locality (p, l))) (sl args l)
-    | c -> Ok (Constant_term c)
+    | c -> Result.map (fun c -> Constant_term c) (sub_constant args c)
 
   let so args = function
     | Register_term r -> Result.map (fun r -> Register_term r) (sr args r)
@@ -519,7 +536,7 @@ module Syntax = struct
         match lookup arguments n with
         | Some a -> Ok a
         | None -> diagnostic (Printf.sprintf "No argument for $%s." n))
-    | a -> Ok a
+    | Constant_argument c -> Result.map (fun c -> Constant_argument c) (sub_constant arguments c)
 end
 
 let valid_parameter_kind name = Option.is_some (Syntax.parameter_kind name)

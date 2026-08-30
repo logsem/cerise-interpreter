@@ -118,6 +118,61 @@ let parser_matrix () =
   Alcotest.(check bool) "u rejects Directed" true
     (Result.is_error (Ucerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"))
 
+let nested_composite_macro_arguments () =
+  let source =
+    "%macro inner(v: value) restrict r1 $v %endmacro \
+     %macro outer(p: perm, l: locality) %inner(($p, $l)) %endmacro \
+     %outer(URWLX, Local) halt"
+  in
+  let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
+  let check_u () =
+    match
+      ok (Ucerise.Parser.parse_program source)
+      |> Ucerise.Asm_ir.lower_program config |> ok
+    with
+    | Ucerise.Ast.I encoded :: _ ->
+        let expected =
+          Ucerise.Ast.Restrict
+            ( Ucerise.Ast.Reg 1,
+              Ucerise.Ast.Constant
+                (Ucerise.Codec.encode_permission_locality Ucerise.Ast.URWLX Ucerise.Ast.Local) )
+        in
+        Alcotest.(check bool)
+          "uCerise resolved nested permission/locality" true
+          (Ucerise.Codec.decode encoded = Ok expected)
+    | _ -> Alcotest.fail "uCerise did not lower the nested restriction"
+  in
+  let check_m () =
+    match
+      ok (Mcerise.Parser.parse_program source)
+      |> Mcerise.Asm_ir.lower_program config |> ok
+    with
+    | Mcerise.Ast.I encoded :: _ ->
+        let expected =
+          Mcerise.Ast.Restrict
+            ( Mcerise.Ast.Reg 1,
+              Mcerise.Ast.Constant
+                (Mcerise.Codec.encode_permission_locality Mcerise.Ast.URWLX Mcerise.Ast.Local) )
+        in
+        Alcotest.(check bool)
+          "mCerise resolved nested permission/locality" true
+          (Mcerise.Codec.decode encoded = Ok expected)
+    | _ -> Alcotest.fail "mCerise did not lower the nested restriction"
+  in
+  check_u ();
+  check_m ();
+  let wrong_kind =
+    "%macro inner(v: value) restrict r1 $v %endmacro \
+     %macro outer(p: expr, l: locality) %inner(($p, $l)) %endmacro \
+     %outer(1, Local) halt"
+  in
+  Alcotest.(check bool)
+    "uCerise rejects wrong nested permission kind" true
+    (Result.is_error (Ucerise.Parser.parse_program wrong_kind));
+  Alcotest.(check bool)
+    "mCerise rejects wrong nested permission kind" true
+    (Result.is_error (Mcerise.Parser.parse_program wrong_kind))
+
 let generated_construction_and_locations () =
   let source =
     "%define N 2 start: move r1 start + N %macro emit(x: expr) # $x %endmacro \
@@ -274,6 +329,8 @@ let () =
     [("isa",[Alcotest.test_case "allocations" `Quick allocations;
              Alcotest.test_case "codec matrix" `Quick codecs;
              Alcotest.test_case "parser matrix" `Quick parser_matrix;
+             Alcotest.test_case "nested composite macro arguments" `Quick
+               nested_composite_macro_arguments;
              Alcotest.test_case "generated construction and locations" `Quick
                generated_construction_and_locations]);
      ("machine",[Alcotest.test_case "semantics" `Quick semantics;

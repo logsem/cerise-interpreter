@@ -203,21 +203,23 @@ module Syntax = struct
     | Permission_parameter n -> (
         match lookup args n with Some (Constant_argument (Permission p)) -> Ok (Permission_literal p)
         | _ -> Error [Diagnostic.error (Printf.sprintf "No permission argument for $%s." n)])
+  let sub_constant args = function
+    | Permission_locality (p,l) ->
+        Result.bind (sub_perm args p) (fun p ->
+          Result.map (fun l -> Permission_locality (p,l)) (sub_loc args l))
+    | Parameterized_permission_locality (n,l) -> (
+        match lookup args n with
+        | Some (Constant_argument (Permission p)) ->
+            Result.map (fun l -> Permission_locality (Permission_literal p,l))
+              (sub_loc args l)
+        | _ -> Error [Diagnostic.error (Printf.sprintf "No permission argument for $%s." n)])
+    | c -> Ok c
   let sub_const args = function
     | Value_parameter n -> (
         match lookup args n with Some (Constant_argument c) -> Ok (Constant_term c)
         | Some (Register_argument r) -> Ok (Register_term (Named r))
         | None -> Error [Diagnostic.error (Printf.sprintf "No value argument for $%s." n)])
-    | Permission_locality (p,l) ->
-        Result.bind (sub_perm args p) (fun p ->
-          Result.map (fun l -> Constant_term (Permission_locality (p,l))) (sub_loc args l))
-    | Parameterized_permission_locality (n,l) -> (
-        match lookup args n with
-        | Some (Constant_argument (Permission p)) ->
-            Result.map (fun l -> Constant_term (Permission_locality (Permission_literal p,l)))
-              (sub_loc args l)
-        | _ -> Error [Diagnostic.error (Printf.sprintf "No permission argument for $%s." n)])
-    | c -> Ok (Constant_term c)
+    | c -> Result.map (fun c -> Constant_term c) (sub_constant args c)
   let sub_operand args = function
     | Register_term r -> Result.map (fun r -> Register_term r) (sub_reg args r)
     | Constant_term c -> sub_const args c
@@ -263,7 +265,8 @@ module Syntax = struct
     | Constant_argument (Value_parameter n) -> (
         match lookup arguments n with Some a -> Ok a
         | None -> Error [Diagnostic.error (Printf.sprintf "No argument for $%s." n)])
-    | a -> Ok a
+    | Constant_argument c ->
+        Result.map (fun c -> Constant_argument c) (sub_constant arguments c)
 end
 
 let valid_parameter_kind name = Option.is_some (Syntax.parameter_kind name)

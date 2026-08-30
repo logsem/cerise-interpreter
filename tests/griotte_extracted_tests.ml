@@ -375,6 +375,57 @@ let parser_ownership_and_corpus () =
   | Error [] -> Alcotest.fail "extracted located failure returned no diagnostic"
   | Ok _ -> Alcotest.fail "extracted parser accepted an invalid character"
 
+let nested_composite_macro_arguments () =
+  let nested kind argument =
+    Printf.sprintf
+      "%%macro inner(v: value) restrict cgp $v %%endmacro %%macro outer(p: %s, l: locality) \
+       %%inner(($p, $l)) %%endmacro %%outer(%s, Global) halt"
+      kind argument
+  in
+  let handwritten source =
+    match ok (Griotte.Parser.parse_program source) with
+    | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] -> (
+        match ok (Griotte.Asm_ir.lower_instruction config instruction) with
+        | Griotte.Ast.Restrict (_, Griotte.Ast.Constant value) -> value
+        | _ -> Alcotest.fail "handwritten Griotte lowered a different nested instruction")
+    | _ -> Alcotest.fail "handwritten Griotte did not resolve the nested restriction"
+  in
+  let extracted source =
+    match ok (Griotte_extracted.Parser.parse_program source) with
+    | [
+     Griotte_extracted.Asm_ir.Op instruction;
+     Griotte_extracted.Asm_ir.Op Griotte_extracted.Asm_ir.Halt_term;
+    ] -> (
+        match ok (Griotte_extracted.Asm_ir.lower_instruction config instruction) with
+        | Griotte_extracted.Ast.Restrict (_, Griotte_extracted.Ast.Constant value) -> value
+        | _ -> Alcotest.fail "extracted Griotte lowered a different nested instruction")
+    | _ -> Alcotest.fail "extracted Griotte did not resolve the nested restriction"
+  in
+  let check label expected source =
+    let handwritten_value = handwritten source in
+    let extracted_value = extracted source in
+    Alcotest.(check string)
+      (label ^ " extracted value") (Z.to_string expected) (Z.to_string extracted_value);
+    Alcotest.(check string)
+      (label ^ " backend equivalence") (Z.to_string handwritten_value) (Z.to_string extracted_value)
+  in
+  let permission =
+    ( Griotte_extracted.Ast.R,
+      Griotte_extracted.Ast.WL,
+      Griotte_extracted.Ast.LG,
+      Griotte_extracted.Ast.LM )
+  in
+  check "nested permission/locality"
+    (Griotte_extracted.Codec.encode_permission_locality permission Griotte_extracted.Ast.Global)
+    (nested "perm" "[R WL LG LM]");
+  check "nested seal-permission/locality"
+    (Griotte_extracted.Codec.encode_seal_permission_locality (true, true)
+       Griotte_extracted.Ast.Global)
+    (nested "sealperm" "SU");
+  Alcotest.(check bool)
+    "extracted rejects wrong nested permission kind" true
+    (Result.is_error (Griotte_extracted.Parser.parse_program (nested "wtype" "Cap")))
+
 let normalize view = { view with Machine_view.backend_name = "griotte" }
 
 let compare_view label handwritten extracted =
@@ -668,6 +719,8 @@ let () =
         [
           Alcotest.test_case "owned parser, macros, round trips, corpus" `Quick
             parser_ownership_and_corpus;
+          Alcotest.test_case "nested composite macro arguments" `Quick
+            nested_composite_macro_arguments;
         ] );
       ( "differential",
         [
