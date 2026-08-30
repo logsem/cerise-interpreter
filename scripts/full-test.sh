@@ -13,6 +13,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 cd "$repository_root"
+"$repository_root/scripts/ocaml-readability-gate.sh" --root "$repository_root"
 dune build @install
 dune runtest --force
 "$repository_root/scripts/public-api-gate.sh" --root "$repository_root" --skip-build

@@ -13,12 +13,17 @@ type asm_regfile = Asm_ir.regfile
 type asm_word = Asm_ir.word
 type state = Machine.t
 
-let parse_program = Parser.parse_program
-let parse_regfile = Parser.parse_regfile
-let parse_word = Parser.parse_word
+let parse_program ?filename:(filename : string option) (source : string) :
+    (asm_program, Diagnostic.t list) result = Parser.parse_program ?filename source
+let parse_regfile ?filename:(filename : string option) (source : string) :
+    (asm_regfile, Diagnostic.t list) result = Parser.parse_regfile ?filename source
+let parse_word ?filename:(filename : string option) (source : string) :
+    (asm_word, Diagnostic.t list) result = Parser.parse_word ?filename source
 
-let init config program regfile =
-  let ( let* ) = Result.bind in
+let init (config : Runtime_config.t) (program : Asm_ir.statement list) (regfile : Asm_ir.regfile_entry list option) : (state, Diagnostic.t list) result =
+  let ( let* ) (type value next error) (result : (value, error) result)
+          (continuation : value -> (next, error) result) : (next, error) result =
+    Result.bind result continuation in
   let* program = Asm_ir.lower_program config program in
   let* regfile =
     match regfile with
@@ -27,10 +32,12 @@ let init config program regfile =
   in
   Machine.init config program regfile
 
-let step = Machine.step
-let step_n = Machine.step_n
+let step (state : state) : (state, Machine_backend.execution_error) result = Machine.step state
+let step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
+  Machine.step_n count state
 
-let permission_parts (rx, w, dl, dro) =
+let permission_parts ((rx, w, dl, dro) : Ast.rx_permission * Ast.write_permission * Ast.deep_local_permission *
+Ast.deep_read_only_permission) : string list =
   [
     Printer.rx_permission rx;
     Printer.write_permission w;
@@ -38,7 +45,8 @@ let permission_parts (rx, w, dl, dro) =
     Printer.deep_read_only_permission dro;
   ]
 
-let capability p l b e a =
+let capability (p : Ast.rx_permission * Ast.write_permission * Ast.deep_local_permission *
+Ast.deep_read_only_permission) (l : Ast.locality) (b : Z.t) (e : Z.t) (a : Z.t) : Machine_view.capability option =
   Some
     {
       Machine_view.base = b;
@@ -48,7 +56,8 @@ let capability p l b e a =
       locality = Some (Printer.locality l);
     }
 
-let sealing ?object_type ~sealed (can_seal, can_unseal) =
+let sealing ?object_type:(object_type : Z.t option) ~sealed:(sealed : bool)
+    ((can_seal, can_unseal) : bool * bool) : Machine_view.sealing option =
   Some
     {
       Machine_view.object_type;
@@ -57,7 +66,7 @@ let sealing ?object_type ~sealed (can_seal, can_unseal) =
       is_sealed = sealed;
     }
 
-let view_word word =
+let view_word (word : Ast.word) : Machine_view.word =
   let edit_text = Printer.word word in
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
   let decoded_instruction =
@@ -67,7 +76,7 @@ let view_word word =
         |> Option.map Printer.instruction
     | _ -> None
   in
-  let base kind integer capability seal_range sealing annotations =
+  let base (kind : Machine_view.semantic_kind) (integer : Z.t option) (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option) (sealing : Machine_view.sealing option) (annotations : (string * string) list) : Machine_view.word =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -112,7 +121,7 @@ let view_word word =
           ("cursor", Z.to_string a);
         ]
 
-let register_description register =
+let register_description (register : Ast.register) : Machine_view.register_id * string * Machine_view.register_role =
   let label = Printer.register register in
   match register with
   | Ast.PC ->
@@ -126,7 +135,7 @@ let register_description register =
   | Ast.Reg _ ->
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
-let inspect state =
+let inspect (state : state) : Machine_view.t =
   let registers =
     Machine.RegMap.bindings state.Machine.registers
     |> List.map (fun (r, w) ->
@@ -165,7 +174,7 @@ let inspect state =
     missing_cell = Default (view_word (Ast.I Z.zero));
   }
 
-let register_of_id (id : Machine_view.Register_id.t) =
+let register_of_id (id : Machine_view.Register_id.t) : (Ast.register, Diagnostic.t list) result =
   match (id.bank, id.key) with
   | System, "pc" -> Ok Ast.PC
   | General, name -> (
@@ -175,9 +184,11 @@ let register_of_id (id : Machine_view.Register_id.t) =
   | _, name ->
       Error [ Diagnostic.error (Printf.sprintf "Register %S does not belong to that bank." name) ]
 
-let ( let* ) = Result.bind
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
 
-let set_register id term state =
+let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   match (id.Machine_view.Register_id.bank, id.key) with
   | System, "mtdc" ->
       Result.map
@@ -189,7 +200,7 @@ let set_register id term state =
         (fun w -> Machine.set_register r w state)
         (Asm_ir.lower_word state.Machine.config term)
 
-let set_memory address term state =
+let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.Machine.config) >= 0
   then
     Error

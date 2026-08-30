@@ -1,27 +1,29 @@
 open Cerise
 
-let ok = function
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.to_string diagnostics))
 
-let z = Z.of_int
-let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
+let integer (value : int) : Z.t = Z.of_int value
+let config = Runtime_config.create ~max_addr:(integer 128) ~stack_addr:(integer 64) ()
 
-let resolve_file path = if Sys.file_exists path then path else "../../../" ^ path
+let resolve_file (path : string) : string = if Sys.file_exists path then path else "../../../" ^ path
 
-let read_file path =
+let read_file (path : string) : string =
   let path = resolve_file path in
   let channel = open_in path in
   Fun.protect
     ~finally:(fun () -> close_in channel)
     (fun () -> really_input_string channel (in_channel_length channel))
 
-let extracted_register : Griotte.Ast.register -> Griotte_extracted.Ast.register = function
+let extracted_register (register : Griotte.Ast.register) : Griotte_extracted.Ast.register =
+  match register with
   | PC -> PC
   | Reg number -> Reg number
 
-let extracted_operand : Griotte.Ast.reg_or_const -> Griotte_extracted.Ast.reg_or_const = function
+let extracted_operand (operand : Griotte.Ast.reg_or_const) : Griotte_extracted.Ast.reg_or_const =
+  match operand with
   | Register register -> Register (extracted_register register)
   | Constant value -> Constant value
 
@@ -33,11 +35,13 @@ let extracted_permission ((rx, write, deep_local, deep_read_only) : Griotte.Ast.
   let deep_read_only = match deep_read_only with DRO -> Griotte_extracted.Ast.DRO | LM -> LM in
   (rx, write, deep_local, deep_read_only)
 
-let extracted_locality : Griotte.Ast.locality -> Griotte_extracted.Ast.locality = function
+let extracted_locality (locality : Griotte.Ast.locality) : Griotte_extracted.Ast.locality =
+  match locality with
   | Local -> Local
   | Global -> Global
 
-let extracted_word_type : Griotte.Ast.word_type -> Griotte_extracted.Ast.word_type = function
+let extracted_word_type (word_type : Griotte.Ast.word_type) : Griotte_extracted.Ast.word_type =
+  match word_type with
   | W_I -> W_I
   | W_Cap -> W_Cap
   | W_SealRange -> W_SealRange
@@ -82,7 +86,7 @@ let extracted_instruction : Griotte.Ast.instruction -> Griotte_extracted.Ast.ins
 
 let instructions =
   let open Griotte.Ast in
-  let a = Reg 1 and b = Reg 2 and r = Register (Reg 3) and c = Constant (z (-7)) in
+  let a = Reg 1 and b = Reg 2 and r = Register (Reg 3) and c = Constant (integer (-7)) in
   [
     Jmp r;
     Jmp c;
@@ -149,7 +153,7 @@ let instructions =
     LShiftR (a, c, c);
   ]
 
-let encoding_identity () =
+let encoding_identity (() : unit) : unit =
   List.iter
     (fun instruction ->
       let expected = Result.get_ok (Griotte.Codec.encode instruction) in
@@ -163,13 +167,13 @@ let encoding_identity () =
   let open Griotte_extracted.Ast in
   Alcotest.(check string)
     "negative Jmp golden" "-767"
-    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jmp (Constant (z (-3)))))));
+    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jmp (Constant (integer (-3)))))));
   Alcotest.(check string)
     "Jalr golden" "14340"
     (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Jalr (Reg 1, Reg 2)))));
   Alcotest.(check string)
     "Move negative constant golden" "47624"
-    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (z (-7)))))));
+    (Z.to_string (Result.get_ok (Griotte_extracted.Codec.encode (Move (Reg 1, Constant (integer (-7)))))));
   let open Griotte.Ast in
   let permissions =
     List.concat_map
@@ -226,7 +230,7 @@ let encoding_identity () =
         (Z.to_string (Griotte_extracted.Codec.encode_word_type extracted_word_type)))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ]
 
-let large_codec_round_trip () =
+let large_codec_round_trip (() : unit) : unit =
   let open Griotte.Ast in
   let large_constant = Z.neg (Z.logor (Z.shift_left Z.one 100_019) (Z.of_int 0xa6)) in
   let instruction = Move (Reg 1, Constant large_constant) in
@@ -242,8 +246,8 @@ let large_codec_round_trip () =
     "large finite independent round trip" true
     (Griotte_extracted.Codec.decode extracted = Ok extracted_instruction)
 
-let decoder_totality () =
-  let rejects value =
+let decoder_totality (() : unit) : unit =
+  let rejects (value : Z.t) : bool =
     match Griotte_extracted.Codec.decode value with
     | Error _ -> true
     | Ok _ -> false
@@ -251,7 +255,7 @@ let decoder_totality () =
   in
   Alcotest.(check bool) "negative malformed encoding" true (rejects Z.minus_one);
   (* Opcode Add, outer tuple (r1,-1): the inner pair is negative. *)
-  let nested_negative = Z.logor (z 0x0c) (Z.shift_left (z 14) 8) in
+  let nested_negative = Z.logor (integer 0x0c) (Z.shift_left (integer 14) 8) in
   Alcotest.(check bool) "nested negative tuple" true (rejects nested_negative);
   let huge = Z.shift_left Z.one 20_000 in
   Alcotest.(check bool) "huge malformed register" true (rejects (Z.shift_left huge 8));
@@ -259,10 +263,10 @@ let decoder_totality () =
     (fun opcode ->
       Alcotest.(check bool)
         (Printf.sprintf "unallocated opcode 0x%02x rejected" opcode)
-        true (rejects (z opcode)))
+        true (rejects (integer opcode)))
     (List.init 8 (fun offset -> 0x18 + offset))
 
-let parser_ownership_and_corpus () =
+let parser_ownership_and_corpus (() : unit) : unit =
   let program_files =
     [
       "case_studies/counter.s";
@@ -375,14 +379,14 @@ let parser_ownership_and_corpus () =
   | Error [] -> Alcotest.fail "extracted located failure returned no diagnostic"
   | Ok _ -> Alcotest.fail "extracted parser accepted an invalid character"
 
-let nested_composite_macro_arguments () =
-  let nested kind argument =
+let nested_composite_macro_arguments (() : unit) : unit =
+  let nested (kind : string) (argument : string) : string =
     Printf.sprintf
       "%%macro inner(v: value) restrict cgp $v %%endmacro %%macro outer(p: %s, l: locality) \
        %%inner(($p, $l)) %%endmacro %%outer(%s, Global) halt"
       kind argument
   in
-  let handwritten source =
+  let handwritten (source : string) : Z.t =
     match ok (Griotte.Parser.parse_program source) with
     | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] -> (
         match ok (Griotte.Asm_ir.lower_instruction config instruction) with
@@ -390,7 +394,7 @@ let nested_composite_macro_arguments () =
         | _ -> Alcotest.fail "handwritten Griotte lowered a different nested instruction")
     | _ -> Alcotest.fail "handwritten Griotte did not resolve the nested restriction"
   in
-  let extracted source =
+  let extracted (source : string) : Z.t =
     match ok (Griotte_extracted.Parser.parse_program source) with
     | [
      Griotte_extracted.Asm_ir.Op instruction;
@@ -401,7 +405,7 @@ let nested_composite_macro_arguments () =
         | _ -> Alcotest.fail "extracted Griotte lowered a different nested instruction")
     | _ -> Alcotest.fail "extracted Griotte did not resolve the nested restriction"
   in
-  let check label expected source =
+  let check (label : string) (expected : Z.t) (source : string) : unit =
     let handwritten_value = handwritten source in
     let extracted_value = extracted source in
     Alcotest.(check string)
@@ -426,19 +430,19 @@ let nested_composite_macro_arguments () =
     "extracted rejects wrong nested permission kind" true
     (Result.is_error (Griotte_extracted.Parser.parse_program (nested "wtype" "Cap")))
 
-let normalize view = { view with Machine_view.backend_name = "griotte" }
+let normalize (view : Machine_view.t) : Machine_view.t = { view with Machine_view.backend_name = "griotte" }
 
-let compare_view label handwritten extracted =
+let compare_view (label : string) (handwritten : Machine_session.t) (extracted : Machine_session.t) : unit =
   Alcotest.(check bool)
     label true
     (normalize (Machine_session.view handwritten) = normalize (Machine_session.view extracted))
 
-let sessions ?regfile source =
+let sessions ?regfile:(regfile : string option) (source : string) : Machine_session.t * Machine_session.t =
   ( ok (Machine_session.create ~backend:"griotte" ~config ~source ~regfile),
     ok (Machine_session.create ~backend:"griotte-extracted" ~config ~source ~regfile) )
 
-let differential_final ?regfile label source =
-  let rec loop step_number handwritten extracted =
+let differential_final ?regfile:(regfile : string option) (label : string) (source : string) : Machine_session.t * Machine_session.t =
+  let rec loop (step_number : int) (handwritten : Machine_session.t) (extracted : Machine_session.t) : Machine_session.t * Machine_session.t =
     compare_view
       (Printf.sprintf "%s after %d instruction steps" label step_number)
       handwritten extracted;
@@ -453,15 +457,15 @@ let differential_final ?regfile label source =
   let handwritten, extracted = sessions ?regfile source in
   loop 0 handwritten extracted
 
-let differential ?regfile label source = ignore (differential_final ?regfile label source)
+let differential ?regfile:(regfile : string option) (label : string) (source : string) : unit = ignore (differential_final ?regfile label source)
 
-let general_word key session =
+let general_word (key : string) (session : Machine_session.t) : Machine_view.register =
   Option.get
     (Machine_view.find_register
        { Machine_view.Register_id.bank = General; key }
        (Machine_session.view session))
 
-let check_terminal_integer label expected (handwritten, extracted) =
+let check_terminal_integer (label : string) (expected : Z.t) ((handwritten, extracted) : Machine_session.t * Machine_session.t) : unit =
   List.iter
     (fun (backend, session) ->
       let view = Machine_session.view session in
@@ -475,8 +479,8 @@ let check_terminal_integer label expected (handwritten, extracted) =
         (Option.map Z.to_string (general_word "ca0" session).word.integer))
     [ ("handwritten", handwritten); ("extracted", extracted) ]
 
-let check_subseg_result label expected_status expected_base expected_limit expected_cursor
-    (handwritten, extracted) =
+let check_subseg_result (label : string) (expected_status : Machine_view.status) (expected_base : Z.t) (expected_limit : Z.t) (expected_cursor : Z.t)
+    ((handwritten, extracted) : Machine_session.t * Machine_session.t) : unit =
   List.iter
     (fun (backend, session) ->
       let view = Machine_session.view session in
@@ -486,7 +490,7 @@ let check_subseg_result label expected_status expected_base expected_limit expec
         match word.capability with
         | Some capability -> (capability.base, capability.limit, capability.cursor)
         | None ->
-            let annotation name = Z.of_string (Option.get (List.assoc_opt name word.annotations)) in
+            let annotation (name : string) : Z.t = Z.of_string (Option.get (List.assoc_opt name word.annotations)) in
             (annotation "base", annotation "limit", annotation "cursor")
       in
       Alcotest.(check string)
@@ -502,7 +506,7 @@ let check_subseg_result label expected_status expected_base expected_limit expec
 
 let architectural_pc = "pc := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 0) "
 
-let arithmetic_logic_control () =
+let arithmetic_logic_control (() : unit) : unit =
   differential "arithmetic/logic/control"
     "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 land ca5 7 3 lor ca6 4 1 \
      lshiftl ca7 1 4 lshiftr cs0 16 2 lt cs1 ca1 ca0 jnz cs1 2 fail jmp 2 fail halt";
@@ -510,7 +514,7 @@ let arithmetic_logic_control () =
     ~regfile:(architectural_pc ^ "ca0 := (E-[X Ow LG LM], Global, 0, 4, 2)")
     "jalr cra ca0 fail halt"
 
-let shift_boundaries () =
+let shift_boundaries (() : unit) : unit =
   differential_final "arbitrary-precision left shift" "lshiftl ca0 4611686018427387904 1 halt"
   |> check_terminal_integer "arbitrary-precision left shift" (Z.of_string "9223372036854775808");
   differential_final "arithmetic right shift" "lshiftr ca0 -1 1 halt"
@@ -538,17 +542,17 @@ let shift_boundaries () =
             (Some (Z.to_string expected))
             (Option.map Z.to_string (general_word register session).word.integer))
         [
-          ("ca0", z 4);
-          ("ca1", z 16);
-          ("ca2", z (-2));
-          ("ca3", z (-6));
-          ("ca4", z 7);
+          ("ca0", integer 4);
+          ("ca1", integer 16);
+          ("ca2", integer (-2));
+          ("ca3", integer (-6));
+          ("ca4", integer 7);
           ("ca5", Z.minus_one);
           ("ca6", Z.zero);
         ])
     [ ("handwritten", handwritten); ("extracted", extracted) ]
 
-let memory_and_locality () =
+let memory_and_locality (() : unit) : unit =
   differential "load/store"
     ~regfile:(architectural_pc ^ "ca0 := ([R WL LG LM], Global, 20, 21, 20)")
     "store ca0 42 load ca1 ca0 halt";
@@ -564,7 +568,7 @@ let memory_and_locality () =
      ^ "ca0 := ([R W LG LM], Global, 20, 21, 20) ca1 := ([R WL LG LM], Local, 0, 8, 0)")
     "store ca0 ca1 halt"
 
-let capabilities_and_sealing () =
+let capabilities_and_sealing (() : unit) : unit =
   differential "restrict/subseg/lea/getters"
     ~regfile:(architectural_pc ^ "ca0 := ([R WL LG LM], Global, 1, 20, 4)")
     "restrict ca0 ([R W DL DRO], Local) subseg ca0 2 10 lea ca0 1 getl ca1 ca0 getb ca2 ca0 gete \
@@ -583,12 +587,12 @@ let capabilities_and_sealing () =
     ~regfile:(architectural_pc ^ "ca3 := [SU, Global, 0, 15, 0]")
     "restrict ca3 999 halt"
 
-let subseg_boundaries () =
+let subseg_boundaries (() : unit) : unit =
   let capability = architectural_pc ^ "ca0 := ([R WL LG LM], Global, 1, 10, 4)" in
   let seal_range = architectural_pc ^ "ca0 := [SU, Global, 1, 10, 4]" in
-  let check label regfile source status base limit =
+  let check (label : string) (regfile : string) (source : string) (status : Machine_view.status) (base : int) (limit : int) : unit =
     differential_final label ~regfile source
-    |> check_subseg_result label status (z base) (z limit) (z 4)
+    |> check_subseg_result label status (integer base) (integer limit) (integer 4)
   in
   check "capability SubSeg rejects enlarged limit" capability "subseg ca0 2 20 halt"
     Machine_view.Failed 1 10;
@@ -607,7 +611,7 @@ let subseg_boundaries () =
   check "seal-range SubSeg preserves exact endpoint rule" seal_range "subseg ca0 8 2 halt"
     Machine_view.Halted 8 2
 
-let system_halt_fail_and_malformed () =
+let system_halt_fail_and_malformed (() : unit) : unit =
   differential "system authorization"
     "mov ca0 77 writesr mtdc ca0 readsR ca1 mtdc mov cnull 99 halt";
   differential "system rejection" ~regfile:"pc := ([X Ow LG LM], Global, 0, 2, 0)"
@@ -618,7 +622,7 @@ let system_halt_fail_and_malformed () =
   differential "missing sparse instruction"
     ~regfile:"pc := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 10)" "halt"
 
-let edits_and_boundaries () =
+let edits_and_boundaries (() : unit) : unit =
   let handwritten, extracted = sessions "halt" in
   let register = { Machine_view.Register_id.bank = General; key = "cra" } in
   let handwritten =
@@ -629,10 +633,10 @@ let edits_and_boundaries () =
   in
   compare_view "register edit" handwritten extracted;
   let handwritten =
-    ok (Machine_session.set_memory_text (z 17) "{3: [SU, Global, 0, 15, 2]}" handwritten)
+    ok (Machine_session.set_memory_text (integer 17) "{3: [SU, Global, 0, 15, 2]}" handwritten)
   in
   let extracted =
-    ok (Machine_session.set_memory_text (z 17) "{3: [SU, Global, 0, 15, 2]}" extracted)
+    ok (Machine_session.set_memory_text (integer 17) "{3: [SU, Global, 0, 15, 2]}" extracted)
   in
   compare_view "memory edit and sealing metadata" handwritten extracted;
   let cnull = { Machine_view.Register_id.bank = General; key = "cnull" } in
@@ -649,7 +653,7 @@ let edits_and_boundaries () =
   Alcotest.(check bool)
     "finite-value mismatch is diagnostic" true
     (Result.is_error (Machine_session.set_register_text register invalid_word extracted));
-  let too_large = Runtime_config.create ~max_addr:(z 2_000_001) ~stack_addr:(z 64) () in
+  let too_large = Runtime_config.create ~max_addr:(integer 2_000_001) ~stack_addr:(integer 64) () in
   Alcotest.(check bool)
     "configuration mismatch is diagnostic" true
     (Result.is_error
@@ -666,7 +670,7 @@ let edits_and_boundaries () =
        (Machine_session.create ~backend:"griotte-extracted" ~config ~source:"halt"
           ~regfile:(Some "cra := {2000001: ([R W LG LM], Global, 0, 8, 0)}")))
 
-let unsupported_arithmetic_rejected () =
+let unsupported_arithmetic_rejected (() : unit) : unit =
   List.iter
     (fun backend ->
       List.iter
@@ -693,7 +697,7 @@ let unsupported_arithmetic_rejected () =
         [ "rem"; "div" ])
     [ "griotte"; "griotte-extracted" ]
 
-let step_n_contract () =
+let step_n_contract (() : unit) : unit =
   let handwritten, extracted = sessions "mov ca0 1 mov ca1 2 halt" in
   let handwritten = Result.get_ok (Machine_session.step_n 2 handwritten) in
   let extracted = Result.get_ok (Machine_session.step_n 2 extracted) in

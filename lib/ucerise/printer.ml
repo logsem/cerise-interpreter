@@ -1,18 +1,18 @@
 open Ast
-let permission = function
+let permission (matched_value : permission) : string = match matched_value with
   | O -> "O" | E -> "E" | RO -> "RO" | RX -> "RX" | RW -> "RW" | RWX -> "RWX"
   | RWL -> "RWL" | RWLX -> "RWLX" | URW -> "URW" | URWX -> "URWX"
   | URWL -> "URWL" | URWLX -> "URWLX"
-let locality = function Global -> "GLOBAL" | Local -> "LOCAL"
-let capability ((Cap (p,l,b,e,a)) : capability) =
+let locality (matched_value : locality) : string = match matched_value with Global -> "GLOBAL" | Local -> "LOCAL"
+let capability ((Cap (p,l,b,e,a)) : capability) : string =
   Printf.sprintf "(%s, %s, %s, %s, %s)" (permission p) (locality l)
     (Z.to_string b) (Z.to_string e) (Z.to_string a)
-let word = function I z -> Z.to_string z | Cap c -> capability c
+let word (matched_value : word) : string = match matched_value with I z -> Z.to_string z | Cap c -> capability c
 
-let register = function PC -> "pc" | Reg n -> "r" ^ string_of_int n
-let operand = function Register r -> register r | Constant z -> Z.to_string z
+let register (matched_value : register) : string = match matched_value with PC -> "pc" | Reg n -> "r" ^ string_of_int n
+let operand (matched_value : reg_or_const) : string = match matched_value with Register r -> register r | Constant z -> Z.to_string z
 
-let instruction = function
+let instruction (matched_value : instruction) : string = match matched_value with
   | Jmp r -> Printf.sprintf "jmp %s" (register r)
   | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (register b)
   | Move (a, b) -> Printf.sprintf "mov %s %s" (register a) (operand b)

@@ -1,19 +1,20 @@
 %{
 open Asm_ir
 
-let reject position message =
+let reject (position : Lexing.position) (message : string) : 'a =
   raise (Assembly_construction.Parse_error (Assembly_construction.location position, message))
 
-let register position name =
+let register (position : Lexing.position) (name : string) : Ast.register =
   match parse_register_name name with
   | Some register -> register
   | None -> reject position "Expected a Griotte register."
 
-let system_register position name =
+let system_register (position : Lexing.position) (name : string) : Ast.system_register =
   if String.equal (String.lowercase_ascii name) "mtdc" then Ast.MTDC
   else reject position "Expected the Griotte system register MTDC."
 
-let permission position rx write deep_local deep_read_only =
+let permission (position : Lexing.position) (rx : string) (write : string)
+    (deep_local : string) (deep_read_only : string) : Ast.permission =
   match
     ( parse_rx (String.lowercase_ascii rx),
       parse_write (String.lowercase_ascii write),
@@ -24,26 +25,26 @@ let permission position rx write deep_local deep_read_only =
       (rx, write, deep_local, deep_read_only)
   | _ -> reject position "Invalid Griotte composite permission component."
 
-let null_permission position name =
+let null_permission (position : Lexing.position) (name : string) : Ast.permission =
   if String.equal (String.uppercase_ascii name) "O" then Ast.null_permission
   else reject position "Expected O or a Griotte composite permission."
 
-let locality position name =
+let locality (position : Lexing.position) (name : string) : Ast.locality =
   match parse_locality_name name with
   | Some locality -> locality
   | None -> reject position "Expected Local or Global."
 
-let seal_permission position name =
+let seal_permission (position : Lexing.position) (name : string) : Ast.seal_permission =
   match parse_seal_permission_name name with
   | Some permission -> permission
   | None -> reject position "Expected SO, S, U, or SU."
 
-let word_type position name =
+let word_type (position : Lexing.position) (name : string) : Ast.word_type =
   match parse_word_type_name name with
   | Some word_type -> word_type
   | None -> reject position "Expected Int, Cap, SealRange, Sealed, or Sentry."
 
-let sentry_prefix position name =
+let sentry_prefix (position : Lexing.position) (name : string) : unit =
   if not (String.equal (String.uppercase_ascii name) "E") then
     reject position "Expected E- before a Griotte sentry permission."
 %}

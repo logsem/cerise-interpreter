@@ -77,6 +77,14 @@ if ocamlfind ocamlc -package cerise-interpreter -c \
 fi
 grep -Eq 'Unbound module|Unbound value|Unbound constructor' "$stage/obsolete-state-view.log"
 
+if ocamlfind ocamlc -package cerise-interpreter -c \
+  "$repository_root/tests/api_gate/removed_machine_alias_client.ml" \
+  -o "$stage/removed-machine-alias-client.cmo" >"$stage/removed-machine-alias.log" 2>&1; then
+  echo "removed machine convenience aliases are still public" >&2
+  exit 1
+fi
+grep -Eq 'Unbound value.*get_exec_state' "$stage/removed-machine-alias.log"
+
 public_dir="$stage/lib/cerise-interpreter"
 if find "$public_dir" -path "$public_dir/__private__" -prune -o \
   -type f -name '*_ast.cmi' -print | grep -q .; then

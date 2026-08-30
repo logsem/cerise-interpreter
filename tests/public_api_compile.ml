@@ -57,6 +57,13 @@ let machine_alias (state : Cerise.Vanilla.Machine.t) : Cerise.Machine.t = state
 let typed_seal_range (word : Cerise.Machine_view.word) : Cerise.Machine_view.seal_range option =
   word.seal_range
 
+let default_backend_name : string = Cerise.Backend_registry.default_backend_name
+let available_backend_names : string list = Cerise.Backend_registry.available_backend_names ()
+let selected_backend : (module Cerise.Machine_backend.S) option =
+  Cerise.Backend_registry.find_backend default_backend_name
+let find_memory_word (address : Z.t) (view : Cerise.Machine_view.t) :
+    Cerise.Machine_view.word option = Cerise.Machine_view.find_memory_word address view
+
 let backends : (module Cerise.Machine_backend.S) list =
   [
     (module Vanilla_backend);
@@ -71,4 +78,7 @@ let backends : (module Cerise.Machine_backend.S) list =
 let () =
   ignore machine_alias;
   ignore typed_seal_range;
+  ignore available_backend_names;
+  ignore selected_backend;
+  ignore find_memory_word;
   if List.length backends <> 7 then failwith "missing public backend namespace"

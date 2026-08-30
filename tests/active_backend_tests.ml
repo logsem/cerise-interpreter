@@ -1,19 +1,19 @@
 open Cerise
 
-let ok = function
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok x -> x
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.message diagnostics))
 
-let check_reject parser source = Alcotest.(check bool) source true (Result.is_error (parser source))
+let check_reject (parser : (string -> ('a, 'b) result)) (source : string) : unit = Alcotest.(check bool) source true (Result.is_error (parser source))
 
-let read_file path =
+let read_file (path : string) : string =
   let channel = open_in path in
   Fun.protect
     ~finally:(fun () -> close_in channel)
     (fun () -> really_input_string channel (in_channel_length channel))
 
-let allocation_test () =
+let allocation_test (() : unit) : unit =
   let expected_v =
     [
       ("Jmp", 0, 1);
@@ -55,7 +55,7 @@ let allocation_test () =
   Alcotest.(check (list (triple string int int)))
     "locality golden table" expected_l Locality_cerise.Codec.allocations
 
-let parser_matrix () =
+let parser_matrix (() : unit) : unit =
   ignore (ok (Vanilla.Parser.parse_program "%define N 2 start: move r1 start + N # 4 halt"));
   ignore
     (ok
@@ -79,18 +79,18 @@ let parser_matrix () =
   check_reject Locality_cerise.Parser.parse_word "(RW, DIRECTED, 0, 10, 0)";
   check_reject Locality_cerise.Parser.parse_word "(URW, GLOBAL, 0, 10, 0)"
 
-let session backend source =
+let session (backend : string) (source : string) : Machine_session.t =
   ok
     (Machine_session.create ~backend
        ~config:(Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) ())
        ~source ~regfile:None)
 
-let integer_register label view =
+let integer_register (label : string) (view : Machine_view.t) : Z.t =
   match Machine_view.find_register { bank = General; key = label } view with
   | Some { word = { integer = Some z; _ }; _ } -> z
   | _ -> Alcotest.fail ("missing " ^ label)
 
-let execution () =
+let execution (() : unit) : unit =
   let initial = session "vanilla" "move r1 40 add r2 r1 2 halt" in
   let after = (Machine_session.run initial).session in
   Alcotest.(check string)
@@ -106,9 +106,9 @@ let execution () =
     (Z.to_string (Locality_cerise.Codec.encode_locality Locality_cerise.Ast.Local))
     (Z.to_string (integer_register "r1" (Machine_session.view finished)))
 
-let memory_and_sealing () =
+let memory_and_sealing (() : unit) : unit =
   let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
-  let make source regfile =
+  let make (source : string) (regfile : string) : Machine_session.t =
     ok (Machine_session.create ~backend:"vanilla" ~config ~source ~regfile:(Some regfile))
   in
   let memory = Machine_session.run (make "store r1 42 load r2 r1 halt" "r1 := (RW, 10, 11, 10)") in
@@ -134,7 +134,7 @@ let memory_and_sealing () =
     "invoke reaches sentry target" true
     ((Machine_session.view invoked.session).status = Halted)
 
-let restriction_locality_and_edits () =
+let restriction_locality_and_edits (() : unit) : unit =
   let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
   let restricted =
     ok
@@ -182,7 +182,7 @@ let restriction_locality_and_edits () =
     (Z.to_string (integer_register "r2" (Machine_session.view vanilla)))
     (Z.to_string (integer_register "r2" (Machine_session.view local)))
 
-let codec_round_trips () =
+let codec_round_trips (() : unit) : unit =
   let open Vanilla.Ast in
   let r1 = Reg 1 and r2 = Reg 2 and o = Constant (Z.of_int (-7)) in
   let instructions =
@@ -228,13 +228,13 @@ let codec_round_trips () =
     "large finite vanilla instruction round trip" true
     (Vanilla.Codec.decode encoded = Ok large_instruction)
 
-let parameterized_values_and_total_decoders () =
+let parameterized_values_and_total_decoders (() : unit) : unit =
   let vanilla_source =
     "%macro cap(p: perm, e: expr) # ($p, 0, $e, 0) %endmacro %cap(RW, 10) halt"
   in
   let vanilla = Machine_session.view (session "vanilla" vanilla_source) in
   let vanilla_capability =
-    Option.get (Option.get (Machine_view.memory_at Z.zero vanilla)).capability
+    Option.get (Option.get (Machine_view.find_memory_word Z.zero vanilla)).capability
   in
   Alcotest.(check (list string))
     "parameterized vanilla capability" [ "RW" ] vanilla_capability.permissions;
@@ -248,7 +248,7 @@ let parameterized_values_and_total_decoders () =
   in
   let locality = Machine_session.view (session "locality-cerise" locality_source) in
   let locality_capability =
-    Option.get (Option.get (Machine_view.memory_at Z.zero locality)).capability
+    Option.get (Option.get (Machine_view.find_memory_word Z.zero locality)).capability
   in
   Alcotest.(check (option string))
     "parameterized capability locality" (Some "LOCAL") locality_capability.locality;
@@ -268,7 +268,8 @@ let parameterized_values_and_total_decoders () =
   ignore (ok (Vanilla.Parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
   ignore (ok (Locality_cerise.Parser.parse_program "MOVE R1 DDC JNZ PC R0 MOVE STK R31 HALT"));
   let huge = Z.shift_left Z.one 10000 in
-  let decoder_is_total decoder value =
+  let decoder_is_total (type input output error) (decoder : input -> (output, error) result)
+      (value : input) : bool =
     match decoder value with Error _ -> true | Ok _ -> false | exception _ -> false
   in
   List.iter
@@ -307,7 +308,7 @@ let parameterized_values_and_total_decoders () =
   Alcotest.(check bool)
     "huge correctly tagged seal/locality decoder total" true
     (decoder_is_total Locality_cerise.Codec.decode_seal_permission_locality Z.(huge + of_int 5));
-  let run_malformed backend malformed regfile =
+  let run_malformed (backend : string) (malformed : Z.t) (regfile : string) : Machine_session.run_result =
     ok
       (Machine_session.create ~backend ~config
          ~source:("restrict r1 " ^ Z.to_string malformed ^ " halt")
@@ -324,15 +325,15 @@ let parameterized_values_and_total_decoders () =
         (run_malformed "locality-cerise" Z.(huge + of_int 4) "r1 := (RW, GLOBAL, 0, 10, 2)").session)
        .status = Failed)
 
-let initial_views_and_alias () =
-  Alcotest.(check string) "default" "vanilla" Backend_registry.default;
+let initial_views_and_alias (() : unit) : unit =
+  Alcotest.(check string) "default" "vanilla" Backend_registry.default_backend_name;
   Alcotest.(check (list string))
     "names"
     [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "cerisier"; "griotte"; "griotte-extracted" ]
-    (Backend_registry.names ());
+    (Backend_registry.available_backend_names ());
   List.iter
     (fun name -> Alcotest.(check bool) ("old name absent: " ^ name) true
-      (Option.is_none (Backend_registry.find name)))
+      (Option.is_none (Backend_registry.find_backend name)))
     [ "default"; "vanilla-cerise"; "stack-cerise"; "sealing-cerise"; "seal_cerise"; "custom" ];
   let alias = session "cerise" "halt" in
   Alcotest.(check string) "requested alias" "cerise" (Machine_session.backend_name alias);
@@ -348,8 +349,8 @@ let initial_views_and_alias () =
     "stack locality" "LOCAL"
     (Option.get (Option.bind stk.word.capability (fun c -> c.locality)))
 
-let generated_parser_locations_and_round_trips () =
-  let check_location label expected_line expected_column = function
+let generated_parser_locations_and_round_trips (() : unit) : unit =
+  let check_location (label : string) (expected_line : int) (expected_column : int) (matched_value : ('a, Diagnostic.t list) result) : unit = match matched_value with
     | Error (diagnostic :: _) -> (
         match Diagnostic.location diagnostic with
         | Some location ->
@@ -382,7 +383,7 @@ let generated_parser_locations_and_round_trips () =
   Alcotest.(check bool) "locality word round trip" true (locality_word = locality_round_trip);
   ignore (ok (Vanilla.Parser.parse_regfile "r1 := 1 ; comment with spaces\n r2 := (RO, 0, 4, 0)"))
 
-let active_macro_hygiene_and_resolution () =
+let active_macro_hygiene_and_resolution (() : unit) : unit =
   let source =
     "%define OFFSET 2 \
      %macro inner(dst: reg) private: move $dst private + OFFSET %endmacro \
@@ -408,7 +409,7 @@ let active_macro_hygiene_and_resolution () =
   check_reject Vanilla.Parser.parse_word "(RW, LOCAL, 0, 4, 0)";
   ignore (ok (Locality_cerise.Parser.parse_word "(RW, GLOBAL, 0, 4, 0)"))
 
-let checked_in_vanilla_corpus () =
+let checked_in_vanilla_corpus (() : unit) : unit =
   let base = "test_files/vanilla/pos/" in
   List.iter
     (fun name -> ignore (ok (Vanilla.Parser.parse_program ~filename:name (read_file (base ^ name)))))

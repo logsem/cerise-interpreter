@@ -1,6 +1,6 @@
 open Ast
 
-let permission = function
+let permission (matched_value : permission) : string = match matched_value with
   | O -> "O"
   | E -> "E"
   | RO -> "RO"
@@ -8,13 +8,13 @@ let permission = function
   | RW -> "RW"
   | RWX -> "RWX"
 
-let seal_permission = function
+let seal_permission (matched_value : bool * bool) : string = match matched_value with
   | false, false -> "SO"
   | true, false -> "S"
   | false, true -> "U"
   | true, true -> "SU"
 
-let sealable = function
+let sealable (matched_value : sealable) : string = match matched_value with
   | Cap (p, b, e, a) ->
       Printf.sprintf "(%s, %s, %s, %s)" (permission p) (Z.to_string b) (Z.to_string e)
         (Z.to_string a)
@@ -22,14 +22,14 @@ let sealable = function
       Printf.sprintf "[%s, %s, %s, %s]" (seal_permission p) (Z.to_string b) (Z.to_string e)
         (Z.to_string a)
 
-let word = function
+let word (matched_value : word) : string = match matched_value with
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sealed (o, s) -> Printf.sprintf "{%s: %s}" (Z.to_string o) (sealable s)
 
-let register = function PC -> "pc" | Reg n -> "r" ^ string_of_int n
-let operand = function Register r -> register r | Constant z -> Z.to_string z
-let instruction = function
+let register (matched_value : register) : string = match matched_value with PC -> "pc" | Reg n -> "r" ^ string_of_int n
+let operand (matched_value : reg_or_const) : string = match matched_value with Register r -> register r | Constant z -> Z.to_string z
+let instruction (matched_value : instruction) : string = match matched_value with
   | Jmp r -> "jmp " ^ register r | Jnz (a,b) -> Printf.sprintf "jnz %s %s" (register a) (register b)
   | Move (r,a) -> Printf.sprintf "mov %s %s" (register r) (operand a)
   | Load (a,b) -> Printf.sprintf "load %s %s" (register a) (register b)

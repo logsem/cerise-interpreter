@@ -1,25 +1,25 @@
 %{
 open Asm_ir
 
-let reject position message =
+let reject (position : Lexing.position) (message : string) : 'a =
   raise (Assembly_construction.Parse_error (Assembly_construction.location position, message))
 
-let register position name =
+let register (position : Lexing.position) (name : string) : Ast.register =
   match parse_register_name name with
   | Some register -> register
   | None -> reject position "Expected a vanilla register."
 
-let permission position name =
+let permission (position : Lexing.position) (name : string) : Ast.permission =
   match parse_permission name with
   | Some permission -> permission
   | None -> reject position "Expected a vanilla permission."
 
-let seal_permission position name =
+let seal_permission (position : Lexing.position) (name : string) : Ast.seal_permission =
   match parse_seal_permission name with
   | Some permission -> permission
   | None -> reject position "Expected a sealing permission."
 
-let word_type position name =
+let word_type (position : Lexing.position) (name : string) : Ast.word_type =
   match parse_word_type name with
   | Some word_type -> word_type
   | None -> reject position "Expected a vanilla word type."

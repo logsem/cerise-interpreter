@@ -1,34 +1,35 @@
 open Cerise
 
-let get_ok = function
+let get_ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.failf "unexpected diagnostics: %s"
         (String.concat "\n" (List.map Diagnostic.to_string diagnostics))
 
-let int_word word =
+let int_word (word : Machine_view.word) : Z.t =
   match word.Machine_view.integer with
   | Some value -> value
   | None -> Alcotest.failf "expected integer word, got %s" word.detail_text
 
-let register bank key = { Machine_view.Register_id.bank; key }
+let register (bank : Machine_view.register_bank) (key : string) : Machine_view.register_id = { Machine_view.Register_id.bank; key }
 
-let register_word bank key session =
+let register_word (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.word =
   let view = Machine_session.view session in
   match Machine_view.find_register (register bank key) view with
   | Some register -> register.word
   | None -> Alcotest.failf "register %s is absent" key
 
-let check_z message expected actual =
+let check_z (message : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) message (Z.to_string expected) (Z.to_string actual)
 
-let create ?(source = "halt") ?regfile () =
-  Machine_session.create ~backend:Backend_registry.default ~config:Runtime_config.default ~source
+let create ?(source : string = "halt") ?regfile:(regfile : string option) (() : unit) :
+    Machine_session.t =
+  Machine_session.create ~backend:Backend_registry.default_backend_name ~config:Runtime_config.default ~source
     ~regfile
   |> get_ok
 
-let test_backend_owns_parser () =
-  let selected = Backend_registry.find "vanilla" |> Option.get in
+let test_backend_owns_parser (() : unit) : unit =
+  let selected = Backend_registry.find_backend "vanilla" |> Option.get in
   let module Backend = (val selected : Machine_backend.S) in
   List.iter
     (fun source ->
@@ -36,13 +37,13 @@ let test_backend_owns_parser () =
         (Result.is_error (Backend.parse_program source)))
     [ "getl r1 r2 halt"; "promoteU r1 halt"; "restrict r1 (RW, DIRECTED) halt" ]
 
-let capability_metadata bank key session =
+let capability_metadata (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.capability =
   let word = register_word bank key session in
   match word.capability with
   | Some capability -> capability
   | None -> Alcotest.failf "expected capability metadata for register %s" key
 
-let test_interleaved_runtime_configs () =
+let test_interleaved_runtime_configs (() : unit) : unit =
   let first_config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 20) () in
   let second_config =
     Runtime_config.create ~max_addr:(Z.of_int 1000) ~stack_addr:(Z.of_int 750) ()
@@ -50,12 +51,12 @@ let test_interleaved_runtime_configs () =
   let source = "mov r3 r1\nhalt" in
   let regfile = Some "r1 := MAX_ADDR\nr2 := STK_ADDR" in
   let first =
-        Machine_session.create ~backend:Backend_registry.default ~config:first_config ~source
+        Machine_session.create ~backend:Backend_registry.default_backend_name ~config:first_config ~source
           ~regfile
         |> get_ok
       in
       let second =
-        Machine_session.create ~backend:Backend_registry.default ~config:second_config ~source
+        Machine_session.create ~backend:Backend_registry.default_backend_name ~config:second_config ~source
           ~regfile
         |> get_ok
       in
@@ -88,13 +89,13 @@ let test_interleaved_runtime_configs () =
       check_z "first stepped view is not contaminated by second" (Z.of_int 64)
         (Machine_session.view first_after_step).address_limit
 
-let test_registry_and_shared_frontend () =
-  Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default;
+let test_registry_and_shared_frontend (() : unit) : unit =
+  Alcotest.(check string) "canonical default" "vanilla" Backend_registry.default_backend_name;
   Alcotest.(check (list string))
     "deterministic active backends"
     [ "vanilla"; "cerise"; "locality-cerise"; "ucerise"; "mcerise"; "cerisier"; "griotte"; "griotte-extracted" ]
-    (Backend_registry.names ());
-  let selected = Backend_registry.find "cerise" |> Option.get in
+    (Backend_registry.available_backend_names ());
+  let selected = Backend_registry.find_backend "cerise" |> Option.get in
   let module Backend = (val selected : Machine_backend.S) in
   Alcotest.(check string) "alias selects canonical module" "vanilla" Backend.name;
   let source =
@@ -117,7 +118,7 @@ let test_registry_and_shared_frontend () =
     (int_word (register_word Machine_view.General "r1" stepped));
   let config = Runtime_config.create ~max_addr:(Z.of_int 100) ~stack_addr:(Z.of_int 75) () in
   let configured =
-    Machine_session.create ~backend:Backend_registry.default ~config ~source:"halt"
+    Machine_session.create ~backend:Backend_registry.default_backend_name ~config ~source:"halt"
       ~regfile:(Some "r1 := MAX_ADDR\nr2 := STK_ADDR")
     |> get_ok
   in
@@ -126,7 +127,7 @@ let test_registry_and_shared_frontend () =
   check_z "runtime stack address is resolved in the shared frontend" (Z.of_int 75)
     (int_word (register_word Machine_view.General "r2" configured))
 
-let test_view_purity_and_ordering () =
+let test_view_purity_and_ordering (() : unit) : unit =
   let session = create ~source:"halt\n# 7" () in
   let view = Machine_session.view session in
   Alcotest.(check string) "backend metadata" "vanilla" view.backend_name;
@@ -140,10 +141,10 @@ let test_view_purity_and_ordering () =
   let register_labels = List.map (fun register -> register.Machine_view.label) view.registers in
   Alcotest.(check string) "first register" "pc" (List.hd register_labels);
   Alcotest.(check string) "last register" "r31" (List.hd (List.rev register_labels));
-  let missing = Machine_view.memory_at (Z.of_int 20) view |> Option.get in
+  let missing = Machine_view.find_memory_word (Z.of_int 20) view |> Option.get in
   check_z "addressable missing memory is backend zero" Z.zero (int_word missing)
 
-let test_immutable_stepping_and_stops () =
+let test_immutable_stepping_and_stops (() : unit) : unit =
   let initial = create ~source:"mov r1 41\nadd r2 r1 1\nhalt" () in
   let after_one = Machine_session.step initial |> Result.get_ok in
   check_z "prior session remains unchanged" Z.zero
@@ -162,7 +163,7 @@ let test_immutable_stepping_and_stops () =
     | Error (Machine_backend.Stopped Machine_view.Halted) -> true
     | _ -> false)
 
-let test_run_results () =
+let test_run_results (() : unit) : unit =
   let initial = create ~source:"mov r1 1\nhalt" () in
   let at_breakpoint = Machine_session.run ~breakpoints:[ Z.one ] initial in
   Alcotest.(check int) "one instruction before breakpoint" 1 at_breakpoint.steps;
@@ -181,7 +182,7 @@ let test_run_results () =
     (failed.reason = Machine_session.Failed
     && (Machine_session.view failed.session).status = Machine_view.Failed)
 
-let test_text_edits () =
+let test_text_edits (() : unit) : unit =
   let initial = create ~source:"halt" () in
   let edited =
     Machine_session.set_register_text (register Machine_view.General "r1") "99" initial |> get_ok
@@ -192,7 +193,7 @@ let test_text_edits () =
     (int_word (register_word Machine_view.General "r1" initial));
   let edited = Machine_session.set_memory_text (Z.of_int 9) "123" edited |> get_ok in
   let memory_word =
-    Machine_view.memory_at (Z.of_int 9) (Machine_session.view edited) |> Option.get
+    Machine_view.find_memory_word (Z.of_int 9) (Machine_session.view edited) |> Option.get
   in
   check_z "memory text edit" (Z.of_int 123) (int_word memory_word);
   let capability =
@@ -209,7 +210,7 @@ let test_text_edits () =
         && Z.equal metadata.cursor (Z.of_int 3)
     | None -> false)
 
-let test_diagnostics () =
+let test_diagnostics (() : unit) : unit =
   Alcotest.(check bool)
     "unknown backend diagnostic" true
     (match
@@ -220,7 +221,7 @@ let test_diagnostics () =
     | _ -> false);
   Alcotest.(check bool)
     "parse diagnostic carries a source position" true
-    (let selected = Backend_registry.find Backend_registry.default |> Option.get in
+    (let selected = Backend_registry.find_backend Backend_registry.default_backend_name |> Option.get in
      let module Backend = (val selected : Machine_backend.S) in
      match Backend.parse_program ~filename:"broken.s" "mov r1" with
      | Error (diagnostic :: _) -> Option.is_some (Diagnostic.location diagnostic)

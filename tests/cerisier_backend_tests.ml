@@ -1,24 +1,24 @@
 open Cerise
 
-let ok = function
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.message diagnostics))
 
 let config = Runtime_config.create ~max_addr:(Z.of_int 128) ~stack_addr:(Z.of_int 64) ()
 
-let session ?regfile source =
+let session ?regfile:(regfile : string option) (source : string) : Machine_session.t =
   ok (Machine_session.create ~backend:"cerisier" ~config ~source ~regfile)
 
-let register bank key machine =
+let register (bank : Machine_view.register_bank) (key : string) (machine : Machine_session.t) : Machine_view.register =
   Machine_view.find_register { Machine_view.Register_id.bank; key } (Machine_session.view machine)
   |> Option.get
 
-let integer key machine = (register Machine_view.General key machine).word.integer |> Option.get
-let capability bank key machine = (register bank key machine).word.capability |> Option.get
-let run ?max_steps machine = (Machine_session.run ?max_steps machine).session
+let integer (key : string) (machine : Machine_session.t) : Z.t = (register Machine_view.General key machine).word.integer |> Option.get
+let capability (bank : Machine_view.register_bank) (key : string) (machine : Machine_session.t) : Machine_view.capability = (register bank key machine).word.capability |> Option.get
+let run ?max_steps:(max_steps : int option) (machine : Machine_session.t) : Machine_session.t = (Machine_session.run ?max_steps machine).session
 
-let parser_matrix () =
+let parser_matrix (() : unit) : unit =
   let complete =
     "jmp r1 jnz r1 r2 mov r1 -1 load r1 r2 store r1 r2 add r1 r2 1 sub r1 2 r2 mul r1 r2 3 rem r1 \
      r2 4 div r1 r2 5 lt r1 r2 6 lea r1 -1 restrict r1 (URWLX, DIRECTED) subseg r1 0 MAX_ADDR getl \
@@ -76,7 +76,8 @@ let parser_matrix () =
     ];
   List.iter
     (fun name ->
-      let check_unresolved label = function
+      let check_unresolved (type value) (label : string)
+          (matched_value : (value, Diagnostic.t list) result) : unit = match matched_value with
         | Error [ diagnostic ] ->
             Alcotest.(check string)
               label
@@ -177,7 +178,7 @@ let instructions =
     Halt;
   ]
 
-let codec () =
+let codec (() : unit) : unit =
   Alcotest.(check (list (triple string int int)))
     "fixed historical allocations"
     [
@@ -277,7 +278,7 @@ let codec () =
       (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_seal_permission_locality z));
     ]
 
-let finite_bounds_and_edits () =
+let finite_bounds_and_edits (() : unit) : unit =
   let initial = session "move r1 MAX_ADDR halt" in
   let stepped = Result.get_ok (Machine_session.step initial) in
   Alcotest.(check string) "MAX_ADDR evaluates finitely" "128" (Z.to_string (integer "r1" stepped));
@@ -299,26 +300,26 @@ let finite_bounds_and_edits () =
   Alcotest.(check bool) "sparse physical view" true (List.length view.memory = 2);
   Alcotest.(check bool)
     "logical zero missing cell" true
-    (match Machine_view.memory_at (Z.of_int 100) view with
+    (match Machine_view.find_memory_word (Z.of_int 100) view with
     | Some { integer = Some value; _ } -> Z.equal Z.zero value
     | Some _ -> false
     | None -> false);
   let memory_edited = ok (Machine_session.set_memory_text (Z.of_int 90) "41" initial) in
   Alcotest.(check string)
     "memory edit" "41"
-    (match Machine_view.memory_at (Z.of_int 90) (Machine_session.view memory_edited) with
+    (match Machine_view.find_memory_word (Z.of_int 90) (Machine_session.view memory_edited) with
     | Some { integer = Some value; _ } -> Z.to_string value
     | _ -> Alcotest.fail "edited memory cell missing");
   Alcotest.(check bool)
     "memory edit is immutable" true
-    (match Machine_view.memory_at (Z.of_int 90) (Machine_session.view initial) with
+    (match Machine_view.find_memory_word (Z.of_int 90) (Machine_session.view initial) with
     | Some { integer = Some value; _ } -> Z.equal value Z.zero
     | _ -> false);
   Alcotest.(check string)
     "selected canonical name" "cerisier"
     (Machine_session.backend_name initial)
 
-let parity_rules () =
+let parity_rules (() : unit) : unit =
   List.iter
     (fun permission ->
       let invalid_pc =
@@ -376,12 +377,12 @@ let parity_rules () =
   Alcotest.(check string)
     "historical SubSeg permits enlarged finite limit" "40" (Z.to_string loose.limit)
 
-let einit_configured_region () =
+let einit_configured_region (() : unit) : unit =
   let open Cerisier.Ast in
   let b = Z.of_int 4 in
   let bounded_end = Z.pred (Runtime_config.max_addr config) in
   let oversized_end = Z.shift_left Z.one 100_000 in
-  let make_state e =
+  let make_state (e : Z.t) : Cerisier.Machine.t =
     let state = Cerisier.Machine.init config [] None in
     state
     |> Cerisier.Machine.set_register PC
@@ -394,14 +395,14 @@ let einit_configured_region () =
     |> Cerisier.Machine.set_memory_raw (Z.of_int 5) (I (Z.of_int 11))
     |> Cerisier.Machine.set_memory_raw (Z.of_int 7) (I (Z.of_int 22))
   in
-  let execute e = Cerisier.Machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
+  let execute (e : Z.t) : Cerisier.Machine.t = Cerisier.Machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
   let bounded = execute bounded_end
   and oversized = execute oversized_end
   and short = execute (Z.of_int 6) in
-  let identity (state : Cerisier.Machine.t) =
+  let identity (state : Cerisier.Machine.t) : Z.t =
     Cerisier.Machine.ETableMap.find Z.zero state.enclave_table
   in
-  let rec expected_region address words =
+  let rec expected_region (address : Z.t) (words : word list) : word list =
     if address > bounded_end then List.rev words
     else
       let word =
@@ -434,15 +435,15 @@ let einit_configured_region () =
       | _ -> Alcotest.fail (label ^ " did not return an E capability"))
     [ ("bounded", bounded_end, bounded); ("oversized", oversized_end, oversized) ]
 
-let fixture name =
+let fixture (name : string) : string =
   let local = "test_files/cerisier/pos/" ^ name in
   if Sys.file_exists local then local else "tests/" ^ local
 
-let example name =
+let example (name : string) : Machine_session.t =
   let source = In_channel.with_open_bin (fixture name) In_channel.input_all in
   session source |> run ~max_steps:1000
 
-let examples_and_lifecycle () =
+let examples_and_lifecycle (() : unit) : unit =
   let unique = example "isunique.s" in
   Alcotest.(check bool)
     "isunique example halts" true

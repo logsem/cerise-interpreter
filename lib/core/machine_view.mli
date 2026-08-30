@@ -67,4 +67,4 @@ type t = {
 }
 
 val find_register : register_id -> t -> register option
-val memory_at : Z.t -> t -> word option
+val find_memory_word : Z.t -> t -> word option

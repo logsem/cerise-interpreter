@@ -65,7 +65,7 @@ type program = statement list
 type regfile = (register * word_term) list
 type word = word_term
 
-let parse_register_name name =
+let parse_register_name (name : string) : register option =
   match String.lowercase_ascii name with
   | "pc" -> Some PC
   | "ddc" -> Some (Reg 0)
@@ -78,7 +78,7 @@ let parse_register_name name =
       | _ -> None)
   | _ -> None
 
-let parse_permission = function
+let parse_permission (matched_value : string) : permission option = match matched_value with
   | "O" -> Some O
   | "E" -> Some E
   | "RO" -> Some RO
@@ -89,19 +89,19 @@ let parse_permission = function
   | "RWLX" -> Some RWLX
   | _ -> None
 
-let parse_locality = function
+let parse_locality (matched_value : string) : locality option = match matched_value with
   | "GLOBAL" | "Global" -> Some Global
   | "LOCAL" | "Local" -> Some Local
   | _ -> None
 
-let parse_seal_permission = function
+let parse_seal_permission (matched_value : string) : (bool * bool) option = match matched_value with
   | "SO" -> Some (false, false)
   | "S" -> Some (true, false)
   | "U" -> Some (false, true)
   | "SU" -> Some (true, true)
   | _ -> None
 
-let parse_word_type = function
+let parse_word_type (matched_value : string) : word_type option = match matched_value with
   | "Int" -> Some Integer
   | "Cap" -> Some Capability
   | "SealRange" -> Some Seal_range
@@ -125,9 +125,9 @@ module Syntax = struct
   type nonrec macro_argument = macro_argument
   type nonrec parameter_kind = parameter_kind
 
-  let statement_of_raw_word word = Word word
+  let statement_of_raw_word (word : raw_word) : statement = Word word
 
-  let parameter_kind = function
+  let parameter_kind (matched_value : string) : parameter_kind option = match matched_value with
     | "reg" -> Some Register_kind
     | "expr" -> Some Expression_kind
     | "value" -> Some Value_kind
@@ -137,7 +137,7 @@ module Syntax = struct
     | "locality" -> Some Locality_kind
     | _ -> None
 
-  let parameter_kind_name = function
+  let parameter_kind_name (matched_value : parameter_kind) : string = match matched_value with
     | Register_kind -> "reg"
     | Expression_kind -> "expr"
     | Value_kind -> "value"
@@ -146,7 +146,7 @@ module Syntax = struct
     | Word_type_kind -> "wtype"
     | Locality_kind -> "locality"
 
-  let argument_kind = function
+  let argument_kind (matched_value : macro_argument) : parameter_kind = match matched_value with
     | Register_argument _ -> Register_kind
     | Constant_argument (Expression _) -> Expression_kind
     | Constant_argument (Permission _) -> Permission_kind
@@ -159,7 +159,7 @@ module Syntax = struct
     | Constant_argument (Locality_constant _) -> Locality_kind
     | Constant_argument (Value_parameter _) -> Value_kind
 
-  let accepts_argument kind argument =
+  let accepts_argument (kind : parameter_kind) (argument : macro_argument) : bool =
     match (kind, argument_kind argument) with
     | Value_kind, _ -> true
     | Expression_kind, Expression_kind
@@ -171,15 +171,15 @@ module Syntax = struct
     | Locality_kind, Locality_kind -> true
     | _ -> false
 
-  let expression_of_argument = function Constant_argument (Expression e) -> Some e | _ -> None
-  let map_register _ r = r
-  let map_constant f = function Expression e -> Expression (f e) | c -> c
+  let expression_of_argument (matched_value : macro_argument) : expression option = match matched_value with Constant_argument (Expression e) -> Some e | _ -> None
+  let map_register (_ : 'a) (r : 'b) : 'b = r
+  let map_constant (f : (expression -> expression)) (matched_value : constant_term) : constant_term = match matched_value with Expression e -> Expression (f e) | c -> c
 
-  let map_operand f = function
+  let map_operand (f : (expression -> expression)) (matched_value : operand_term) : operand_term = match matched_value with
     | Register_term r -> Register_term r
     | Constant_term c -> Constant_term (map_constant f c)
 
-  let map_instruction f = function
+  let map_instruction (f : (expression -> expression)) (matched_value : instruction_term) : instruction_term = match matched_value with
     | Jmp_term r -> Jmp_term r
     | Jnz_term (a, b) -> Jnz_term (a, b)
     | Load_term (a, b) -> Load_term (a, b)
@@ -207,146 +207,147 @@ module Syntax = struct
     | Fail_term -> Fail_term
     | Halt_term -> Halt_term
 
-  let map_sealable f = function
+  let map_sealable (f : (expression -> expression)) (matched_value : sealable_term) : sealable_term = match matched_value with
     | Cap_term (p, l, b, e, a) -> Cap_term (p, l, f b, f e, f a)
     | SealRange_term (p, l, b, e, a) -> SealRange_term (p, l, f b, f e, f a)
 
-  let map_word f = function
+  let map_word (f : (expression -> expression)) (matched_value : raw_word) : raw_word = match matched_value with
     | I_term e -> I_term (f e)
     | Sealable_term s -> Sealable_term (map_sealable f s)
     | Sealed_term (o, s) -> Sealed_term (f o, map_sealable f s)
 
-  let map_statement_expressions f = function
+  let map_statement_expressions (f : (expression -> expression)) (matched_value : statement) : statement = match matched_value with
     | Op op -> Op (map_instruction f op)
     | Word w -> Word (map_word f w)
 
-  let map_raw_word_expressions = map_word
+  let map_raw_word_expressions (mapper : expression -> expression) (word : word_term) : word_term =
+    map_word mapper word
 
-  let map_argument_expressions f = function
+  let map_argument_expressions (f : (expression -> expression)) (matched_value : macro_argument) : macro_argument = match matched_value with
     | Constant_argument c -> Constant_argument (map_constant f c)
     | a -> a
 
-  let rec expression_parameters parameters acc = function
+  let rec expression_parameters (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : expression) : Diagnostic.t list = match matched_value with
     | Assembly_construction.Expression.Parameter name -> (
         match List.assoc_opt name parameters with
-        | Some (Expression_kind | Value_kind) -> acc
+        | Some (Expression_kind | Value_kind) -> accumulator
         | Some _ ->
-            Diagnostic.error (Printf.sprintf "$%s is not an expression parameter." name) :: acc
-        | None -> Diagnostic.error (Printf.sprintf "Unknown macro parameter $%s." name) :: acc)
+            Diagnostic.error (Printf.sprintf "$%s is not an expression parameter." name) :: accumulator
+        | None -> Diagnostic.error (Printf.sprintf "Unknown macro parameter $%s." name) :: accumulator)
     | Add (a, b) | Subtract (a, b) | Multiply (a, b) | Logand (a, b) | Logor (a, b)
     | Shift_left (a, b) | Shift_right (a, b) ->
-        expression_parameters parameters (expression_parameters parameters acc a) b
-    | _ -> acc
+        expression_parameters parameters (expression_parameters parameters accumulator a) b
+    | _ -> accumulator
 
-  let validate_register parameters acc = function
-    | Named _ -> acc
+  let validate_register (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : register_term) : Diagnostic.t list = match matched_value with
+    | Named _ -> accumulator
     | Register_parameter n -> (
         match List.assoc_opt n parameters with
-        | Some (Register_kind | Value_kind) -> acc
-        | _ -> Diagnostic.error (Printf.sprintf "Invalid register parameter $%s." n) :: acc)
+        | Some (Register_kind | Value_kind) -> accumulator
+        | _ -> Diagnostic.error (Printf.sprintf "Invalid register parameter $%s." n) :: accumulator)
 
-  let validate_constant parameters acc = function
-    | Expression e -> expression_parameters parameters acc e
+  let validate_constant (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : constant_term) : Diagnostic.t list = match matched_value with
+    | Expression e -> expression_parameters parameters accumulator e
     | Value_parameter n -> (
         match List.assoc_opt n parameters with
         | Some
             ( Value_kind | Expression_kind | Permission_kind | Seal_permission_kind | Word_type_kind
             | Locality_kind ) ->
-            acc
-        | _ -> Diagnostic.error (Printf.sprintf "Invalid value parameter $%s." n) :: acc)
+            accumulator
+        | _ -> Diagnostic.error (Printf.sprintf "Invalid value parameter $%s." n) :: accumulator)
     | Permission_locality (permission, locality) -> (
-        let acc =
+        let accumulator =
           match permission with
-          | Permission_literal _ -> acc
+          | Permission_literal _ -> accumulator
           | Permission_parameter name -> (
               match List.assoc_opt name parameters with
-              | Some Permission_kind -> acc
+              | Some Permission_kind -> accumulator
               | _ ->
-                  Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: acc)
+                  Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: accumulator)
         in
         match locality with
-        | Locality _ -> acc
+        | Locality _ -> accumulator
         | Locality_parameter name -> (
             match List.assoc_opt name parameters with
-            | Some Locality_kind -> acc
-            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: acc))
+            | Some Locality_kind -> accumulator
+            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: accumulator))
     | Seal_permission_locality (permission, locality) -> (
-        let acc =
+        let accumulator =
           match permission with
-          | Seal_permission_literal _ -> acc
+          | Seal_permission_literal _ -> accumulator
           | Seal_permission_parameter name -> (
               match List.assoc_opt name parameters with
-              | Some Seal_permission_kind -> acc
+              | Some Seal_permission_kind -> accumulator
               | _ ->
                   Diagnostic.error (Printf.sprintf "Invalid seal-permission parameter $%s." name)
-                  :: acc)
+                  :: accumulator)
         in
         match locality with
-        | Locality _ -> acc
+        | Locality _ -> accumulator
         | Locality_parameter name -> (
             match List.assoc_opt name parameters with
-            | Some Locality_kind -> acc
-            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: acc))
+            | Some Locality_kind -> accumulator
+            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: accumulator))
     | Parameterized_permission_locality (name, locality) -> (
-        let acc =
+        let accumulator =
           match List.assoc_opt name parameters with
-          | Some (Permission_kind | Seal_permission_kind) -> acc
-          | _ -> Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: acc
+          | Some (Permission_kind | Seal_permission_kind) -> accumulator
+          | _ -> Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: accumulator
         in
         match locality with
-        | Locality _ -> acc
+        | Locality _ -> accumulator
         | Locality_parameter name -> (
             match List.assoc_opt name parameters with
-            | Some Locality_kind -> acc
-            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: acc))
-    | _ -> acc
+            | Some Locality_kind -> accumulator
+            | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: accumulator))
+    | _ -> accumulator
 
-  let validate_operand parameters acc = function
-    | Register_term r -> validate_register parameters acc r
-    | Constant_term c -> validate_constant parameters acc c
+  let validate_operand (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : operand_term) : Diagnostic.t list = match matched_value with
+    | Register_term r -> validate_register parameters accumulator r
+    | Constant_term c -> validate_constant parameters accumulator c
 
-  let validate_permission parameters acc = function
-    | Permission_literal _ -> acc
+  let validate_permission (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : permission_term) : Diagnostic.t list = match matched_value with
+    | Permission_literal _ -> accumulator
     | Permission_parameter name -> (
         match List.assoc_opt name parameters with
-        | Some Permission_kind -> acc
-        | _ -> Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: acc)
+        | Some Permission_kind -> accumulator
+        | _ -> Diagnostic.error (Printf.sprintf "Invalid permission parameter $%s." name) :: accumulator)
 
-  let validate_seal_permission parameters acc = function
-    | Seal_permission_literal _ -> acc
+  let validate_seal_permission (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : seal_permission_term) : Diagnostic.t list = match matched_value with
+    | Seal_permission_literal _ -> accumulator
     | Seal_permission_parameter name -> (
         match List.assoc_opt name parameters with
-        | Some Seal_permission_kind -> acc
+        | Some Seal_permission_kind -> accumulator
         | _ ->
-            Diagnostic.error (Printf.sprintf "Invalid seal-permission parameter $%s." name) :: acc)
+            Diagnostic.error (Printf.sprintf "Invalid seal-permission parameter $%s." name) :: accumulator)
 
-  let validate_locality parameters acc = function
-    | Locality _ -> acc
+  let validate_locality (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : locality_term) : Diagnostic.t list = match matched_value with
+    | Locality _ -> accumulator
     | Locality_parameter name -> (
         match List.assoc_opt name parameters with
-        | Some Locality_kind -> acc
-        | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: acc)
+        | Some Locality_kind -> accumulator
+        | _ -> Diagnostic.error (Printf.sprintf "Invalid locality parameter $%s." name) :: accumulator)
 
-  let validate_word_terms parameters acc = function
-    | I_term _ -> acc
+  let validate_word_terms (parameters : (string * parameter_kind) list) (accumulator : Diagnostic.t list) (matched_value : raw_word) : Diagnostic.t list = match matched_value with
+    | I_term _ -> accumulator
     | Sealable_term (Cap_term (permission, locality, _, _, _))
     | Sealed_term (_, Cap_term (permission, locality, _, _, _)) ->
-        validate_locality parameters (validate_permission parameters acc permission) locality
+        validate_locality parameters (validate_permission parameters accumulator permission) locality
     | Sealable_term (SealRange_term (permission, locality, _, _, _))
     | Sealed_term (_, SealRange_term (permission, locality, _, _, _)) ->
-        validate_locality parameters (validate_seal_permission parameters acc permission) locality
+        validate_locality parameters (validate_seal_permission parameters accumulator permission) locality
 
-  let validate_statement ~parameters statement =
-    let acc = ref [] in
-    let r x = acc := validate_register parameters !acc x
-    and o x = acc := validate_operand parameters !acc x in
+  let validate_statement ~parameters:(parameters : (string * parameter_kind) list) (statement : statement) : Diagnostic.t list =
+    let accumulator = ref [] in
+    let r (x : register_term) : unit = accumulator := validate_register parameters !accumulator x
+    and o (x : operand_term) : unit = accumulator := validate_operand parameters !accumulator x in
     (match statement with
     | Word w ->
-        acc := validate_word_terms parameters !acc w;
+        accumulator := validate_word_terms parameters !accumulator w;
         ignore
           (map_word
              (fun e ->
-               acc := expression_parameters parameters !acc e;
+               accumulator := expression_parameters parameters !accumulator e;
                e)
              w)
     | Op op -> (
@@ -382,26 +383,26 @@ module Syntax = struct
             r b;
             r c
         | Fail_term | Halt_term -> ()));
-    List.rev !acc
+    List.rev !accumulator
 
-  let validate_raw_word ~parameters word = validate_statement ~parameters (Word word)
-  let lookup arguments name = List.assoc_opt name arguments
+  let validate_raw_word ~parameters:(parameters : (string * parameter_kind) list) (word : raw_word) : Diagnostic.t list = validate_statement ~parameters (Word word)
+  let lookup (arguments : ('a * 'b) list) (name : 'a) : 'b option = List.assoc_opt name arguments
 
-  let sub_register arguments = function
+  let sub_register (arguments : (string * macro_argument) list) (matched_value : register_term) : (register_term, Diagnostic.t list) result = match matched_value with
     | Named _ as r -> Ok r
     | Register_parameter n -> (
         match lookup arguments n with
         | Some (Register_argument r) -> Ok (Named r)
         | _ -> Error [ Diagnostic.error (Printf.sprintf "No register argument for $%s." n) ])
 
-  let sub_permission arguments = function
+  let sub_permission (arguments : (string * macro_argument) list) (matched_value : permission_term) : (permission_term, Diagnostic.t list) result = match matched_value with
     | Permission_literal _ as permission -> Ok permission
     | Permission_parameter name -> (
         match lookup arguments name with
         | Some (Constant_argument (Permission permission)) -> Ok (Permission_literal permission)
         | _ -> Error [ Diagnostic.error (Printf.sprintf "No permission argument for $%s." name) ])
 
-  let sub_seal_permission arguments = function
+  let sub_seal_permission (arguments : (string * macro_argument) list) (matched_value : seal_permission_term) : (seal_permission_term, Diagnostic.t list) result = match matched_value with
     | Seal_permission_literal _ as permission -> Ok permission
     | Seal_permission_parameter name -> (
         match lookup arguments name with
@@ -410,19 +411,19 @@ module Syntax = struct
         | _ ->
             Error [ Diagnostic.error (Printf.sprintf "No seal-permission argument for $%s." name) ])
 
-  let sub_locality arguments = function
+  let sub_locality (arguments : (string * macro_argument) list) (matched_value : locality_term) : (locality_term, Diagnostic.t list) result = match matched_value with
     | Locality _ as locality -> Ok locality
     | Locality_parameter name -> (
         match lookup arguments name with
         | Some (Constant_argument (Locality_constant locality)) -> Ok (Locality locality)
         | _ -> Error [ Diagnostic.error (Printf.sprintf "No locality argument for $%s." name) ])
 
-  let sub_pair arguments constructor permission locality =
+  let sub_pair (arguments : (string * macro_argument) list) (constructor : ('a * locality_term -> 'b)) (permission : ('a, Diagnostic.t list) result) (locality : locality_term) : ('b, Diagnostic.t list) result =
     match (permission, sub_locality arguments locality) with
     | Ok permission, Ok locality -> Ok (constructor (permission, locality))
     | Error diagnostics, _ | _, Error diagnostics -> Error diagnostics
 
-  let sub_constant arguments = function
+  let sub_constant (arguments : (string * macro_argument) list) (matched_value : constant_term) : (constant_term, Diagnostic.t list) result = match matched_value with
     | Permission_locality (permission, locality) ->
         sub_pair arguments
           (fun (permission, locality) -> Permission_locality (permission, locality))
@@ -446,7 +447,7 @@ module Syntax = struct
         | _ -> Error [ Diagnostic.error (Printf.sprintf "No permission argument for $%s." name) ])
     | constant -> Ok constant
 
-  let sub_operand arguments = function
+  let sub_operand (arguments : (string * macro_argument) list) (matched_value : operand_term) : (operand_term, Diagnostic.t list) result = match matched_value with
     | Register_term r -> Result.map (fun r -> Register_term r) (sub_register arguments r)
     | Constant_term (Value_parameter n) -> (
         match lookup arguments n with
@@ -456,35 +457,35 @@ module Syntax = struct
     | Constant_term constant ->
         Result.map (fun constant -> Constant_term constant) (sub_constant arguments constant)
 
-  let bind1 c arguments a = Result.map c (sub_register arguments a)
+  let bind1 (c : (register_term -> 'a)) (arguments : (string * macro_argument) list) (a : register_term) : ('a, Diagnostic.t list) result = Result.map c (sub_register arguments a)
 
-  let bind2 c arguments a b =
+  let bind2 (c : (register_term -> register_term -> 'a)) (arguments : (string * macro_argument) list) (a : register_term) (b : register_term) : ('a, Diagnostic.t list) result =
     match (sub_register arguments a, sub_register arguments b) with
     | Ok a, Ok b -> Ok (c a b)
     | Error e, _ -> Error e
     | _, Error e -> Error e
 
-  let bind3 c arguments a b d =
+  let bind3 (c : (register_term -> register_term -> register_term -> 'a)) (arguments : (string * macro_argument) list) (a : register_term) (b : register_term) (d : register_term) : ('a, Diagnostic.t list) result =
     match (sub_register arguments a, sub_register arguments b, sub_register arguments d) with
     | Ok a, Ok b, Ok d -> Ok (c a b d)
     | Error e, _, _ -> Error e
     | _, Error e, _ -> Error e
     | _, _, Error e -> Error e
 
-  let bindro c arguments r o =
+  let bindro (c : (register_term -> operand_term -> 'a)) (arguments : (string * macro_argument) list) (r : register_term) (o : operand_term) : ('a, Diagnostic.t list) result =
     match (sub_register arguments r, sub_operand arguments o) with
     | Ok r, Ok o -> Ok (c r o)
     | Error e, _ -> Error e
     | _, Error e -> Error e
 
-  let bindroo c arguments r a b =
+  let bindroo (c : (register_term -> operand_term -> operand_term -> 'a)) (arguments : (string * macro_argument) list) (r : register_term) (a : operand_term) (b : operand_term) : ('a, Diagnostic.t list) result =
     match (sub_register arguments r, sub_operand arguments a, sub_operand arguments b) with
     | Ok r, Ok a, Ok b -> Ok (c r a b)
     | Error e, _, _ -> Error e
     | _, Error e, _ -> Error e
     | _, _, Error e -> Error e
 
-  let sub_word arguments = function
+  let sub_word (arguments : (string * macro_argument) list) (matched_value : raw_word) : (raw_word, Diagnostic.t list) result = match matched_value with
     | I_term _ as word -> Ok word
     | Sealable_term (Cap_term (permission, locality, b, e, a)) -> (
         match (sub_permission arguments permission, sub_locality arguments locality) with
@@ -507,7 +508,7 @@ module Syntax = struct
             Ok (Sealed_term (otype, SealRange_term (permission, locality, b, e, a)))
         | Error diagnostics, _ | _, Error diagnostics -> Error diagnostics)
 
-  let substitute_instruction arguments = function
+  let substitute_instruction (arguments : (string * macro_argument) list) (matched_value : instruction_term) : (instruction_term, Diagnostic.t list) result = match matched_value with
     | Jmp_term a -> bind1 (fun a -> Jmp_term a) arguments a
     | Jnz_term (a, b) -> bind2 (fun a b -> Jnz_term (a, b)) arguments a b
     | Load_term (a, b) -> bind2 (fun a b -> Load_term (a, b)) arguments a b
@@ -535,13 +536,13 @@ module Syntax = struct
     | Fail_term -> Ok Fail_term
     | Halt_term -> Ok Halt_term
 
-  let substitute_statement ~arguments = function
+  let substitute_statement ~arguments:(arguments : (string * macro_argument) list) (matched_value : statement) : (statement, Diagnostic.t list) result = match matched_value with
     | Op op -> Result.map (fun op -> Op op) (substitute_instruction arguments op)
     | Word w -> Result.map (fun word -> Word word) (sub_word arguments w)
 
-  let substitute_raw_word ~arguments w = sub_word arguments w
+  let substitute_raw_word ~arguments:(arguments : (string * macro_argument) list) (w : raw_word) : (raw_word, Diagnostic.t list) result = sub_word arguments w
 
-  let substitute_argument ~arguments = function
+  let substitute_argument ~arguments:(arguments : (string * macro_argument) list) (matched_value : macro_argument) : (macro_argument, Diagnostic.t list) result = match matched_value with
     | Register_argument _ as a -> Ok a
     | Constant_argument (Value_parameter n) -> (
         match lookup arguments n with
@@ -551,39 +552,42 @@ module Syntax = struct
         Result.map (fun constant -> Constant_argument constant) (sub_constant arguments constant)
 end
 
-let valid_parameter_kind name = Option.is_some (Syntax.parameter_kind name)
-let parameter_kind name = Option.get (Syntax.parameter_kind name)
+let valid_parameter_kind (name : string) : bool = Option.is_some (Syntax.parameter_kind name)
+let parameter_kind (name : string) : parameter_kind = Option.get (Syntax.parameter_kind name)
 
 type source_program =
   (statement, word_term, macro_argument, parameter_kind) Assembly_construction.item list
 
 module Assembler = Assembly_construction.Make (Syntax)
 
-let assemble = Assembler.assemble
+let assemble (program : source_program) : (statement list, Diagnostic.t list) result =
+  Assembler.assemble program
 
-let diagnostic message = Error [ Diagnostic.error message ]
-let ( let* ) = Result.bind
+let diagnostic (message : string) : ('a, Diagnostic.t list) result = Error [ Diagnostic.error message ]
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
 
-let eval config expression =
+let eval (config : Runtime_config.t) (expression : expression) : (Z.t, Diagnostic.t list) result =
   match Assembly_construction.Expression.evaluate_runtime config expression with
   | Ok z -> Ok z
   | Error message -> diagnostic message
 
-let lower_permission = function
+let lower_permission (matched_value : permission_term) : (permission, Diagnostic.t list) result = match matched_value with
   | Permission_literal permission -> Ok permission
   | Permission_parameter name ->
       diagnostic (Printf.sprintf "Unexpanded permission parameter $%s." name)
 
-let lower_seal_permission = function
+let lower_seal_permission (matched_value : seal_permission_term) : (seal_permission, Diagnostic.t list) result = match matched_value with
   | Seal_permission_literal permission -> Ok permission
   | Seal_permission_parameter name ->
       diagnostic (Printf.sprintf "Unexpanded seal-permission parameter $%s." name)
 
-let lower_locality = function
+let lower_locality (matched_value : locality_term) : (locality, Diagnostic.t list) result = match matched_value with
   | Locality locality -> Ok locality
   | Locality_parameter name -> diagnostic (Printf.sprintf "Unexpanded locality parameter $%s." name)
 
-let lower_sealable config = function
+let lower_sealable (config : Runtime_config.t) (matched_value : sealable_term) : (sealable, Diagnostic.t list) result = match matched_value with
   | Cap_term (permission, locality, base, limit, cursor) ->
       let* permission = lower_permission permission in
       let* locality = lower_locality locality in
@@ -599,7 +603,7 @@ let lower_sealable config = function
       let* cursor = eval config cursor in
       Ok (SealRange (permission, locality, base, limit, cursor))
 
-let lower_word config = function
+let lower_word (config : Runtime_config.t) (matched_value : word) : (Ast.word, Diagnostic.t list) result = match matched_value with
   | I_term expression -> Result.map (fun value -> I value) (eval config expression)
   | Sealable_term sealable ->
       Result.map (fun value -> Sealable value) (lower_sealable config sealable)
@@ -607,12 +611,12 @@ let lower_word config = function
       let* object_type = eval config object_type in
       Result.map (fun value -> Sealed (object_type, value)) (lower_sealable config sealable)
 
-let lower_register = function
+let lower_register (matched_value : register_term) : (register, Diagnostic.t list) result = match matched_value with
   | Named register -> Ok register
   | Register_parameter name ->
       diagnostic (Printf.sprintf "Unexpanded register parameter $%s." name)
 
-let lower_constant config = function
+let lower_constant (config : Runtime_config.t) (matched_value : constant_term) : (Z.t, Diagnostic.t list) result = match matched_value with
   | Expression expression -> eval config expression
   | Permission permission -> Ok (Codec.encode_permission permission)
   | Seal_permission permission -> Ok (Codec.encode_seal_permission permission)
@@ -628,26 +632,26 @@ let lower_constant config = function
   | Locality_constant locality -> Ok (Codec.encode_locality locality)
   | Value_parameter name -> diagnostic (Printf.sprintf "Unexpanded value parameter $%s." name)
 
-let lower_operand config = function
+let lower_operand (config : Runtime_config.t) (matched_value : operand_term) : (reg_or_const, Diagnostic.t list) result = match matched_value with
   | Register_term register -> Result.map (fun value -> Register value) (lower_register register)
   | Constant_term constant -> Result.map (fun value -> Constant value) (lower_constant config constant)
 
-let lower_instruction config instruction =
+let lower_instruction (config : Runtime_config.t) (instruction : instruction_term) : (instruction, Diagnostic.t list) result =
   let r = lower_register and o = lower_operand config in
-  let rr constructor first second =
+  let rr (constructor : (register * register -> 'a)) (first : register_term) (second : register_term) : ('a, Diagnostic.t list) result =
     let* first = r first in
     Result.map (fun second -> constructor (first, second)) (r second)
   in
-  let ro constructor first second =
+  let ro (constructor : (register * reg_or_const -> 'a)) (first : register_term) (second : operand_term) : ('a, Diagnostic.t list) result =
     let* first = r first in
     Result.map (fun second -> constructor (first, second)) (o second)
   in
-  let roo constructor first second third =
+  let roo (constructor : (register * reg_or_const * reg_or_const -> 'a)) (first : register_term) (second : operand_term) (third : operand_term) : ('a, Diagnostic.t list) result =
     let* first = r first in
     let* second = o second in
     Result.map (fun third -> constructor (first, second, third)) (o third)
   in
-  let rrr constructor first second third =
+  let rrr (constructor : (register * register * register -> 'a)) (first : register_term) (second : register_term) (third : register_term) : ('a, Diagnostic.t list) result =
     let* first = r first in
     let* second = r second in
     Result.map (fun third -> constructor (first, second, third)) (r third)
@@ -680,8 +684,8 @@ let lower_instruction config instruction =
   | Fail_term -> Ok Fail
   | Halt_term -> Ok Halt
 
-let lower_program config program =
-  let rec loop words = function
+let lower_program (config : Runtime_config.t) (program : statement list) : (Ast.word list, Diagnostic.t list) result =
+  let rec loop (words : Ast.word list) (matched_value : statement list) : (Ast.word list, Diagnostic.t list) result = match matched_value with
     | [] -> Ok (List.rev words)
     | statement :: rest -> (
         match statement with
@@ -696,7 +700,7 @@ let lower_program config program =
   in
   loop [] program
 
-let lower_regfile config entries =
+let lower_regfile (config : Runtime_config.t) (entries : ('a * word) list) : (('a * Ast.word) list, Diagnostic.t list) result =
   List.fold_left
     (fun result (register, word) ->
       let* entries = result in

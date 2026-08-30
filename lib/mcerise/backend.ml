@@ -10,11 +10,16 @@ type asm_program = Asm_ir.program
 type asm_regfile = Asm_ir.regfile
 type asm_word = Asm_ir.word
 type state = Machine.t
-let parse_program = Parser.parse_program
-let parse_regfile = Parser.parse_regfile
-let parse_word = Parser.parse_word
-let init config program regfile =
-  let ( let* ) = Result.bind in
+let parse_program ?filename:(filename : string option) (source : string) :
+    (asm_program, Diagnostic.t list) result = Parser.parse_program ?filename source
+let parse_regfile ?filename:(filename : string option) (source : string) :
+    (asm_regfile, Diagnostic.t list) result = Parser.parse_regfile ?filename source
+let parse_word ?filename:(filename : string option) (source : string) :
+    (asm_word, Diagnostic.t list) result = Parser.parse_word ?filename source
+let init (config : Runtime_config.t) (program : Asm_ir.statement list) (regfile : (Ast.register * asm_word) list option) : (state, Diagnostic.t list) result =
+  let ( let* ) (type value next error) (result : (value, error) result)
+          (continuation : value -> (next, error) result) : (next, error) result =
+    Result.bind result continuation in
   let* program = Asm_ir.lower_program config program in
   let* regfile =
     match regfile with
@@ -22,9 +27,10 @@ let init config program regfile =
     | Some entries -> Result.map Option.some (Asm_ir.lower_regfile config entries)
   in
   Ok (Machine.init config program regfile)
-let step = Machine.step
-let step_n = Machine.step_n
-let view_word word =
+let step (state : state) : (state, Machine_backend.execution_error) result = Machine.step state
+let step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
+  Machine.step_n count state
+let view_word (word : Ast.word) : Machine_view.word =
   let edit_text = Printer.word word in
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
   let decoded_instruction =
@@ -42,14 +48,14 @@ let view_word word =
         kind=(if p=Ast.E then Sentry else Capability); integer=None;
         capability=Some {base=b;limit=e;cursor=a;permissions=[Printer.permission p];
           locality=Some (Printer.locality l)}; seal_range=None; sealing=None; annotations=[] }
-let register_description = function
+let register_description (matched_value : Ast.register) : Machine_view.register_id * string * Machine_view.register_role = match matched_value with
   | Ast.PC -> ({Machine_view.Register_id.bank=System;key="pc"},"pc",Machine_view.Program_counter)
   | Reg 0 -> ({Machine_view.Register_id.bank=System;key="ddc"},"ddc",
       Machine_view.Backend_specific "default-data-capability")
   | Reg 31 -> ({Machine_view.Register_id.bank=System;key="stk"},"stk",Machine_view.Stack_pointer)
   | Reg n -> let label="r"^string_of_int n in
       ({Machine_view.Register_id.bank=General;key=label},label,Machine_view.General)
-let inspect state =
+let inspect (state : state) : Machine_view.t =
   let registers = Machine.RegMap.bindings state.Machine.registers |> List.map (fun (r,w) ->
     let id,label,role=register_description r in {Machine_view.id;label;role;word=view_word w}) in
   let memory = Machine.MemMap.bindings state.Machine.memory |> List.map
@@ -60,7 +66,7 @@ let inspect state =
     status=(match state.Machine.status with Running->Running|Halted->Halted|Failed->Failed);
     address_limit=Runtime_config.max_addr state.config;pc;registers;memory;
     missing_cell=Default (view_word (Ast.I Z.zero)) }
-let register_of_id (id:Machine_view.Register_id.t) =
+let register_of_id (id:Machine_view.Register_id.t) : (Ast.register, Diagnostic.t list) result =
   match id.bank,id.key with
   | System,"pc" -> Ok Ast.PC | System,("ddc"|"r0") -> Ok (Ast.Reg 0)
   | System,("stk"|"r31") -> Ok (Ast.Reg 31)
@@ -69,11 +75,13 @@ let register_of_id (id:Machine_view.Register_id.t) =
       | Some n when n>=1 && n<=30 -> Ok (Ast.Reg n)
       | _ -> Error [Diagnostic.error (Printf.sprintf "Unknown mCerise register %S." name)])
   | _,name -> Error [Diagnostic.error (Printf.sprintf "Register %S does not belong to that bank." name)]
-let ( let* ) = Result.bind
-let set_register id term state =
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
+let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   let* r=register_of_id id in Result.map (fun w -> Machine.set_register r w state)
     (Asm_ir.lower_word state.Machine.config term)
-let set_memory address term state =
+let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   if Z.sign address<0 || Z.compare address (Runtime_config.max_addr state.Machine.config)>=0
   then Error [Diagnostic.error (Printf.sprintf "Memory address %s is outside the configured address space."
     (Z.to_string address))]

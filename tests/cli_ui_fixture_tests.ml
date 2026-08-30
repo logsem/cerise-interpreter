@@ -1,51 +1,51 @@
 open Cerise
 
-let get_ok = function
+let get_ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.failf "unexpected diagnostics: %s"
         (String.concat "\n" (List.map Diagnostic.to_string diagnostics))
 
-let check_z message expected actual =
+let check_z (message : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) message (Z.to_string expected) (Z.to_string actual)
 
-let register bank key = { Machine_view.Register_id.bank; key }
+let register (bank : Machine_view.register_bank) (key : string) : Machine_view.register_id = { Machine_view.Register_id.bank; key }
 
-let word_integer word =
+let word_integer (word : Machine_view.word) : Z.t =
   match word.Machine_view.integer with
   | Some integer -> integer
   | None -> Alcotest.fail "expected an integer"
 
-let register_integer id session =
+let register_integer (id : Machine_view.register_id) (session : Machine_session.t) : Z.t =
   match Machine_view.find_register id (Machine_session.view session) with
   | Some register -> word_integer register.word
   | None -> Alcotest.fail "register was absent"
 
-let create ?(backend = "vanilla") ?(source = "halt") ?regfile config =
+let create ?(backend : string = "vanilla") ?(source : string = "halt") ?regfile:(regfile : string option) (config : Runtime_config.t) : Machine_session.t =
   Machine_session.create ~backend ~config ~source ~regfile |> get_ok
 
-let parse argv = Cli_options.parse (Array.of_list ("cerise-interpreter" :: argv))
+let parse (argv : string list) : (Cli_options.t, string) result = Cli_options.parse (Array.of_list ("cerise-interpreter" :: argv))
 
-let contains text fragment =
+let contains (text : string) (fragment : string) : bool =
   let text_length = String.length text and fragment_length = String.length fragment in
-  let rec loop index =
+  let rec loop (index : int) : bool =
     if index + fragment_length > text_length then false
     else if String.sub text index fragment_length = fragment then true
     else loop (index + 1)
   in
   loop 0
 
-let check_same_session message expected actual =
+let check_same_session (message : string) (expected : 'a) (actual : 'a) : unit =
   Alcotest.(check bool) message true (expected == actual)
 
-let diagnostic_source = function
+let diagnostic_source (matched_value : Diagnostic.t list) : string = match matched_value with
   | diagnostic :: _ -> (
       match Diagnostic.location diagnostic with
       | Some { source = Some source; _ } -> source
       | _ -> Alcotest.fail "diagnostic has no source filename")
   | [] -> Alcotest.fail "expected a diagnostic"
 
-let test_cli () =
+let test_cli (() : unit) : unit =
   let default = parse [ "program.s" ] |> Result.get_ok in
   Alcotest.(check string) "default backend" "vanilla" default.backend;
   let alias = parse [ "--backend"; "cerise"; "program.s" ] |> Result.get_ok in
@@ -54,7 +54,7 @@ let test_cli () =
     (fun backend ->
       let options = parse [ "--backend"; backend; "program.s" ] |> Result.get_ok in
       Alcotest.(check string) ("registered spelling " ^ backend) backend options.backend)
-    (Backend_registry.names ());
+    (Backend_registry.available_backend_names ());
   let configured = parse [ "--mem-size"; "17"; "program.s" ] |> Result.get_ok in
   check_z "configured address limit" (Z.of_int 17) (Runtime_config.max_addr configured.config);
   List.iter
@@ -87,7 +87,7 @@ let test_cli () =
         message
   | Ok _ -> Alcotest.fail "missing backend accepted"
 
-let test_application_history_and_navigation () =
+let test_application_history_and_navigation (() : unit) : unit =
   let config = Runtime_config.create ~max_addr:(Z.of_int 8) () in
   let initial = create ~source:"mov r1 7\nhalt" config in
   let state = Application_model.create initial in
@@ -139,7 +139,7 @@ let test_application_history_and_navigation () =
       Alcotest.(check bool) "row budget fits terminal" true (rendered_rows <= height))
     [ 0; 1; 2; 3; 4; 5; 24 ]
 
-let test_filename_diagnostics () =
+let test_filename_diagnostics (() : unit) : unit =
   let config = Runtime_config.create ~max_addr:(Z.of_int 16) () in
   (match
      Machine_session.create_with_filenames ~source_filename:"broken-program.s" ~regfile_filename:None
@@ -156,13 +156,13 @@ let test_filename_diagnostics () =
       Alcotest.(check string) "regfile filename reaches parser" "broken-registers.reg" (diagnostic_source diagnostics)
   | Ok _ -> Alcotest.fail "invalid regfile was accepted"
 
-let test_capabilities_and_rendering () =
+let test_capabilities_and_rendering (() : unit) : unit =
   let config = Runtime_config.create ~max_addr:(Z.of_int 32) () in
   let vanilla = create ~backend:"vanilla" config in
   List.iter
     (fun (backend, expected) ->
       let decoded = create ~backend ~source:"mov r1 7\nhalt" config |> Machine_session.view in
-      match Machine_view.memory_at Z.zero decoded with
+      match Machine_view.find_memory_word Z.zero decoded with
       | Some { decoded_instruction = Some text; _ } ->
           Alcotest.(check string) (backend ^ " decoded instruction includes operands") expected text
       | _ -> Alcotest.failf "%s encoded move did not produce decoded instruction text" backend)
@@ -203,7 +203,7 @@ let test_capabilities_and_rendering () =
   Alcotest.(check bool) "narrow layout leads with status and HEAP" true
     (contains narrow "machine state: Running" && contains narrow "HEAP");
   ignore (Interactive_ui.render ~width:1 ~height:1 state);
-  let next event state =
+  let next (event : Interactive_ui.event) (state : Interactive_ui.t) : Interactive_ui.t =
     match Interactive_ui.transition ~rows:8 event state with
     | Some state -> state | None -> Alcotest.fail "unexpected quit"
   in
@@ -244,7 +244,7 @@ let test_capabilities_and_rendering () =
       let state = next Interactive_ui.Cycle_capability state in
       let state = next Interactive_ui.Toggle_secondary state in
       ignore (Interactive_ui.render ~width:100 ~height:24 state))
-    (Backend_registry.names ())
+    (Backend_registry.available_backend_names ())
 
 let () =
   Alcotest.run "cli-ui-fixture"

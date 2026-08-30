@@ -3,11 +3,13 @@ open Generated_parser
 
 exception Error of Diagnostic.source_location * string
 
-let location lexbuf = Assembly_construction.location (Lexing.lexeme_start_p lexbuf)
+let location (lexbuf : Lexing.lexbuf) : Diagnostic.source_location =
+  Assembly_construction.location (Lexing.lexeme_start_p lexbuf)
 
-let fail lexbuf message = raise (Error (location lexbuf, message))
+let fail (lexbuf : Lexing.lexbuf) (message : string) : 'a =
+  raise (Error (location lexbuf, message))
 
-let word lexbuf =
+let word (lexbuf : Lexing.lexbuf) : Generated_parser.token =
   let original = Lexing.lexeme lexbuf in
   match String.lowercase_ascii original with
   | "jalr" -> JALR original
@@ -76,7 +78,7 @@ let word lexbuf =
       GRIOTTE_PERMISSION original
   | _ -> IDENT original
 
-let directive name =
+let directive (name : string) : Generated_parser.token =
   match name with
   | "macro" -> MACRO
   | "define" -> DEFINE

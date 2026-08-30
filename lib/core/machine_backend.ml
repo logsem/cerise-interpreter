@@ -1,6 +1,6 @@
 type execution_error = Stopped of Machine_view.status | Backend_error of string
 
-let execution_error_message = function
+let execution_error_message (matched_value : execution_error) : string = match matched_value with
   | Stopped Machine_view.Running -> "machine unexpectedly refused a step while running"
   | Stopped Machine_view.Halted -> "machine is halted"
   | Stopped Machine_view.Failed -> "machine has failed"

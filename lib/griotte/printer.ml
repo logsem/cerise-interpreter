@@ -1,6 +1,6 @@
 open Ast
 
-let register = function
+let register (matched_value : register) : string = match matched_value with
   | PC -> "pc"
   | Reg n -> (
       match n with
@@ -38,32 +38,33 @@ let register = function
       | 17 -> "ca7"
       | n -> "r" ^ string_of_int n)
 
-let system_register = function MTDC -> "mtdc"
-let rx_permission = function Orx -> "Orx" | R -> "R" | X -> "X" | XSR -> "XSR"
-let write_permission = function Ow -> "Ow" | W -> "W" | WL -> "WL"
-let deep_local_permission = function DL -> "DL" | LG -> "LG"
-let deep_read_only_permission = function DRO -> "DRO" | LM -> "LM"
+let system_register (matched_value : system_register) : string = match matched_value with MTDC -> "mtdc"
+let rx_permission (matched_value : rx_permission) : string = match matched_value with Orx -> "Orx" | R -> "R" | X -> "X" | XSR -> "XSR"
+let write_permission (matched_value : write_permission) : string = match matched_value with Ow -> "Ow" | W -> "W" | WL -> "WL"
+let deep_local_permission (matched_value : deep_local_permission) : string = match matched_value with DL -> "DL" | LG -> "LG"
+let deep_read_only_permission (matched_value : deep_read_only_permission) : string = match matched_value with DRO -> "DRO" | LM -> "LM"
 
-let permission (rx, w, dl, dro) =
+let permission ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : string =
   Printf.sprintf "[%s %s %s %s]" (rx_permission rx) (write_permission w) (deep_local_permission dl)
     (deep_read_only_permission dro)
 
-let locality = function Global -> "Global" | Local -> "Local"
+let locality (matched_value : locality) : string = match matched_value with Global -> "Global" | Local -> "Local"
 
-let seal_permission = function
+let seal_permission (matched_value : bool * bool) : string = match matched_value with
   | false, false -> "SO"
   | true, false -> "S"
   | false, true -> "U"
   | true, true -> "SU"
 
-let word_type = function
+let word_type (matched_value : word_type) : string = match matched_value with
   | W_I -> "Int"
   | W_Cap -> "Cap"
   | W_SealRange -> "SealRange"
   | W_Sealed -> "Sealed"
   | W_Sentry -> "Sentry"
 
-let sealable = function
+let sealable (matched_value : sealable) : string = match matched_value with
   | Cap (p, l, b, e, a) ->
       Printf.sprintf "(%s, %s, %s, %s, %s)" (permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
@@ -71,7 +72,7 @@ let sealable = function
       Printf.sprintf "[%s, %s, %s, %s, %s]" (seal_permission p) (locality l) (Z.to_string b)
         (Z.to_string e) (Z.to_string a)
 
-let word = function
+let word (matched_value : word) : string = match matched_value with
   | I z -> Z.to_string z
   | Sealable s -> sealable s
   | Sentry (p, l, b, e, a) ->
@@ -79,9 +80,9 @@ let word = function
         (Z.to_string e) (Z.to_string a)
   | Sealed (otype, s) -> Printf.sprintf "{%s: %s}" (Z.to_string otype) (sealable s)
 
-let operand = function Register r -> register r | Constant z -> Z.to_string z
+let operand (matched_value : reg_or_const) : string = match matched_value with Register r -> register r | Constant z -> Z.to_string z
 
-let instruction = function
+let instruction (matched_value : instruction) : string = match matched_value with
   | Jalr (a, b) -> Printf.sprintf "jalr %s %s" (register a) (register b)
   | Jmp a -> Printf.sprintf "jmp %s" (operand a)
   | Jnz (a, b) -> Printf.sprintf "jnz %s %s" (register a) (operand b)

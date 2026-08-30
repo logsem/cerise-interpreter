@@ -2,25 +2,25 @@ module Expression = struct
   type t = Integer of Z.t | Current_address | Max_address | Stack_address | Symbol of string | Parameter of string
     | Add of t * t | Subtract of t * t | Multiply of t * t | Logand of t * t | Logor of t * t
     | Shift_left of t * t | Shift_right of t * t
-  let shift_count value =
+  let shift_count (value : Z.t) : (int, string) result =
     if Z.sign value < 0 then Error "shift count must be non-negative"
     else if not (Z.fits_int value) then Error "shift count does not fit in a machine integer"
     else Ok (Z.to_int value)
-  let rec map_symbols mapper = function
+  let rec map_symbols (mapper : (string -> t)) (matched_value : t) : t = match matched_value with
     | Symbol name -> mapper name
     | Add (a,b) -> Add (map_symbols mapper a,map_symbols mapper b) | Subtract (a,b) -> Subtract (map_symbols mapper a,map_symbols mapper b)
     | Multiply (a,b) -> Multiply (map_symbols mapper a,map_symbols mapper b) | Logand (a,b) -> Logand (map_symbols mapper a,map_symbols mapper b)
     | Logor (a,b) -> Logor (map_symbols mapper a,map_symbols mapper b) | Shift_left (a,b) -> Shift_left (map_symbols mapper a,map_symbols mapper b)
     | Shift_right (a,b) -> Shift_right (map_symbols mapper a,map_symbols mapper b)
     | (Integer _ | Current_address | Max_address | Stack_address | Parameter _) as e -> e
-  let rec map_parameters mapper = function
+  let rec map_parameters (mapper : (string -> t option)) (matched_value : t) : t = match matched_value with
     | Parameter name as e -> Option.value (mapper name) ~default:e
     | Add (a,b) -> Add (map_parameters mapper a,map_parameters mapper b) | Subtract (a,b) -> Subtract (map_parameters mapper a,map_parameters mapper b)
     | Multiply (a,b) -> Multiply (map_parameters mapper a,map_parameters mapper b) | Logand (a,b) -> Logand (map_parameters mapper a,map_parameters mapper b)
     | Logor (a,b) -> Logor (map_parameters mapper a,map_parameters mapper b) | Shift_left (a,b) -> Shift_left (map_parameters mapper a,map_parameters mapper b)
     | Shift_right (a,b) -> Shift_right (map_parameters mapper a,map_parameters mapper b)
     | (Integer _ | Current_address | Max_address | Stack_address | Symbol _) as e -> e
-  let rec simplify = function
+  let rec simplify (matched_value : t) : t = match matched_value with
     | Add (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x+y) | a,b -> Add(a,b))
     | Subtract (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x-y) | a,b -> Subtract(a,b))
     | Multiply (a,b) -> (match simplify a,simplify b with Integer x,Integer y -> Integer Z.(x*y) | a,b -> Multiply(a,b))
@@ -29,7 +29,7 @@ module Expression = struct
     | Shift_left (a,b) -> (match simplify a,simplify b with Integer x,Integer y when Z.sign y >= 0 && Z.fits_int y -> Integer (Z.shift_left x (Z.to_int y)) | a,b -> Shift_left(a,b))
     | Shift_right (a,b) -> (match simplify a,simplify b with Integer x,Integer y when Z.sign y >= 0 && Z.fits_int y -> Integer (Z.shift_right x (Z.to_int y)) | a,b -> Shift_right(a,b))
     | e -> e
-  let rec evaluate_runtime config = function
+  let rec evaluate_runtime (config : Runtime_config.t) (matched_value : t) : (Z.t, string) result = match matched_value with
     | Integer v -> Ok v | Max_address -> Ok (Runtime_config.max_addr config) | Stack_address -> Ok (Runtime_config.stack_addr config)
     | Add(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.add x) (evaluate_runtime config b))
     | Subtract(a,b) -> Result.bind (evaluate_runtime config a) (fun x -> Result.map (Z.sub x) (evaluate_runtime config b))
@@ -44,7 +44,7 @@ end
 
 exception Parse_error of Diagnostic.source_location * string
 
-let location position =
+let location (position : Lexing.position) : Diagnostic.source_location =
   {
     Diagnostic.source =
       (if String.equal position.Lexing.pos_fname "" then None else Some position.pos_fname);
@@ -116,9 +116,9 @@ module Make (Syntax : SYNTAX) = struct
   type source_program =
     (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind) item list
 
-  let diagnostic_at location message = Diagnostic.error ~location message
+  let diagnostic_at (location : Diagnostic.source_location) (message : string) : Diagnostic.t = Diagnostic.error ~location message
 
-  let locate_if_missing location diagnostic =
+  let locate_if_missing (location : Diagnostic.source_location) (diagnostic : Diagnostic.t) : Diagnostic.t =
     match Diagnostic.location diagnostic with
     | Some _ -> diagnostic
     | None ->
@@ -128,7 +128,7 @@ module Make (Syntax : SYNTAX) = struct
   let duplicate_parameters
       (definition :
         (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind)
-        macro_definition) =
+        macro_definition) : Diagnostic.t list =
     let seen = Hashtbl.create (List.length definition.parameters) in
     List.filter_map
       (fun (parameter : Syntax.parameter_kind parameter) ->
@@ -145,7 +145,7 @@ module Make (Syntax : SYNTAX) = struct
   let validate_definition
       (definition :
         (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind)
-        macro_definition) =
+        macro_definition) : Diagnostic.t list =
     let parameters =
       List.map
         (fun (parameter : Syntax.parameter_kind parameter) ->
@@ -166,7 +166,14 @@ module Make (Syntax : SYNTAX) = struct
     in
     duplicate_parameters definition @ body_errors
 
-  let collect_macros items =
+  let collect_macros (items : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument,
+ Syntax.parameter_kind)
+item list) : ((string,
+  (Syntax.statement, Syntax.raw_word, Syntax.macro_argument,
+   Syntax.parameter_kind)
+  macro_definition)
+ Hashtbl.t, Diagnostic.t list)
+result =
     let macros = Hashtbl.create 16 in
     let errors = ref [] in
     List.iter
@@ -187,7 +194,7 @@ module Make (Syntax : SYNTAX) = struct
   let local_labels
       (definition :
         (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind)
-        macro_definition) =
+        macro_definition) : (string list, Diagnostic.t list) result =
     let seen = Hashtbl.create 8 in
     let labels = ref [] in
     let duplicates = ref [] in
@@ -211,7 +218,7 @@ module Make (Syntax : SYNTAX) = struct
       (definition :
         (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind)
         macro_definition)
-      arguments location =
+      (arguments : Syntax.macro_argument list) (location : Diagnostic.source_location) : ((string * Syntax.macro_argument) list, Diagnostic.t list) result =
     if List.length definition.parameters <> List.length arguments then
       Error
         [
@@ -242,7 +249,7 @@ module Make (Syntax : SYNTAX) = struct
              bindings)
       else Error errors
 
-  let expression_mapper bindings labels expression =
+  let expression_mapper (bindings : (string * Syntax.macro_argument) list) (labels : (string, string) Hashtbl.t) (expression : Expression.t) : Expression.t =
     expression
     |> Expression.map_parameters (fun name ->
            Option.bind (List.assoc_opt name bindings) Syntax.expression_of_argument)
@@ -251,10 +258,16 @@ module Make (Syntax : SYNTAX) = struct
            | Some renamed -> Expression.Symbol renamed
            | None -> Expression.Symbol name)
 
-  let expand macros items =
+  let expand (macros : (string,
+ (Syntax.statement, Syntax.raw_word, Syntax.macro_argument,
+  Syntax.parameter_kind)
+ macro_definition)
+Hashtbl.t) (items : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list) : ((Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list,
+ Diagnostic.t list)
+result =
     let invocation = ref 0 in
     let reserved_names = Hashtbl.create 32 in
-    let reserve name = Hashtbl.replace reserved_names name () in
+    let reserve (name : string) : unit = Hashtbl.replace reserved_names name () in
     List.iter
       (fun item ->
         match item.node with
@@ -266,8 +279,8 @@ module Make (Syntax : SYNTAX) = struct
               definition.body
         | Statement _ | Raw_word _ | Macro_call _ -> ())
       items;
-    let fresh_private_name base =
-      let rec choose suffix =
+    let fresh_private_name (base : string) : string =
+      let rec choose (suffix : int) : string =
         let candidate = if suffix = 0 then base else Printf.sprintf "%s_%d" base suffix in
         if Hashtbl.mem reserved_names candidate then choose (suffix + 1)
         else (
@@ -276,8 +289,12 @@ module Make (Syntax : SYNTAX) = struct
       in
       choose 0
     in
-    let rec expand_items stack items =
-      let rec loop expanded = function
+    let rec expand_items (stack : string list) (items : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list) : ((Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list,
+ Diagnostic.t list)
+result =
+      let rec loop (expanded : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list) (matched_value : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list) : ((Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list,
+ Diagnostic.t list)
+result = match matched_value with
         | [] -> Ok (List.rev expanded)
         | item :: rest -> (
             match item.node with
@@ -310,7 +327,9 @@ module Make (Syntax : SYNTAX) = struct
                                 private_labels;
                               incr invocation;
                               let mapper = expression_mapper bindings labels in
-                              let transform body_item =
+                              let transform (body_item : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item) : ((Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'b) item,
+ Diagnostic.t list)
+result =
                                 match body_item.node with
                                 | Statement statement ->
                                     let statement =
@@ -336,7 +355,7 @@ module Make (Syntax : SYNTAX) = struct
                                         node = Definition (definition_name, mapper expression);
                                       }
                                 | Macro_call (called, call_arguments) ->
-                                    let rec transform_arguments transformed = function
+                                    let rec transform_arguments (transformed : Syntax.macro_argument list) (matched_value : Syntax.macro_argument list) : (Syntax.macro_argument list, Diagnostic.t list) result = match matched_value with
                                       | [] -> Ok (List.rev transformed)
                                       | argument :: rest ->
                                           let argument =
@@ -364,7 +383,9 @@ module Make (Syntax : SYNTAX) = struct
                                           "Nested macro declarations are not supported.";
                                       ]
                               in
-                              let rec transform_body transformed = function
+                              let rec transform_body (transformed : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list) (matched_value : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'b) item list) : ((Syntax.statement, Syntax.raw_word, Syntax.macro_argument, 'a) item list,
+ Diagnostic.t list)
+result = match matched_value with
                                 | [] -> expand_items (name :: stack) (List.rev transformed)
                                 | body_item :: rest -> (
                                     match transform body_item with
@@ -385,7 +406,7 @@ module Make (Syntax : SYNTAX) = struct
     in
     expand_items [] items
 
-  let resolve items =
+  let resolve (items : (Syntax.statement, Syntax.raw_word, 'a, 'b) item list) : (Syntax.statement list, Diagnostic.t list) result =
     let definitions = Hashtbl.create 16 in
     let labels = Hashtbl.create 32 in
     let errors = ref [] in
@@ -418,7 +439,7 @@ module Make (Syntax : SYNTAX) = struct
               (Printf.sprintf "Integer definition %S conflicts with a label of the same name." name)
             :: !errors)
       definitions;
-    let rec resolve_expression visiting current location = function
+    let rec resolve_expression (visiting : string list) (current : int) (location : Diagnostic.source_location) (matched_value : Expression.t) : Expression.t = match matched_value with
       | Expression.Integer _ as expression -> expression
       | Current_address -> Integer (Z.of_int current)
       | Max_address -> Max_address
@@ -502,7 +523,9 @@ module Make (Syntax : SYNTAX) = struct
     in
     if !errors = [] then Ok program else Error (List.rev !errors)
 
-  let assemble items =
+  let assemble (items : (Syntax.statement, Syntax.raw_word, Syntax.macro_argument,
+ Syntax.parameter_kind)
+item list) : (Syntax.statement list, Diagnostic.t list) result =
     match collect_macros items with
     | Error _ as error -> error
     | Ok macros -> (

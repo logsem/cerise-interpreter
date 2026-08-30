@@ -19,8 +19,8 @@ let system_register_codec =
     ~decode:(fun value -> if Z.equal value Z.zero then Ok MTDC else Error "unknown system register")
 
 let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
-let from_operand = function Instruction_codec.Register r -> Register r | Constant z -> Constant z
-let to_operand = function Register r -> Instruction_codec.Register r | Constant z -> Constant z
+let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with Instruction_codec.Register r -> Register r | Constant z -> Constant z
+let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with Register r -> Instruction_codec.Register r | Constant z -> Constant z
 let r = Instruction_codec.register register_codec
 let sr = Instruction_codec.register system_register_codec
 let o = operand
@@ -31,10 +31,10 @@ let ro = Instruction_codec.pair r o
 let roo = Instruction_codec.triple r o o
 let rrr = Instruction_codec.triple r r r
 
-let case name opcode codec construct project =
+let case (name : string) (opcode : int) (codec : 'a Instruction_codec.shape) (construct : ('a -> 'b)) (project : ('b -> 'a option)) : 'b Instruction_codec.case =
   Instruction_codec.case ~name ~allocation:(Fixed opcode) codec ~construct ~project
 
-let unit_case name opcode construct project =
+let unit_case (name : string) (opcode : int) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
   case name opcode Instruction_codec.unit
     (fun () -> construct)
     (fun x -> if project x then Some () else None)
@@ -134,11 +134,11 @@ let table =
   | Ok table -> table
   | Error errors -> failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
 
-let encode = function
+let encode (matched_value : instruction) : (Z.t, Instruction_codec.error) result = match matched_value with
   | Jmp (Constant immediate) when Z.sign immediate < 0 -> Ok Z.(logor one (shift_left immediate 8))
   | instruction -> Instruction_codec.encode table instruction
 
-let decode encoded =
+let decode (encoded : Z.t) : (instruction, Instruction_codec.error) result =
   if Z.sign encoded < 0 then
     let opcode = Z.to_int (Z.extract encoded 0 8) in
     if opcode = 0x01 then Ok (Jmp (Constant (Z.shift_right encoded 8)))
@@ -146,22 +146,25 @@ let decode encoded =
   else Instruction_codec.decode table encoded
 
 let allocations = Instruction_codec.allocations table
-let encode_tag tag payload = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
+let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
 
-let decode_tag tag name value =
+let decode_tag (tag : int) (name : string) (value : Z.t) : (Z.t, string) result =
   if Z.sign value < 0 || not (Z.equal (Z.extract value 0 3) (Z.of_int tag)) then
     Error ("not a Griotte " ^ name ^ " encoding")
   else Ok (Z.shift_right value 3)
 
-let rx_scalar = function Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3
-let write_scalar = function Ow -> 0 | W -> 1 | WL -> 2
-let dl_scalar = function DL -> 0 | LG -> 1
-let dro_scalar = function DRO -> 0 | LM -> 1
+let rx_scalar (matched_value : rx_permission) : int = match matched_value with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3
+let write_scalar (matched_value : write_permission) : int = match matched_value with Ow -> 0 | W -> 1 | WL -> 2
+let dl_scalar (matched_value : deep_local_permission) : int = match matched_value with DL -> 0 | LG -> 1
+let dro_scalar (matched_value : deep_read_only_permission) : int = match matched_value with DRO -> 0 | LM -> 1
 
-let permission_scalar (rx, w, dl, dro) =
+let permission_scalar ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : int =
   (rx_scalar rx lsl 4) lor (write_scalar w lsl 2) lor (dl_scalar dl lsl 1) lor dro_scalar dro
 
-let permission_of_scalar scalar =
+let permission_of_scalar (scalar : int) : (rx_permission * write_permission * deep_local_permission *
+ deep_read_only_permission)
+option =
   let rx = match (scalar lsr 4) land 3 with 0 -> Orx | 1 -> R | 2 -> X | _ -> XSR in
   let w =
     match (scalar lsr 2) land 3 with 0 -> Some Ow | 1 -> Some W | 2 -> Some WL | _ -> None
@@ -171,27 +174,32 @@ let permission_of_scalar scalar =
   | Some w ->
       Some (rx, w, (if scalar land 2 = 0 then DL else LG), if scalar land 1 = 0 then DRO else LM)
 
-let payload_at_most maximum message payload =
+let payload_at_most (maximum : int) (message : 'a) (payload : Z.t) : (Z.t, 'a) result =
   if Z.compare payload (Z.of_int maximum) <= 0 then Ok payload else Error message
 
-let decode_permission_payload payload =
+let decode_permission_payload (payload : Z.t) : (rx_permission * write_permission * deep_local_permission *
+ deep_read_only_permission, string)
+result =
   Result.bind (payload_at_most 0x3f "unknown Griotte permission" payload) (fun payload ->
       match permission_of_scalar (Z.to_int payload) with
       | Some permission -> Ok permission
       | None -> Error "unknown Griotte permission")
 
-let encode_permission p = encode_tag 0 (Z.of_int (permission_scalar p))
-let decode_permission z = Result.bind (decode_tag 0 "permission" z) decode_permission_payload
+let encode_permission (p : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
+let decode_permission (z : Z.t) : (rx_permission * write_permission * deep_local_permission *
+ deep_read_only_permission, string)
+result = Result.bind (decode_tag 0 "permission" z) decode_permission_payload
 
-let seal_permission_scalar = function
+let seal_permission_scalar (matched_value : bool * bool) : int = match matched_value with
   | false, false -> 0
   | false, true -> 1
   | true, false -> 2
   | true, true -> 3
 
-let encode_seal_permission p = encode_tag 1 (Z.of_int (seal_permission_scalar p))
+let encode_seal_permission (p : bool * bool) : Z.t = encode_tag 1 (Z.of_int (seal_permission_scalar p))
 
-let decode_seal_permission z =
+let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
   Result.bind (decode_tag 1 "seal permission" z) (fun p ->
       if Z.equal p Z.zero then Ok (false, false)
       else if Z.equal p Z.one then Ok (false, true)
@@ -199,25 +207,25 @@ let decode_seal_permission z =
       else if Z.equal p (Z.of_int 3) then Ok (true, true)
       else Error "unknown Griotte seal permission")
 
-let locality_scalar = function Local -> 0 | Global -> 1
-let encode_locality l = encode_tag 2 (Z.of_int (locality_scalar l))
+let locality_scalar (matched_value : locality) : int = match matched_value with Local -> 0 | Global -> 1
+let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
 
-let decode_locality z =
+let decode_locality (z : Z.t) : (locality, string) result =
   Result.bind (decode_tag 2 "locality" z) (fun p ->
       if Z.equal p Z.zero then Ok Local
       else if Z.equal p Z.one then Ok Global
       else Error "unknown Griotte locality")
 
-let word_type_scalar = function
+let word_type_scalar (matched_value : word_type) : int = match matched_value with
   | W_I -> 0
   | W_Cap -> 1
   | W_SealRange -> 2
   | W_Sealed -> 3
   | W_Sentry -> 4
 
-let encode_word_type w = encode_tag 3 (Z.of_int (word_type_scalar w))
+let encode_word_type (w : word_type) : Z.t = encode_tag 3 (Z.of_int (word_type_scalar w))
 
-let decode_word_type z =
+let decode_word_type (z : Z.t) : (word_type, string) result =
   Result.bind (decode_tag 3 "word type" z) (fun p ->
       if Z.equal p Z.zero then Ok W_I
       else if Z.equal p Z.one then Ok W_Cap
@@ -226,10 +234,14 @@ let decode_word_type z =
       else if Z.equal p (Z.of_int 4) then Ok W_Sentry
       else Error "unknown Griotte word type")
 
-let encode_permission_locality p l =
+let encode_permission_locality (p : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) (l : locality) : Z.t =
   encode_tag 4 (Z.of_int ((locality_scalar l lsl 6) lor permission_scalar p))
 
-let decode_permission_locality z =
+let decode_permission_locality (z : Z.t) : ((rx_permission * write_permission * deep_local_permission *
+  deep_read_only_permission) *
+ locality, string)
+result =
   Result.bind (decode_tag 4 "permission/locality" z) (fun p ->
       Result.bind (payload_at_most 0x7f "unknown Griotte permission/locality" p) (fun p ->
           let locality = if Z.testbit p 6 then Global else Local in
@@ -237,10 +249,10 @@ let decode_permission_locality z =
             (fun permission -> (permission, locality))
             (decode_permission_payload (Z.extract p 0 6))))
 
-let encode_seal_permission_locality p l =
+let encode_seal_permission_locality (p : bool * bool) (l : locality) : Z.t =
   encode_tag 5 (Z.of_int ((locality_scalar l lsl 2) lor seal_permission_scalar p))
 
-let decode_seal_permission_locality z =
+let decode_seal_permission_locality (z : Z.t) : ((bool * bool) * locality, string) result =
   Result.bind (decode_tag 5 "seal permission/locality" z) (fun p ->
       Result.bind (payload_at_most 0x7 "unknown Griotte seal permission/locality" p) (fun p ->
           let locality = if Z.testbit p 2 then Global else Local in

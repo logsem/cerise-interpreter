@@ -11,7 +11,7 @@ type arguments = {
   config : Runtime_config.t;
 }
 
-let of_options (options : Cli_options.t) =
+let of_options (options : Cli_options.t) : arguments =
   {
     mode = (match options.mode with Cli_options.Interactive -> Interactive_mode | Noninteractive -> Interpreter_mode);
     backend = options.backend;
@@ -20,9 +20,9 @@ let of_options (options : Cli_options.t) =
     config = options.config;
   }
 
-let parse_argv argv = Result.map of_options (Cli_options.parse argv)
+let parse_argv (argv : string array) : (arguments, string) result = Result.map of_options (Cli_options.parse argv)
 
-let parse_arguments () =
+let parse_arguments (() : unit) : arguments =
   if Array.exists (fun argument -> String.equal argument "--help" || String.equal argument "-help") Sys.argv
   then (
     print_endline Cli_options.usage;

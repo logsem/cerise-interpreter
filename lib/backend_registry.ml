@@ -20,10 +20,10 @@ let backends =
     { requested_name = "griotte-extracted"; backend = griotte_extracted };
   ]
 
-let default = "vanilla"
-let names () = List.map (fun entry -> entry.requested_name) backends
+let default_backend_name = "vanilla"
+let available_backend_names (() : unit) : string list = List.map (fun entry -> entry.requested_name) backends
 
-let find name =
+let find_backend (name : string) : (module Machine_backend.S) option =
   List.find_map
     (fun entry -> if String.equal name entry.requested_name then Some entry.backend else None)
     backends

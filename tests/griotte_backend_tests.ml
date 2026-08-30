@@ -1,13 +1,13 @@
 open Cerise
 
-let ok = function
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok x -> x
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.to_string diagnostics))
 
-let z n = Z.of_int n
+let z (n : int) : Z.t = Z.of_int n
 
-let check_z message expected actual =
+let check_z (message : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) message (Z.to_string expected) (Z.to_string actual)
 
 let expected_allocations =
@@ -113,7 +113,7 @@ let instructions =
     LShiftR (a, c, c);
   ]
 
-let codec () =
+let codec (() : unit) : unit =
   Alcotest.(check (list (triple string int int)))
     "historical fixed allocation" expected_allocations Griotte.Codec.allocations;
   List.iter
@@ -163,10 +163,9 @@ let codec () =
         "word type round trip" true
         (Result.get_ok (Griotte.Codec.decode_word_type (Griotte.Codec.encode_word_type wt)) = wt))
     [ W_I; W_Cap; W_SealRange; W_Sealed; W_Sentry ];
-  let tagged tag payload = Z.logor (z tag) (Z.shift_left payload 3) in
-  let rejects_without_exception : type value.
-      string -> (Z.t -> (value, string) result) -> Z.t -> unit =
-   fun name decoder encoded ->
+  let tagged (tag : int) (payload : Z.t) : Z.t = Z.logor (z tag) (Z.shift_left payload 3) in
+  let rejects_without_exception (type value) (name : string)
+      (decoder : Z.t -> (value, string) result) (encoded : Z.t) : unit =
     Alcotest.(check bool)
       name true
       (match decoder encoded with Error _ -> true | Ok _ -> false | exception _ -> false)
@@ -188,7 +187,7 @@ let codec () =
     Griotte.Codec.decode_seal_permission_locality
     (tagged 5 (z 8))
 
-let parser () =
+let parser (() : unit) : unit =
   let source =
     "jalr cra csp jmp -2 jnz ca0 2 readsR ca1 MTDC writeSR mtdc ca1 mov ct0 cnull load ct1 cgp \
      store cgp ct1 add ca0 ca1 1 sub ca0 3 ca1 mul ca0 ca1 2 land ca0 7 3 \
@@ -352,15 +351,15 @@ let parser () =
   | Error [] -> Alcotest.fail "located lexer failure returned no diagnostic"
   | Ok _ -> Alcotest.fail "invalid character was accepted"
 
-let nested_composite_macro_arguments () =
+let nested_composite_macro_arguments (() : unit) : unit =
   let parser_config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) () in
-  let nested kind argument =
+  let nested (kind : string) (argument : string) : string =
     Printf.sprintf
       "%%macro inner(v: value) restrict cgp $v %%endmacro %%macro outer(p: %s, l: locality) \
        %%inner(($p, $l)) %%endmacro %%outer(%s, Global) halt"
       kind argument
   in
-  let check label expected source =
+  let check (label : string) (expected : Z.t) (source : string) : unit =
     match ok (Griotte.Parser.parse_program source) with
     | [ Griotte.Asm_ir.Op instruction; Griotte.Asm_ir.Op Griotte.Asm_ir.Halt_term ] ->
         Alcotest.(check bool)
@@ -390,24 +389,24 @@ let nested_composite_macro_arguments () =
 
 let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
-let session ?regfile source =
+let session ?regfile:(regfile : string option) (source : string) : Machine_session.t =
   ok (Machine_session.create ~backend:"griotte" ~config ~source ~regfile)
 
 let architectural_pc = "pc := ([XSR Ow LG LM], Global, 0, MAX_ADDR, 0) "
-let executable_session ?(regfile = "") source = session ~regfile:(architectural_pc ^ regfile) source
-let run s = (Machine_session.run ~max_steps:1000 s).session
+let executable_session ?(regfile : string = "") (source : string) : Machine_session.t = session ~regfile:(architectural_pc ^ regfile) source
+let run (s : Machine_session.t) : Machine_session.t = (Machine_session.run ~max_steps:1000 s).session
 
-let find bank key session =
+let find (bank : Machine_view.register_bank) (key : string) (session : Machine_session.t) : Machine_view.register =
   Option.get
     (Machine_view.find_register
        { Machine_view.Register_id.bank; key }
        (Machine_session.view session))
 
-let int_reg key session = Option.get (find Machine_view.General key session).word.integer
-let cap_reg key session = Option.get (find Machine_view.General key session).word.capability
-let status session = (Machine_session.view session).status
+let int_reg (key : string) (session : Machine_session.t) : Z.t = Option.get (find Machine_view.General key session).word.integer
+let cap_reg (key : string) (session : Machine_session.t) : Machine_view.capability = Option.get (find Machine_view.General key session).word.capability
+let status (session : Machine_session.t) : Machine_view.status = (Machine_session.view session).status
 
-let initialization_and_program_validation () =
+let initialization_and_program_validation (() : unit) : unit =
   let defaults = session "halt" in
   Alcotest.(check bool)
     "no regfile installs cgp architectural root" true
@@ -423,7 +422,7 @@ let initialization_and_program_validation () =
   check_z "explicit regfile applies supplied entry" (z 7) (int_reg "cra" partial);
   check_z "explicit regfile starts MTDC at zero" Z.zero
     (Option.get (find System "mtdc" partial).word.integer);
-  let create source = Machine_session.create ~backend:"griotte" ~config ~source ~regfile:None in
+  let create (source : string) : (Machine_session.t, Diagnostic.t list) result = Machine_session.create ~backend:"griotte" ~config ~source ~regfile:None in
   List.iter
     (fun (name, source) -> Alcotest.(check bool) name true (Result.is_ok (create source)))
     [
@@ -448,7 +447,7 @@ let initialization_and_program_validation () =
       ("reject underived sealed capability program word", "# {0: ([X W LG LM], Global, 0, 8, 0)}");
     ]
 
-let arithmetic_and_control () =
+let arithmetic_and_control (() : unit) : unit =
   let s =
     session
       "mov ca0 20 mov ca1 6 add ca2 ca0 ca1 sub ca3 ca0 ca1 mul ca4 ca1 3 land ca7 7 3 lor cs0 4 \
@@ -481,7 +480,7 @@ let arithmetic_and_control () =
   Alcotest.(check bool) "sentry entry" true (status jalr = Halted);
   Alcotest.(check bool) "jalr link is sentry" true ((find General "cra" jalr).word.kind = Sentry)
 
-let memory_permissions_and_system () =
+let memory_permissions_and_system (() : unit) : unit =
   let stored =
     executable_session ~regfile:"ca0 := ([R WL LG LM], Global, 20, 21, 20)"
       "store ca0 42 load ca1 ca0 halt"
@@ -517,7 +516,7 @@ let memory_permissions_and_system () =
   in
   Alcotest.(check bool) "X lacks system access" true (status no_sr = Failed)
 
-let capabilities_sealing_and_view () =
+let capabilities_sealing_and_view (() : unit) : unit =
   let restricted =
     executable_session ~regfile:"ca0 := ([R WL LG LM], Global, 1, 20, 4)"
       "restrict ca0 ([R W DL DRO], Local) subseg ca0 2 10 lea ca0 1 getl ca1 ca0 getb ca2 ca0 gete \
@@ -566,15 +565,15 @@ let capabilities_sealing_and_view () =
       "griotte";
       "griotte-extracted";
     ]
-    (Backend_registry.names ());
+    (Backend_registry.available_backend_names ());
   Alcotest.(check bool)
     "extracted registered" true
     (Result.is_ok
        (Machine_session.create ~backend:"griotte-extracted" ~config ~source:"halt" ~regfile:None))
 
-let resolve_file path = if Sys.file_exists path then path else "../../../" ^ path
+let resolve_file (path : string) : string = if Sys.file_exists path then path else "../../../" ^ path
 
-let read_file path =
+let read_file (path : string) : string =
   let path = resolve_file path in
   let channel = open_in path in
   let length = in_channel_length channel in
@@ -582,7 +581,7 @@ let read_file path =
   close_in channel;
   source
 
-let examples () =
+let examples (() : unit) : unit =
   let base = "tests/test_files/griotte/" in
   let program_files =
     [
@@ -636,7 +635,7 @@ let examples () =
             (String.concat "; " (List.map Diagnostic.to_string diagnostics)))
     regfile_files;
   let example_config = Runtime_config.create ~max_addr:(z 0x20000) ~stack_addr:(z 0x10000) () in
-  let execute program regfile limit =
+  let execute (program : string) (regfile : string) (limit : int) : Machine_session.run_result =
     let source = read_file ("tests/test_files/griotte/" ^ program) in
     let regfile = Some (read_file ("tests/test_files/griotte/" ^ regfile)) in
     ok (Machine_session.create ~backend:"griotte" ~config:example_config ~source ~regfile)

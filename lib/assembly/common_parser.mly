@@ -1,11 +1,15 @@
 %{
 open Assembly_construction
 
-let at position = location position
+let at (position : Lexing.position) : Diagnostic.source_location = location position
 
-let item position node = { node; location = at position }
+let item (position : Lexing.position)
+    (node : ('statement, 'word, 'argument, 'kind) Assembly_construction.item_node) :
+    ('statement, 'word, 'argument, 'kind) Assembly_construction.item =
+  { node; location = at position }
 
-let parameter position name kind =
+let parameter (position : Lexing.position) (name : string) (kind : string) :
+    Asm_ir.parameter_kind Assembly_construction.parameter =
   if Asm_ir.valid_parameter_kind kind then { name; kind = Asm_ir.parameter_kind kind }
   else
     raise

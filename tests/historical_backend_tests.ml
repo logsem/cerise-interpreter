@@ -1,6 +1,6 @@
 open Cerise
 
-let ok = function
+let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok x -> x
   | Error ds -> Alcotest.fail (String.concat "; " (List.map Diagnostic.message ds))
 
@@ -11,12 +11,12 @@ let golden =
    ("GetB",30,1);("GetE",31,1);("GetA",32,1);("Fail",33,1);("Halt",34,1);
    ("LoadU",35,2);("StoreU",37,4);("PromoteU",41,1)]
 
-let allocations () =
+let allocations (() : unit) : unit =
   let expected_names =
     ["Jmp";"Jnz";"Move";"Load";"Store";"Add";"Sub";"Lt";"Lea";"Restrict";
      "SubSeg";"IsPtr";"GetP";"GetL";"GetB";"GetE";"GetA";"Fail";"Halt";
      "LoadU";"StoreU";"PromoteU"] in
-  let check name actual =
+  let check (name : string) (actual : (string * int * int) list) : unit =
     Alcotest.(check (list (triple string int int))) name golden actual in
   check "uCerise automatic allocation" Ucerise.Codec.allocations;
   check "mCerise automatic allocation" Mcerise.Codec.allocations;
@@ -52,7 +52,7 @@ let m_instructions =
    Fail;Halt;LoadU(r1,r2,rg);LoadU(r1,r2,c);
    StoreU(r1,rg,rg);StoreU(r1,rg,c);StoreU(r1,c,rg);StoreU(r1,c,c);PromoteU r1]
 
-let codecs () =
+let codecs (() : unit) : unit =
   List.iter (fun i ->
     let z=Result.get_ok (Ucerise.Codec.encode i) in
     Alcotest.(check bool) "u round trip" true (Result.get_ok (Ucerise.Codec.decode z)=i))
@@ -66,14 +66,14 @@ let codecs () =
     Alcotest.(check bool) "m malformed rejected" true (Result.is_error (Mcerise.Codec.decode z)))
     [Z.minus_one; Z.shift_left Z.one 10000]
 
-let parser_matrix () =
+let parser_matrix (() : unit) : unit =
   let source =
     "jmp r1\njnz r1 r2\nmove r1 -1\nload r1 r2\nstore r1 r2\nadd r1 r2 1\nsub r1 2 r2\nlt r1 r2 3\nlea r1 -1\nrestrict r1 (RW, GLOBAL)\nsubseg r1 0 4\nisptr r1 r2\ngetp r1 r2\ngetl r1 r2\ngetb r1 r2\ngete r1 r2\ngeta r1 r2\nfail\nhalt\nloadu r1 r2 -1\nstoreu r1 0 r2\npromoteu r1" in
   ignore (ok (Ucerise.Parser.parse_program source));
   ignore (ok (Mcerise.Parser.parse_program source));
   ignore (ok (Ucerise.Parser.parse_word "(URWLX, LOCAL, 1, 9, 4)"));
   ignore (ok (Mcerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"));
-  let typed_macro locality =
+  let typed_macro (locality : string) : string =
     Printf.sprintf
       "%%macro typed(dst: reg, e: expr, v: value, p: perm, l: locality) move $dst $v add $dst $e 1 restrict $dst ($p, $l) # ($p, $l, $e, $e + 8, $e) %%endmacro %%typed(r1, 4, 9, URWL, %s) halt"
       locality in
@@ -118,14 +118,14 @@ let parser_matrix () =
   Alcotest.(check bool) "u rejects Directed" true
     (Result.is_error (Ucerise.Parser.parse_word "(URWLX, DIRECTED, 1, 9, 4)"))
 
-let nested_composite_macro_arguments () =
+let nested_composite_macro_arguments (() : unit) : unit =
   let source =
     "%macro inner(v: value) restrict r1 $v %endmacro \
      %macro outer(p: perm, l: locality) %inner(($p, $l)) %endmacro \
      %outer(URWLX, Local) halt"
   in
   let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) () in
-  let check_u () =
+  let check_u (() : unit) : unit =
     match
       ok (Ucerise.Parser.parse_program source)
       |> Ucerise.Asm_ir.lower_program config |> ok
@@ -142,7 +142,7 @@ let nested_composite_macro_arguments () =
           (Ucerise.Codec.decode encoded = Ok expected)
     | _ -> Alcotest.fail "uCerise did not lower the nested restriction"
   in
-  let check_m () =
+  let check_m (() : unit) : unit =
     match
       ok (Mcerise.Parser.parse_program source)
       |> Mcerise.Asm_ir.lower_program config |> ok
@@ -173,7 +173,7 @@ let nested_composite_macro_arguments () =
     "mCerise rejects wrong nested permission kind" true
     (Result.is_error (Mcerise.Parser.parse_program wrong_kind))
 
-let generated_construction_and_locations () =
+let generated_construction_and_locations (() : unit) : unit =
   let source =
     "%define N 2 start: move r1 start + N %macro emit(x: expr) # $x %endmacro \
      %emit(N + 5) halt"
@@ -182,7 +182,9 @@ let generated_construction_and_locations () =
   ignore (ok (Mcerise.Parser.parse_program source));
   ignore (ok (Ucerise.Parser.parse_regfile "r1 := 7 r2 := (URWL, LOCAL, 0, 8, 1)"));
   ignore (ok (Mcerise.Parser.parse_regfile "r1 := 7 r2 := (URWL, DIRECTED, 0, 8, 1)"));
-  let check_location label expected_line expected_column = function
+  let check_location (type value) (label : string) (expected_line : int)
+      (expected_column : int) (matched_value : (value, Diagnostic.t list) result) : unit =
+    match matched_value with
     | Error (diagnostic :: _) -> (
         match Diagnostic.location diagnostic with
         | Some location ->
@@ -215,16 +217,16 @@ let generated_construction_and_locations () =
   Alcotest.(check bool) "m word round trip" true (m_concrete = m_round_trip)
 
 let config = Runtime_config.create ~max_addr:(Z.of_int 64) ~stack_addr:(Z.of_int 32) ()
-let session backend ?regfile source =
+let session (backend : string) ?regfile:(regfile : string option) (source : string) : Machine_session.t =
   ok (Machine_session.create ~backend ~config ~source ~regfile)
-let word bank key s =
+let word (bank : Machine_view.register_bank) (key : string) (s : Machine_session.t) : Machine_view.word =
   (Option.get (Machine_view.find_register {Machine_view.Register_id.bank;key}
     (Machine_session.view s))).word
-let int_reg key s = Option.get (word Machine_view.General key s).integer
-let cap bank key s = Option.get (word bank key s).capability
-let run s = (Machine_session.run s).session
+let int_reg (key : string) (s : Machine_session.t) : Z.t = Option.get (word Machine_view.General key s).integer
+let cap (bank : Machine_view.register_bank) (key : string) (s : Machine_session.t) : Machine_view.capability = Option.get (word bank key s).capability
+let run (s : Machine_session.t) : Machine_session.t = (Machine_session.run s).session
 
-let semantics () =
+let semantics (() : unit) : unit =
   let u = session "ucerise" ~regfile:"r2 := (RW, GLOBAL, 0, 8, 0)"
     "isptr r1 r2 isptr r3 r4 halt" |> run in
   Alcotest.(check string) "IsPtr capability" "1" (Z.to_string (int_reg "r1" u));
@@ -312,7 +314,7 @@ let semantics () =
   Alcotest.(check bool) "directed store read bound" true
     ((Machine_session.view bad_directed).status=Machine_view.Failed)
 
-let sessions_and_edits () =
+let sessions_and_edits (() : unit) : unit =
   let a=session "ucerise" "move r1 7 halt" and b=session "mcerise" "move r1 9 halt" in
   let a1=Result.get_ok (Machine_session.step a) in
   Alcotest.(check string) "interleaved u step" "7" (Z.to_string (int_reg "r1" a1));
@@ -322,7 +324,7 @@ let sessions_and_edits () =
   Alcotest.(check (list string)) "word edit" ["URW"]
     (cap Machine_view.General "r2" edited).permissions;
   Alcotest.(check (list string)) "registry order"
-    ["vanilla";"cerise";"locality-cerise";"ucerise";"mcerise";"cerisier";"griotte";"griotte-extracted"] (Backend_registry.names ())
+    ["vanilla";"cerise";"locality-cerise";"ucerise";"mcerise";"cerisier";"griotte";"griotte-extracted"] (Backend_registry.available_backend_names ())
 
 let () =
   Alcotest.run "historical backends"

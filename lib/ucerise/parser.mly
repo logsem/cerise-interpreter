@@ -1,20 +1,20 @@
 %{
 open Asm_ir
 
-let reject position message =
+let reject (position : Lexing.position) (message : string) : 'a =
   raise (Assembly_construction.Parse_error (Assembly_construction.location position, message))
 
-let register position name =
+let register (position : Lexing.position) (name : string) : Ast.register =
   match parse_register_name name with
   | Some register -> register
   | None -> reject position "Expected a uCerise register."
 
-let permission position name =
+let permission (position : Lexing.position) (name : string) : Ast.permission =
   match parse_permission name with
   | Some permission -> permission
   | None -> reject position "Expected a uCerise permission."
 
-let locality position name =
+let locality (position : Lexing.position) (name : string) : Ast.locality =
   match parse_locality name with
   | Some locality -> locality
   | None -> reject position "Expected GLOBAL or LOCAL."

@@ -96,13 +96,6 @@ module Machine : sig
   val execute : Ast.instruction -> t -> t
   val step : t -> (t, Machine_backend.execution_error) result
   val step_n : int -> t -> (t, Machine_backend.execution_error) result
-  val get_exec_state : t -> status
-  val get_regfile : t -> Ast.word RegMap.t
-  val get_memory : t -> Ast.word MemMap.t
-  val read_reg : Ast.register -> t -> Ast.word
-  val read_mem : Z.t -> t -> Ast.word option
-  val set_reg : Ast.register -> Ast.word -> t -> t
-  val set_mem : Z.t -> Ast.word -> t -> t
   val run : t -> t
 end
 

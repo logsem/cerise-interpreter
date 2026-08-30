@@ -3,13 +3,13 @@ open Ast
 module RegMap = Map.Make (struct
   type t = register
 
-  let compare = compare
+  let compare (left : t) (right : t) : int = Stdlib.compare left right
 end)
 
 module SRegMap = Map.Make (struct
   type t = system_register
 
-  let compare = compare
+  let compare (left : t) (right : t) : int = Stdlib.compare left right
 end)
 
 module MemMap = Map.Make (Z)
@@ -24,23 +24,25 @@ type t = {
   memory : word MemMap.t;
 }
 
-let diagnostic message = Error [ Diagnostic.error message ]
-let ( let* ) = Result.bind
+let diagnostic (message : string) : ('a, Diagnostic.t list) result = Error [ Diagnostic.error message ]
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
 let arch_root_memory_permission = (R, WL, LG, LM)
 let arch_root_executable_permission = (XSR, Ow, LG, LM)
 
 (* The Rocq machine represents both addresses and object types as [FinZ 2000000]. *)
 let finite_address_bound = Z.of_int 2_000_000
 let finite_object_type_bound = Z.of_int 2_000_000
-let in_finite_domain bound value = Z.sign value >= 0 && Z.compare value bound < 0
+let in_finite_domain (bound : Z.t) (value : Z.t) : bool = Z.sign value >= 0 && Z.compare value bound < 0
 
 (* A right shift beyond every representable bit has already reached its
    sign-extension fixed point, so it needs no machine-integer conversion. *)
-let shift_right_nonnegative value count =
+let shift_right_nonnegative (value : Z.t) (count : Z.t) : Z.t option =
   if Z.fits_int count then try Some (Z.shift_right value (Z.to_int count)) with _ -> None
   else Some (if Z.sign value < 0 then Z.minus_one else Z.zero)
 
-let shift_left_z value count =
+let shift_left_z (value : Z.t) (count : Z.t) : Z.t option =
   match Z.sign count with
   | 0 -> Some value
   | -1 -> shift_right_nonnegative value (Z.neg count)
@@ -49,9 +51,9 @@ let shift_left_z value count =
   | _ when not (Z.fits_int count) -> None
   | _ -> ( try Some (Z.shift_left value (Z.to_int count)) with _ -> None)
 
-let shift_right_z value count = shift_left_z value (Z.neg count)
+let shift_right_z (value : Z.t) (count : Z.t) : Z.t option = shift_left_z value (Z.neg count)
 
-let rx_flows requested current =
+let rx_flows (requested : rx_permission) (current : rx_permission) : bool =
   match (requested, current) with
   | Orx, _ -> true
   | R, Orx -> false
@@ -61,7 +63,7 @@ let rx_flows requested current =
   | XSR, XSR -> true
   | XSR, _ -> false
 
-let write_flows requested current =
+let write_flows (requested : write_permission) (current : write_permission) : bool =
   match (requested, current) with
   | Ow, _ -> true
   | W, Ow -> false
@@ -69,33 +71,35 @@ let write_flows requested current =
   | WL, WL -> true
   | WL, _ -> false
 
-let deep_local_flows requested current =
+let deep_local_flows (requested : deep_local_permission) (current : deep_local_permission) : bool =
   match (requested, current) with DL, _ -> true | LG, LG -> true | LG, DL -> false
 
-let deep_read_only_flows requested current =
+let deep_read_only_flows (requested : deep_read_only_permission) (current : deep_read_only_permission) : bool =
   match (requested, current) with DRO, _ -> true | LM, LM -> true | LM, DRO -> false
 
-let permission_flows (rx, w, dl, dro) (rx', w', dl', dro') =
+let permission_flows ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) ((rx', w', dl', dro') : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : bool =
   rx_flows rx rx' && write_flows w w' && deep_local_flows dl dl' && deep_read_only_flows dro dro'
 
-let locality_flows requested current =
+let locality_flows (requested : locality) (current : locality) : bool =
   match (requested, current) with Local, _ | Global, Global -> true | Global, Local -> false
 
-let seal_permission_flows (s, u) (s', u') = ((not s) || s') && ((not u) || u')
+let seal_permission_flows ((s, u) : bool * bool) ((s', u') : bool * bool) : bool = ((not s) || s') && ((not u) || u')
 
-let permission_of_word = function
+let permission_of_word (matched_value : word) : permission = match matched_value with
   | Sealable (Cap (p, _, _, _, _)) | Sentry (p, _, _, _, _) | Sealed (_, Cap (p, _, _, _, _)) -> p
   | _ -> null_permission
 
-let word_is_derived word =
+let word_is_derived (word : word) : bool =
   permission_flows (permission_of_word word) arch_root_executable_permission
   || permission_flows (permission_of_word word) arch_root_memory_permission
 
-let zero_registers () =
+let zero_registers (() : unit) : word RegMap.t =
   let registers = List.init 32 (fun n -> (Reg n, I Z.zero)) |> List.to_seq |> RegMap.of_seq in
   registers |> RegMap.add PC (I Z.zero) |> RegMap.add cnull (I Z.zero)
 
-let initial_registers config =
+let initial_registers (config : Runtime_config.t) : word RegMap.t =
   let limit = Runtime_config.max_addr config in
   zero_registers ()
   |> RegMap.add PC (Sealable (Cap (arch_root_executable_permission, Global, Z.zero, limit, Z.zero)))
@@ -103,28 +107,28 @@ let initial_registers config =
   |> RegMap.add ca3 (Sealable (SealRange ((true, true), Global, Z.zero, max_object_type, Z.zero)))
   |> RegMap.add cnull (I Z.zero)
 
-let read_register r state = match r with Reg 0 -> I Z.zero | _ -> RegMap.find r state.registers
-let read_system_register r state = SRegMap.find r state.system_registers
+let read_register (r : register) (state : t) : word = match r with Reg 0 -> I Z.zero | _ -> RegMap.find r state.registers
+let read_system_register (r : system_register) (state : t) : word = SRegMap.find r state.system_registers
 
-let read_memory address state =
+let read_memory (address : Z.t) (state : t) : word option =
   match MemMap.find_opt address state.memory with
   | Some word -> Some word
   | None when Z.sign address >= 0 && Z.compare address (Runtime_config.max_addr state.config) < 0 ->
       Some (I Z.zero)
   | None -> None
 
-let set_register r word state =
+let set_register (r : register) (word : word) (state : t) : t =
   match r with
   | Reg 0 -> { state with registers = RegMap.add cnull (I Z.zero) state.registers }
   | _ -> { state with registers = RegMap.add r word state.registers }
 
-let set_system_register r word state =
+let set_system_register (r : system_register) (word : word) (state : t) : t =
   { state with system_registers = SRegMap.add r word state.system_registers }
 
-let set_memory_raw address word state = { state with memory = MemMap.add address word state.memory }
-let fail state = { state with status = Failed }
+let set_memory_raw (address : Z.t) (word : word) (state : t) : t = { state with memory = MemMap.add address word state.memory }
+let fail (state : t) : t = { state with status = Failed }
 
-let init config program regfile =
+let init (config : Runtime_config.t) (program : word list) (regfile : ((register * word) list * (system_register * word) list) option) : (t, Diagnostic.t list) result =
   let registers =
     match regfile with None -> initial_registers config | Some _ -> zero_registers ()
   in
@@ -132,8 +136,8 @@ let init config program regfile =
   let reg_words, sreg_words = Option.value regfile ~default:([], []) in
   let* registers =
     List.fold_left
-      (fun acc (r, word) ->
-        let* regs = acc in
+      (fun accumulator (r, word) ->
+        let* regs = accumulator in
         if word_is_derived word then Ok (RegMap.add r word regs)
         else
           diagnostic
@@ -144,8 +148,8 @@ let init config program regfile =
   let registers = RegMap.add cnull (I Z.zero) registers in
   let* system_registers =
     List.fold_left
-      (fun acc (r, word) ->
-        let* regs = acc in
+      (fun accumulator (r, word) ->
+        let* regs = accumulator in
         if word_is_derived word then Ok (SRegMap.add r word regs)
         else diagnostic "Initial MTDC value is not derived from a Griotte architectural root.")
       (Ok system_registers) sreg_words
@@ -167,72 +171,72 @@ let init config program regfile =
   in
   Ok { config; status = Running; registers; system_registers; memory }
 
-let value state = function Register r -> read_register r state | Constant z -> I z
-let is_wl (_, w, _, _) = w = WL
-let is_dl (_, _, dl, _) = dl = DL
-let is_dro (_, _, _, dro) = dro = DRO
-let executable (rx, _, _, _) = rx = X || rx = XSR
-let can_read (rx, _, _, _) = rx <> Orx
-let can_write (_, w, _, _) = w <> Ow
-let locality_of_sealable = function Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
+let value (state : t) (matched_value : reg_or_const) : word = match matched_value with Register r -> read_register r state | Constant z -> I z
+let is_wl ((_, w, _, _) : 'a * write_permission * 'b * 'c) : bool = w = WL
+let is_dl ((_, _, dl, _) : 'a * 'b * deep_local_permission * 'c) : bool = dl = DL
+let is_dro ((_, _, _, dro) : 'a * 'b * 'c * deep_read_only_permission) : bool = dro = DRO
+let executable ((rx, _, _, _) : rx_permission * 'a * 'b * 'c) : bool = rx = X || rx = XSR
+let can_read ((rx, _, _, _) : rx_permission * 'a * 'b * 'c) : bool = rx <> Orx
+let can_write ((_, w, _, _) : 'a * write_permission * 'b * 'c) : bool = w <> Ow
+let locality_of_sealable (matched_value : sealable) : locality = match matched_value with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
 
-let locality_of_word = function
+let locality_of_word (matched_value : word) : locality option = match matched_value with
   | Sealable s | Sealed (_, s) -> Some (locality_of_sealable s)
   | Sentry (_, l, _, _, _) -> Some l
   | I _ -> None
 
-let deep_localize_sealable = function
+let deep_localize_sealable (matched_value : sealable) : sealable = match matched_value with
   | Cap ((rx, w, _, dro), _, b, e, a) -> Cap ((rx, w, DL, dro), Local, b, e, a)
   | SealRange (p, _, b, e, a) -> SealRange (p, Local, b, e, a)
 
-let deep_localize = function
+let deep_localize (matched_value : word) : word = match matched_value with
   | Sealable s -> Sealable (deep_localize_sealable s)
   | Sentry (p, _, b, e, a) -> Sentry (p, Local, b, e, a)
   | Sealed (o, Cap (p, _, b, e, a)) -> Sealed (o, Cap (p, Local, b, e, a))
   | Sealed (o, SealRange (p, _, b, e, a)) -> Sealed (o, SealRange (p, Local, b, e, a))
   | I _ as w -> w
 
-let read_only = function
+let read_only (matched_value : word) : word = match matched_value with
   | Sealable (Cap ((rx, _, dl, _), l, b, e, a)) -> Sealable (Cap ((rx, Ow, dl, DRO), l, b, e, a))
   | word -> word
 
-let loaded_word permission word =
+let loaded_word (permission : 'a * 'b * deep_local_permission * deep_read_only_permission) (word : word) : word =
   let word = if is_dl permission then deep_localize word else word in
   if is_dro permission then read_only word else word
 
-let pc_next state =
+let pc_next (state : t) : t =
   match read_register PC state with
   | Sealable (Cap (p, l, b, e, a)) -> set_register PC (Sealable (Cap (p, l, b, e, Z.succ a))) state
   | _ -> fail state
 
-let write_next r word state = pc_next (set_register r word state)
-let enter = function Sentry (p, l, b, e, a) -> Sealable (Cap (p, l, b, e, a)) | word -> word
+let write_next (r : register) (word : word) (state : t) : t = pc_next (set_register r word state)
+let enter (matched_value : word) : word = match matched_value with Sentry (p, l, b, e, a) -> Sealable (Cap (p, l, b, e, a)) | word -> word
 
-let valid_pc state =
+let valid_pc (state : t) : bool =
   match read_register PC state with
   | Sealable (Cap (p, _, b, e, a)) when executable p ->
       b <= a && a < e && Option.is_some (read_memory a state)
   | _ -> false
 
-let authorized_system state =
+let authorized_system (state : t) : bool =
   match read_register PC state with
   | Sealable (Cap ((XSR, _, _, _), _, _, _, _)) -> true
   | _ -> false
 
-let word_type = function
+let word_type (matched_value : word) : word_type = match matched_value with
   | I _ -> W_I
   | Sealable (Cap _) -> W_Cap
   | Sealable (SealRange _) -> W_SealRange
   | Sealed _ -> W_Sealed
   | Sentry _ -> W_Sentry
 
-let arithmetic result r a b state =
+let arithmetic (result : (Z.t -> Z.t -> Z.t option)) (r : register) (a : reg_or_const) (b : reg_or_const) (state : t) : t =
   match (value state a, value state b) with
   | I x, I y -> ( match result x y with Some z -> write_next r (I z) state | None -> fail state)
   | _ -> fail state
 
-let rec execute instruction state =
-  let get r = read_register r state and v o = value state o in
+let rec execute (instruction : instruction) (state : t) : t =
+  let get (r : register) : word = read_register r state and v o = value state o in
   match instruction with
   | Fail -> fail state
   | Halt -> { state with status = Halted }
@@ -362,7 +366,7 @@ let rec execute instruction state =
           write_next dst (Sealable sealable) state
       | _ -> fail state)
 
-let step state =
+let step (state : t) : (t, Machine_backend.execution_error) result =
   if state.status <> Running then
     Error
       (Machine_backend.Stopped
@@ -379,7 +383,7 @@ let step state =
         | _ -> Ok (fail state))
     | _ -> Ok (fail state)
 
-let rec step_n count state =
+let rec step_n (count : int) (state : t) : (t, Machine_backend.execution_error) result =
   if count < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if count = 0 then Ok state
   else

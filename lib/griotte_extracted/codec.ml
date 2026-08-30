@@ -4,17 +4,19 @@ open Ast
    numeric format expected by the Rocq MachineParameters instance, rather than
    a use of either of the interpreter's codec abstractions. *)
 
-let ( let* ) = Result.bind
-let error message = Error message
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
+let error (message : 'a) : ('b, 'a) result = Error message
 let opcode_width = 8
-let pack opcode payload = Z.logor (Z.of_int opcode) (Z.shift_left payload opcode_width)
+let pack (opcode : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int opcode) (Z.shift_left payload opcode_width)
 
-let encode_register = function
+let encode_register (matched_value : register) : (Z.t, string) result = match matched_value with
   | PC -> Ok Z.zero
   | Reg n when n >= 0 && n <= 31 -> Ok (Z.of_int (n + 1))
   | Reg n -> error (Printf.sprintf "invalid Griotte register r%d" n)
 
-let decode_register encoded =
+let decode_register (encoded : Z.t) : (register, string) result =
   if not (Z.fits_int encoded) then error "oversized Griotte register encoding"
   else
     let n = Z.to_int encoded in
@@ -33,7 +35,7 @@ let compact_even_bits =
   Array.init 256 (fun byte ->
       byte land 1 lor ((byte lsr 1) land 2) lor ((byte lsr 2) land 4) lor ((byte lsr 3) land 8))
 
-let interleave_unsigned x y =
+let interleave_unsigned (x : Z.t) (y : Z.t) : Z.t =
   let x = Z.to_bits x in
   let y = Z.to_bits y in
   let input_length = max (String.length x) (String.length y) in
@@ -49,7 +51,7 @@ let interleave_unsigned x y =
   done;
   Z.of_bits (Bytes.unsafe_to_string interleaved)
 
-let encode_pair x y =
+let encode_pair (x : Z.t) (y : Z.t) : Z.t =
   let signs =
     match (Z.sign x < 0, Z.sign y < 0) with
     | false, false -> Z.zero
@@ -59,7 +61,7 @@ let encode_pair x y =
   in
   Z.logor signs (Z.shift_left (interleave_unsigned (Z.abs x) (Z.abs y)) 2)
 
-let split_unsigned value =
+let split_unsigned (value : Z.t) : Z.t * Z.t =
   let interleaved = Z.to_bits value in
   let interleaved_length = String.length interleaved in
   let output_length = (interleaved_length + 1) / 2 in
@@ -78,17 +80,17 @@ let split_unsigned value =
   done;
   (Z.of_bits (Bytes.unsafe_to_string x), Z.of_bits (Bytes.unsafe_to_string y))
 
-let decode_pair value =
+let decode_pair (value : Z.t) : (Z.t * Z.t, string) result =
   if Z.sign value < 0 then error "negative tuple payload"
   else
     let x, y = split_unsigned (Z.shift_right value 2) in
     Ok ((if Z.testbit value 0 then Z.neg x else x), if Z.testbit value 1 then Z.neg y else y)
 
-let encode_operand base = function
+let encode_operand (base : int) (matched_value : reg_or_const) : (int * Z.t, string) result = match matched_value with
   | Register r -> Result.map (fun encoded -> (base, encoded)) (encode_register r)
   | Constant z -> Ok (base + 1, z)
 
-let encode_two_operands base first second =
+let encode_two_operands (base : int) (first : reg_or_const) (second : reg_or_const) : (int * Z.t, string) result =
   let first_opcode, first =
     match first with Register r -> (base, encode_register r) | Constant z -> (base + 2, Ok z)
   in
@@ -96,28 +98,28 @@ let encode_two_operands base first second =
   let* second_opcode, second = encode_operand first_opcode second in
   Ok (second_opcode, encode_pair first second)
 
-let encode_rr opcode a b =
+let encode_rr (opcode : int) (a : register) (b : register) : (Z.t, string) result =
   let* a = encode_register a in
   let* b = encode_register b in
   Ok (pack opcode (encode_pair a b))
 
-let encode_ro opcode r operand =
+let encode_ro (opcode : int) (r : register) (operand : reg_or_const) : (Z.t, string) result =
   let* r = encode_register r in
   let* opcode, operand = encode_operand opcode operand in
   Ok (pack opcode (encode_pair r operand))
 
-let encode_roo opcode r a b =
+let encode_roo (opcode : int) (r : register) (a : reg_or_const) (b : reg_or_const) : (Z.t, string) result =
   let* r = encode_register r in
   let* opcode, operands = encode_two_operands opcode a b in
   Ok (pack opcode (encode_pair r operands))
 
-let encode_rrr opcode a b c =
+let encode_rrr (opcode : int) (a : register) (b : register) (c : register) : (Z.t, string) result =
   let* a = encode_register a in
   let* b = encode_register b in
   let* c = encode_register c in
   Ok (pack opcode (encode_pair a (encode_pair b c)))
 
-let encode = function
+let encode (matched_value : instruction) : (Z.t, string) result = match matched_value with
   | Jmp operand ->
       let* opcode, payload = encode_operand 0x00 operand in
       Ok (pack opcode payload)
@@ -155,23 +157,23 @@ let encode = function
   | LShiftL (r, a, b) -> encode_roo 0x3f r a b
   | LShiftR (r, a, b) -> encode_roo 0x43 r a b
 
-let decode_operand ~constant encoded =
+let decode_operand ~constant:(constant : bool) (encoded : Z.t) : (reg_or_const, string) result =
   if constant then Ok (Constant encoded)
   else Result.map (fun r -> Register r) (decode_register encoded)
 
-let decode_rr payload construct =
+let decode_rr (payload : Z.t) (construct : (register -> register -> 'a)) : ('a, string) result =
   let* a, b = decode_pair payload in
   let* a = decode_register a in
   let* b = decode_register b in
   Ok (construct a b)
 
-let decode_ro base opcode payload construct =
+let decode_ro (base : int) (opcode : int) (payload : Z.t) (construct : (register -> reg_or_const -> 'a)) : ('a, string) result =
   let* r, operand = decode_pair payload in
   let* r = decode_register r in
   let* operand = decode_operand ~constant:(opcode = base + 1) operand in
   Ok (construct r operand)
 
-let decode_roo base opcode payload construct =
+let decode_roo (base : int) (opcode : int) (payload : Z.t) (construct : (register -> reg_or_const -> reg_or_const -> 'a)) : ('a, string) result =
   let* r, operands = decode_pair payload in
   let* a, b = decode_pair operands in
   let variant = opcode - base in
@@ -180,7 +182,7 @@ let decode_roo base opcode payload construct =
   let* b = decode_operand ~constant:(variant land 1 <> 0) b in
   Ok (construct r a b)
 
-let decode_rrr payload construct =
+let decode_rrr (payload : Z.t) (construct : (register -> register -> register -> 'a)) : ('a, string) result =
   let* a, rest = decode_pair payload in
   let* b, c = decode_pair rest in
   let* a = decode_register a in
@@ -188,10 +190,10 @@ let decode_rrr payload construct =
   let* c = decode_register c in
   Ok (construct a b c)
 
-let decode encoded =
+let decode (encoded : Z.t) : (instruction, string) result =
   let opcode = Z.to_int (Z.extract encoded 0 opcode_width) in
   let payload = Z.shift_right encoded opcode_width in
-  let in_span base = opcode >= base && opcode < base + 4 in
+  let in_span (base : int) : bool = opcode >= base && opcode < base + 4 in
   if Z.sign encoded < 0 && opcode <> 0x01 then error "negative extracted instruction encoding"
   else
     match opcode with
@@ -234,46 +236,52 @@ let decode encoded =
     | _ when in_span 0x43 -> decode_roo 0x43 opcode payload (fun r a b -> LShiftR (r, a, b))
     | _ -> error (Printf.sprintf "malformed or unknown extracted Griotte opcode 0x%02x" opcode)
 
-let tagged tag payload = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
+let tagged (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
 
-let untag tag kind encoded =
+let untag (tag : int) (kind : string) (encoded : Z.t) : (Z.t, string) result =
   if Z.sign encoded < 0 || not (Z.equal (Z.extract encoded 0 3) (Z.of_int tag)) then
     error ("not an extracted Griotte " ^ kind ^ " encoding")
   else Ok (Z.shift_right encoded 3)
 
-let permission_scalar (rx, w, dl, dro) =
+let permission_scalar ((rx, w, dl, dro) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : int =
   let rx = match rx with Orx -> 0 | R -> 1 | X -> 2 | XSR -> 3 in
   let w = match w with Ow -> 0 | W -> 1 | WL -> 2 in
   let dl = match dl with DL -> 0 | LG -> 1 in
   let dro = match dro with DRO -> 0 | LM -> 1 in
   (rx lsl 4) lor (w lsl 2) lor (dl lsl 1) lor dro
 
-let permission_of_scalar n =
+let permission_of_scalar (n : int) : (rx_permission * write_permission * deep_local_permission *
+ deep_read_only_permission, string)
+result =
   if n < 0 || n > 0x3f || (n lsr 2) land 3 = 3 then error "unknown extracted permission"
   else
     let rx = match (n lsr 4) land 3 with 0 -> Orx | 1 -> R | 2 -> X | _ -> XSR in
     let w = match (n lsr 2) land 3 with 0 -> Ow | 1 -> W | _ -> WL in
     Ok (rx, w, (if n land 2 = 0 then DL else LG), if n land 1 = 0 then DRO else LM)
 
-let encode_permission p = tagged 0 (Z.of_int (permission_scalar p))
+let encode_permission (p : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : Z.t = tagged 0 (Z.of_int (permission_scalar p))
 
-let decode_permission encoded =
+let decode_permission (encoded : Z.t) : (rx_permission * write_permission * deep_local_permission *
+ deep_read_only_permission, string)
+result =
   let* payload = untag 0 "permission" encoded in
   if Z.fits_int payload then permission_of_scalar (Z.to_int payload)
   else error "oversized extracted permission"
 
-let locality_scalar = function Local -> 0 | Global -> 1
-let encode_locality locality = tagged 2 (Z.of_int (locality_scalar locality))
+let locality_scalar (matched_value : locality) : int = match matched_value with Local -> 0 | Global -> 1
+let encode_locality (locality : locality) : Z.t = tagged 2 (Z.of_int (locality_scalar locality))
 
-let seal_scalar = function
+let seal_scalar (matched_value : bool * bool) : int = match matched_value with
   | false, false -> 0
   | false, true -> 1
   | true, false -> 2
   | true, true -> 3
 
-let encode_seal_permission p = tagged 1 (Z.of_int (seal_scalar p))
+let encode_seal_permission (p : bool * bool) : Z.t = tagged 1 (Z.of_int (seal_scalar p))
 
-let decode_seal_permission encoded =
+let decode_seal_permission (encoded : Z.t) : (bool * bool, string) result =
   let* payload = untag 1 "seal permission" encoded in
   if not (Z.fits_int payload) then error "oversized extracted seal permission"
   else
@@ -284,10 +292,14 @@ let decode_seal_permission encoded =
     | 3 -> Ok (true, true)
     | _ -> error "unknown extracted seal permission"
 
-let encode_permission_locality p locality =
+let encode_permission_locality (p : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) (locality : locality) : Z.t =
   tagged 4 (Z.of_int ((locality_scalar locality lsl 6) lor permission_scalar p))
 
-let decode_permission_locality encoded =
+let decode_permission_locality (encoded : Z.t) : ((rx_permission * write_permission * deep_local_permission *
+  deep_read_only_permission) *
+ locality, string)
+result =
   let* payload = untag 4 "permission/locality" encoded in
   if (not (Z.fits_int payload)) || Z.to_int payload > 0x7f then
     error "unknown extracted permission/locality"
@@ -296,10 +308,10 @@ let decode_permission_locality encoded =
     let* p = permission_of_scalar (n land 0x3f) in
     Ok (p, if n land 0x40 = 0 then Local else Global)
 
-let encode_seal_permission_locality p locality =
+let encode_seal_permission_locality (p : bool * bool) (locality : locality) : Z.t =
   tagged 5 (Z.of_int ((locality_scalar locality lsl 2) lor seal_scalar p))
 
-let decode_seal_permission_locality encoded =
+let decode_seal_permission_locality (encoded : Z.t) : ((bool * bool) * locality, string) result =
   let* payload = untag 5 "seal permission/locality" encoded in
   if (not (Z.fits_int payload)) || Z.to_int payload > 7 then
     error "unknown extracted seal permission/locality"
@@ -314,16 +326,16 @@ let decode_seal_permission_locality encoded =
     in
     Ok (p, if n land 4 = 0 then Local else Global)
 
-let word_type_scalar = function
+let word_type_scalar (matched_value : word_type) : int = match matched_value with
   | W_I -> 0
   | W_Cap -> 1
   | W_SealRange -> 2
   | W_Sealed -> 3
   | W_Sentry -> 4
 
-let encode_word_type word_type = tagged 3 (Z.of_int (word_type_scalar word_type))
+let encode_word_type (word_type : word_type) : Z.t = tagged 3 (Z.of_int (word_type_scalar word_type))
 
-let decode_word_type encoded =
+let decode_word_type (encoded : Z.t) : (word_type, string) result =
   let* payload = untag 3 "word type" encoded in
   if not (Z.fits_int payload) then error "oversized extracted word type"
   else

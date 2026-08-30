@@ -1,6 +1,6 @@
 open Cerise
 
-let get_ok = function
+let get_ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.failf "unexpected diagnostics: %s"
@@ -8,17 +8,17 @@ let get_ok = function
 
 let config = Runtime_config.create ~max_addr:(Z.of_int 64) ()
 
-let create ?(source = "halt") ?regfile backend =
+let create ?(source : string = "halt") ?regfile:(regfile : string option) (backend : string) : Machine_session.t =
   Machine_session.create ~backend ~config ~source ~regfile |> get_ok
 
-let set_word text session =
+let set_word (text : string) (session : Machine_session.t) : Machine_view.word =
   Machine_session.set_memory_text (Z.of_int 10) text session |> get_ok
-  |> Machine_session.view |> Machine_view.memory_at (Z.of_int 10) |> Option.get
+  |> Machine_session.view |> Machine_view.find_memory_word (Z.of_int 10) |> Option.get
 
-let check_z label expected actual =
+let check_z (label : string) (expected : Z.t) (actual : Z.t) : unit =
   Alcotest.(check string) label (Z.to_string expected) (Z.to_string actual)
 
-let check_range label ~locality word =
+let check_range (label : string) ~locality:(locality : string option) (word : Machine_view.word) : unit =
   Alcotest.(check bool) (label ^ " has no capability metadata") true
     (Option.is_none word.Machine_view.capability);
   match word.seal_range with
@@ -29,7 +29,7 @@ let check_range label ~locality word =
       check_z (label ^ " cursor") Z.one range.cursor;
       Alcotest.(check (option string)) (label ^ " locality") locality range.locality
 
-let check_capability label ~locality word =
+let check_capability (label : string) ~locality:(locality : string option) (word : Machine_view.word) : unit =
   Alcotest.(check bool) (label ^ " has no seal-range metadata") true
     (Option.is_none word.Machine_view.seal_range);
   match word.capability with
@@ -40,7 +40,7 @@ let check_capability label ~locality word =
       check_z (label ^ " cursor") Z.one capability.cursor;
       Alcotest.(check (option string)) (label ^ " locality") locality capability.locality
 
-let metadata_contracts () =
+let metadata_contracts (() : unit) : unit =
   let fixtures =
     [
       ("vanilla", "(RW, 0, 8, 1)", "{3: (RW, 0, 8, 1)}",
@@ -95,7 +95,7 @@ let metadata_contracts () =
            words))
     [ "ucerise"; "mcerise" ]
 
-let base_word kind =
+let base_word (kind : Machine_view.semantic_kind) : Machine_view.word =
   {
     Machine_view.edit_text = "fallback";
     short_text = "fallback";
@@ -110,8 +110,10 @@ let base_word kind =
     annotations = [];
   }
 
-let integer value = { (base_word Machine_view.Integer) with integer = Some value }
-let capability ?locality ?(permissions = [ "RWX" ]) kind =
+let integer (value : Z.t) : Machine_view.word = { (base_word Machine_view.Integer) with integer = Some value }
+let capability ?locality:(locality : string option)
+    ?(permissions : string list = [ "RWX" ]) (kind : Machine_view.semantic_kind) :
+    Machine_view.word =
   {
     (base_word kind) with
     capability =
@@ -125,7 +127,7 @@ let capability ?locality ?(permissions = [ "RWX" ]) kind =
         };
   }
 
-let seal_range ?locality ~sealed permission =
+let seal_range ?locality:(locality : string option) ~sealed:(sealed : bool) (permission : string) : Machine_view.word =
   {
     (base_word (if sealed then Machine_view.Sealed_capability else Seal_range)) with
     seal_range =
@@ -159,8 +161,8 @@ let sealed_capability =
         };
   }
 
-let component_goldens () =
-  let render side word =
+let component_goldens (() : unit) : unit =
+  let render (side : Interactive_ui.side) (word : Machine_view.word) : string =
     Interactive_ui.word_snapshot ~address_limit:(Z.of_int 0x10000) ~width:52 ~side word
   in
   let cases =
@@ -204,16 +206,16 @@ malformed fallback=            malformed capability||}
   in
   Alcotest.(check string) "semantic word text golden" expected actual
 
-let contains text fragment =
-  let rec loop index =
+let contains (text : string) (fragment : string) : bool =
+  let rec loop (index : int) : bool =
     if index + String.length fragment > String.length text then false
     else if String.sub text index (String.length fragment) = fragment then true
     else loop (index + 1)
   in
   fragment = "" || loop 0
 
-let ansi_styles () =
-  let render word =
+let ansi_styles (() : unit) : unit =
+  let render (word : Machine_view.word) : string =
     Interactive_ui.word_ansi_snapshot ~address_limit:(Z.of_int 0x10000)
       ~width:52 ~side:Interactive_ui.Left word
   in
@@ -231,7 +233,7 @@ let ansi_styles () =
     (fun (label, output) ->
       Alcotest.(check bool) (label ^ " emits ANSI styling") true (contains output "\027["))
     styled;
-  let output label = List.assoc label styled in
+  let output (label : string) : string = List.assoc label styled in
   List.iter
     (fun (label, sgr) ->
       Alcotest.(check bool) (label ^ " exact ANSI color") true
@@ -276,13 +278,13 @@ let ansi_styles () =
   in
   Alcotest.(check bool) "halted state is bold" true (contains halted "\027[0;1m")
 
-let next ~rows event state =
+let next ~rows:(rows : int) (event : Interactive_ui.event) (state : Interactive_ui.t) : Interactive_ui.t =
   match Interactive_ui.transition ~rows event state with
   | Some state -> state
   | None -> Alcotest.fail "unexpected quit"
 
-let navigation_transitions () =
-  let register bank key = { Machine_view.Register_id.bank; key } in
+let navigation_transitions (() : unit) : unit =
+  let register (bank : Machine_view.register_bank) (key : string) : Machine_view.register_id = { Machine_view.Register_id.bank; key } in
   let stepping =
     create ~source:"mov r1 7\nhalt"
       ~regfile:"stk := (RWLX, LOCAL, 8, 56, 20)" "locality-cerise"
@@ -360,7 +362,7 @@ let navigation_transitions () =
   check_z "terminal lower boundary" Z.zero
     (Application_model.primary_start (Interactive_ui.application boundary))
 
-let all_backend_dimensions () =
+let all_backend_dimensions (() : unit) : unit =
   List.iter
     (fun backend ->
       let state = Interactive_ui.create (create backend) in
@@ -370,9 +372,9 @@ let all_backend_dimensions () =
           Alcotest.(check int) (backend ^ " width") width (Notty.I.width image);
           Alcotest.(check int) (backend ^ " height") height (Notty.I.height image))
         [ (120, 24); (48, 12); (1, 1); (0, 0) ])
-    (Backend_registry.names ())
+    (Backend_registry.available_backend_names ())
 
-let read_golden name =
+let read_golden (name : string) : string =
   let relative = "goldens/" ^ name ^ ".txt" in
   let path = if Sys.file_exists relative then relative else "tests/" ^ relative in
   let channel = open_in_bin path in
@@ -385,17 +387,17 @@ let read_golden name =
       then String.sub contents 0 (length - 1)
       else contents)
 
-let trim_line_end line =
-  let rec find index =
+let trim_line_end (line : string) : string =
+  let rec find (index : int) : int =
     if index < 0 || line.[index] <> ' ' then index + 1 else find (index - 1)
   in
   String.sub line 0 (find (String.length line - 1))
 
-let normalize_frame text =
+let normalize_frame (text : string) : string =
   String.split_on_char '\n' text |> List.map trim_line_end |> String.concat "\n"
 
-let full_frame_goldens () =
-  let session ?regfile backend source = create ?regfile ~source backend in
+let full_frame_goldens (() : unit) : unit =
+  let session ?regfile:(regfile : string option) (backend : string) (source : string) : Machine_session.t = create ?regfile ~source backend in
   let fixtures =
     [
       ( "locality-120x24",

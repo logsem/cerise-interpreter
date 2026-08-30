@@ -1,6 +1,7 @@
 open Ast
 
-let permission_parts (rx, write, deep_local, deep_read_only) =
+let permission_parts ((rx, write, deep_local, deep_read_only) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : string list =
   [
     Printer.rx_permission rx;
     Printer.write_permission write;
@@ -8,7 +9,8 @@ let permission_parts (rx, write, deep_local, deep_read_only) =
     Printer.deep_read_only_permission deep_read_only;
   ]
 
-let capability permission locality base limit cursor =
+let capability (permission : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) (locality : locality) (base : Z.t) (limit : Z.t) (cursor : Z.t) : Machine_view.capability option =
   Some
     {
       Machine_view.base;
@@ -18,7 +20,8 @@ let capability permission locality base limit cursor =
       locality = Some (Printer.locality locality);
     }
 
-let sealing ?object_type ~sealed (can_seal, can_unseal) =
+let sealing ?object_type:(object_type : Z.t option) ~sealed:(sealed : bool)
+    ((can_seal, can_unseal) : bool * bool) : Machine_view.sealing option =
   Some
     {
       Machine_view.object_type;
@@ -27,7 +30,7 @@ let sealing ?object_type ~sealed (can_seal, can_unseal) =
       is_sealed = sealed;
     }
 
-let word word =
+let word (word : word) : Machine_view.word =
   let edit_text = Printer.word word in
   let fingerprint = Digest.to_hex (Digest.string edit_text) in
   let decoded_instruction =
@@ -37,7 +40,7 @@ let word word =
         |> Option.map Printer.instruction
     | _ -> None
   in
-  let base kind integer capability seal_range sealing annotations =
+  let base (kind : Machine_view.semantic_kind) (integer : Z.t option) (capability : Machine_view.capability option) (seal_range : Machine_view.seal_range option) (sealing : Machine_view.sealing option) (annotations : (string * string) list) : Machine_view.word =
     {
       Machine_view.edit_text;
       short_text = edit_text;
@@ -89,7 +92,7 @@ let word word =
           ("cursor", Z.to_string cursor);
         ]
 
-let register_description register =
+let register_description (register : register) : Machine_view.register_id * string * Machine_view.register_role =
   let label = Printer.register register in
   match register with
   | PC ->
@@ -102,7 +105,7 @@ let register_description register =
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.Stack_pointer)
   | Reg _ -> ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
 
-let inspect ~backend_name state =
+let inspect ~backend_name:(backend_name : string) (state : State.t) : Machine_view.t =
   let registers =
     State.RegMap.bindings state.State.registers
     |> List.map (fun (register, value) ->
@@ -141,7 +144,7 @@ let inspect ~backend_name state =
     missing_cell = Default (word (I Z.zero));
   }
 
-let register_of_id (id : Machine_view.Register_id.t) =
+let register_of_id (id : Machine_view.Register_id.t) : (register, Diagnostic.t list) result =
   match (id.bank, id.key) with
   | System, "pc" -> Ok PC
   | General, name -> (

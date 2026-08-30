@@ -12,7 +12,7 @@ type error =
   | Unknown_opcode of int
   | Malformed_encoding of { opcode : int; case_name : string; message : string }
 
-let error_message = function
+let error_message (matched_value : error) : string = match matched_value with
   | Duplicate_case_name name -> Printf.sprintf "Duplicate instruction case name %S." name
   | Invalid_fixed_opcode { case_name; opcode } ->
       Printf.sprintf "Instruction case %S has invalid fixed opcode %d." case_name opcode
@@ -39,24 +39,24 @@ type 'a scalar_codec = {
   decode_scalar : Z.t -> ('a, string) result;
 }
 
-let scalar_codec ~name ~encode ~decode =
+let scalar_codec ~name:(name : string) ~encode:(encode : ('a -> (Z.t, string) result)) ~decode:(decode : (Z.t -> ('a, string) result)) : 'a scalar_codec =
   { scalar_name = name; encode_scalar = encode; decode_scalar = decode }
 
 let zarith = scalar_codec ~name:"integer" ~encode:Result.ok ~decode:Result.ok
 
 let nonnegative_zarith =
-  let check value =
+  let check (value : Z.t) : (Z.t, string) result =
     if Z.sign value < 0 then Error "expected a non-negative integer" else Ok value
   in
   scalar_codec ~name:"non-negative integer" ~encode:check ~decode:check
 
-let enum ~name values =
-  let rec encode index value = function
+let enum ~name:(name : string) (values : 'a list) : 'a scalar_codec =
+  let rec encode (index : int) (value : 'a) (matched_value : 'a list) : (Z.t, string) result = match matched_value with
     | [] -> Error (Printf.sprintf "unknown %s value" name)
     | candidate :: _ when candidate = value -> Ok (Z.of_int index)
     | _ :: rest -> encode (index + 1) value rest
   in
-  let decode encoded =
+  let decode (encoded : Z.t) : ('a, string) result =
     if Z.sign encoded < 0 || not (Z.fits_int encoded) then
       Error (Printf.sprintf "invalid %s encoding %s" name (Z.to_string encoded))
     else
@@ -79,7 +79,7 @@ let compact_even_bits =
   Array.init 256 (fun byte ->
       byte land 1 lor ((byte lsr 1) land 2) lor ((byte lsr 2) land 4) lor ((byte lsr 3) land 8))
 
-let split_unsigned value =
+let split_unsigned (value : Z.t) : Z.t * Z.t =
   let interleaved = Z.to_bits value in
   let interleaved_length = String.length interleaved in
   let output_length = (interleaved_length + 1) / 2 in
@@ -98,7 +98,7 @@ let split_unsigned value =
   done;
   (Z.of_bits (Bytes.unsafe_to_string first), Z.of_bits (Bytes.unsafe_to_string second))
 
-let interleave_unsigned first second =
+let interleave_unsigned (first : Z.t) (second : Z.t) : Z.t =
   let first = Z.to_bits first in
   let second = Z.to_bits second in
   let input_length = max (String.length first) (String.length second) in
@@ -119,7 +119,7 @@ let interleave_unsigned first second =
   done;
   Z.of_bits (Bytes.unsafe_to_string interleaved)
 
-let encode_signed_pair first second =
+let encode_signed_pair (first : Z.t) (second : Z.t) : Z.t =
   let signs =
     match (Z.sign second < 0, Z.sign first < 0) with
     | false, false -> Z.zero
@@ -129,7 +129,7 @@ let encode_signed_pair first second =
   in
   Z.logor signs (Z.shift_left (interleave_unsigned (Z.abs first) (Z.abs second)) 2)
 
-let decode_signed_pair encoded =
+let decode_signed_pair (encoded : Z.t) : Z.t * Z.t =
   let first_negative = Z.testbit encoded 0 in
   let second_negative = Z.testbit encoded 1 in
   let first, second = split_unsigned (Z.shift_right encoded 2) in
@@ -141,7 +141,7 @@ type 'a shape = {
   decode_shape : int -> Z.t -> ('a, string) result;
 }
 
-let variant_span shape = shape.span
+let variant_span (shape : 'a shape) : int = shape.span
 
 let unit =
   {
@@ -154,7 +154,7 @@ let unit =
         else Ok ());
   }
 
-let scalar codec =
+let scalar (codec : 'a scalar_codec) : 'a shape =
   {
     span = 1;
     encode_shape =
@@ -165,20 +165,20 @@ let scalar codec =
         else codec.decode_scalar payload);
   }
 
-let register = scalar
+let register (type value) (codec : value scalar_codec) : value shape = scalar codec
 
 let signed_zarith =
-  let encode value =
+  let encode (value : Z.t) : Z.t =
     if Z.sign value < 0 then Z.pred (Z.mul (Z.abs value) (Z.of_int 2)) else Z.mul value (Z.of_int 2)
   in
-  let decode value =
+  let decode (value : Z.t) : (Z.t, string) result =
     if Z.sign value < 0 then Error "expected a non-negative signed-integer payload"
     else if Z.testbit value 0 then Ok (Z.neg (Z.div (Z.succ value) (Z.of_int 2)))
     else Ok (Z.div value (Z.of_int 2))
   in
   scalar (scalar_codec ~name:"signed integer" ~encode:(fun value -> Ok (encode value)) ~decode)
 
-let register_or_constant register_codec constant_codec =
+let register_or_constant (register_codec : 'a scalar_codec) (constant_codec : 'b scalar_codec) : ('a, 'b) register_or_constant shape =
   {
     span = 2;
     encode_shape =
@@ -195,7 +195,7 @@ let register_or_constant register_codec constant_codec =
         | _ -> Error "register-or-constant operand has an invalid opcode variant");
   }
 
-let pair left right =
+let pair (left : 'a shape) (right : 'b shape) : ('a * 'b) shape =
   {
     span = left.span * right.span;
     encode_shape =
@@ -222,7 +222,7 @@ let pair left right =
           | Error message, _ | _, Error message -> Error message);
   }
 
-let triple first second third =
+let triple (first : 'a shape) (second : 'b shape) (third : 'c shape) : ('a * 'b * 'c) shape =
   let nested = pair first (pair second third) in
   {
     span = nested.span;
@@ -244,7 +244,8 @@ type 'instruction case =
     }
       -> 'instruction case
 
-let case ~name ?(allocation = Auto) shape ~construct ~project =
+let case ~name:(name : string) ?(allocation : allocation = Auto) (shape : 'a shape)
+    ~construct:(construct : 'a -> 'b) ~project:(project : 'b -> 'a option) : 'b case =
   Case { name; allocation; shape; construct; project }
 
 type 'instruction compiled_case =
@@ -268,9 +269,9 @@ type 'instruction projection =
     }
       -> 'instruction projection
 
-let case_name (Case case) = case.name
+let case_name ((Case case) : 'a case) : string = case.name
 
-let duplicate_name_errors cases =
+let duplicate_name_errors (cases : 'a case list) : error list =
   let seen = Hashtbl.create (List.length cases) in
   List.filter_map
     (fun case ->
@@ -281,11 +282,11 @@ let duplicate_name_errors cases =
         None))
     cases
 
-let compile cases =
+let compile (cases : 'a case list) : ('a t, error list) result =
   let owners : string option array = Array.make 256 None in
   let starts : (string, int) Hashtbl.t = Hashtbl.create (List.length cases) in
   let errors = ref (duplicate_name_errors cases) in
-  let reserve name first span =
+  let reserve (name : string) (first : int) (span : int) : unit =
     if first < 0 || first >= Array.length owners then
       errors := Invalid_fixed_opcode { case_name = name; opcode = first } :: !errors
     else if span <= 0 || span > Array.length owners - first then
@@ -308,7 +309,7 @@ let compile cases =
           reserve case.name first case.shape.span)
     cases;
   let cursor = ref 0 in
-  let rec find_free span candidate =
+  let rec find_free (span : int) (candidate : int) : int option =
     if
       span <= 0
       || candidate < 0
@@ -316,7 +317,7 @@ let compile cases =
       || span > Array.length owners - candidate
     then None
     else
-      let rec range_is_free opcode remaining =
+      let rec range_is_free (opcode : int) (remaining : int) : bool =
         remaining = 0
         || (Option.is_none owners.(opcode) && range_is_free (opcode + 1) (remaining - 1))
       in
@@ -356,10 +357,10 @@ let compile cases =
       in
       Ok { cases = compiled }
 
-let allocations codec =
+let allocations (codec : 'a t) : (string * int * int) list =
   List.map (fun (Compiled_case case) -> (case.name, case.first_opcode, case.shape.span)) codec.cases
 
-let encode codec instruction =
+let encode (codec : 'a t) (instruction : 'a) : (Z.t, error) result =
   let projected =
     List.filter_map
       (fun (Compiled_case case) ->
@@ -397,7 +398,7 @@ let encode codec instruction =
       let names = List.map (fun (Projection projected) -> projected.name) projected in
       Error (Ambiguous_instruction names)
 
-let decode codec encoded =
+let decode (codec : 'a t) (encoded : Z.t) : ('a, error) result =
   if Z.sign encoded < 0 then Error (Negative_encoding encoded)
   else
     let opcode = Z.to_int (Z.extract encoded 0 8) in

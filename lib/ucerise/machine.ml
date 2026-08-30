@@ -4,7 +4,7 @@ module RegMap = Map.Make(struct type t = register let compare = compare end)
 module MemMap = Map.Make(Z)
 type status = Running | Halted | Failed
 type t = { config: Runtime_config.t; status: status; registers: word RegMap.t; memory: word MemMap.t }
-let init config program regfile =
+let init (config : Runtime_config.t) (program : word list) (regfile : (register * word) list option) : t =
   let stack = Runtime_config.stack_addr config and limit = Runtime_config.max_addr config in
   let registers = List.init 32 (fun n -> Reg n,I Z.zero) |> List.to_seq |> RegMap.of_seq in
   let registers = registers
@@ -18,28 +18,28 @@ let init config program regfile =
   let memory = List.mapi (fun address word -> Z.of_int address, word) program |> List.to_seq |> MemMap.of_seq in
   {config; status=Running; registers; memory}
 
-let read_register r s = RegMap.find r s.registers
-let read_memory a s =
+let read_register (r : register) (s : t) : word = RegMap.find r s.registers
+let read_memory (a : Z.t) (s : t) : word option =
   match MemMap.find_opt a s.memory with
   | Some w -> Some w
   | None when Z.sign a >= 0 && Z.compare a (Runtime_config.max_addr s.config) < 0 -> Some (I Z.zero)
   | None -> None
-let set_register r w s = {s with registers=RegMap.add r w s.registers}
-let set_memory_raw a w s = {s with memory=MemMap.add a w s.memory}
-let fail s = {s with status=Failed}
-let pc_next s =
+let set_register (r : register) (w : word) (s : t) : t = {s with registers=RegMap.add r w s.registers}
+let set_memory_raw (a : Z.t) (w : word) (s : t) : t = {s with memory=MemMap.add a w s.memory}
+let fail (s : t) : t = {s with status=Failed}
+let pc_next (s : t) : t =
   match read_register PC s with
   | Cap (Cap (p,l,b,e,a)) -> set_register PC (Cap (Cap (p,l,b,e,Z.succ a))) s
   | _ -> fail s
-let write_next r w s = pc_next (set_register r w s)
-let value s = function Register r -> read_register r s | Constant z -> I z
-let is_u = function URW|URWX|URWL|URWLX -> true | _ -> false
-let is_wl = function RWL|RWLX|URWL|URWLX -> true | _ -> false
-let can_read = function RO|RX|RW|RWX|RWL|RWLX -> true | _ -> false
-let can_write = function RW|RWX|RWL|RWLX -> true | _ -> false
-let executable = function RX|RWX|RWLX|URWX|URWLX -> true | _ -> false
-let promote = function URW->RW | URWX->RWX | URWL->RWL | URWLX->RWLX | p->p
-let permission_flows requested current =
+let write_next (r : register) (w : word) (s : t) : t = pc_next (set_register r w s)
+let value (s : t) (matched_value : reg_or_const) : word = match matched_value with Register r -> read_register r s | Constant z -> I z
+let is_u (matched_value : permission) : bool = match matched_value with URW|URWX|URWL|URWLX -> true | _ -> false
+let is_wl (matched_value : permission) : bool = match matched_value with RWL|RWLX|URWL|URWLX -> true | _ -> false
+let can_read (matched_value : permission) : bool = match matched_value with RO|RX|RW|RWX|RWL|RWLX -> true | _ -> false
+let can_write (matched_value : permission) : bool = match matched_value with RW|RWX|RWL|RWLX -> true | _ -> false
+let executable (matched_value : permission) : bool = match matched_value with RX|RWX|RWLX|URWX|URWLX -> true | _ -> false
+let promote (matched_value : permission) : permission = match matched_value with URW->RW | URWX->RWX | URWL->RWL | URWLX->RWLX | p->p
+let permission_flows (requested : permission) (current : permission) : bool =
   match requested with
   | O -> true
   | E -> (match current with E|RX|RWX|RWLX -> true | _ -> false)
@@ -53,15 +53,15 @@ let permission_flows requested current =
   | URWL -> (match current with URWL|URWLX|RWL|RWLX -> true | _ -> false)
   | URWX -> (match current with URWX|URWLX|RWX|RWLX -> true | _ -> false)
   | URWLX -> (match current with URWLX|RWLX -> true | _ -> false)
-let locality_flows requested current =
+let locality_flows (requested : locality) (current : locality) : bool =
   match requested,current with Local,Local | Local,Global | Global,Global -> true | _ -> false
-let valid_pc s =
+let valid_pc (s : t) : bool =
   match read_register PC s with
   | Cap (Cap (p,_,b,e,a)) when executable p -> b<=a && a<e && Option.is_some (read_memory a s)
   | _ -> false
 
-let rec execute op s =
-  let get r = read_register r s and v o = value s o in
+let rec execute (op : instruction) (s : t) : t =
+  let get (r : register) : word = read_register r s and v o = value s o in
   match op with
   | Fail -> fail s | Halt -> {s with status=Halted}
   | Move (r,o) -> write_next r (v o) s
@@ -132,7 +132,7 @@ let rec execute op s =
         write_next r (Cap (Cap (promote p,l,b,Z.min e a,a))) s
       | _ -> fail s)
 
-let step s =
+let step (s : t) : (t, Machine_backend.execution_error) result =
   if s.status <> Running then Error (Machine_backend.Stopped
     (if s.status=Halted then Machine_view.Halted else Machine_view.Failed))
   else if not (valid_pc s) then Ok (fail s)
@@ -142,7 +142,7 @@ let step s =
         | Some (I z) -> (match Codec.decode z with Ok op -> Ok (execute op s) | Error _ -> Ok (fail s))
         | _ -> Ok (fail s))
     | _ -> Ok (fail s)
-let rec step_n n s =
+let rec step_n (n : int) (s : t) : (t, Machine_backend.execution_error) result =
   if n<0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if n=0 then Ok s
   else match step s with

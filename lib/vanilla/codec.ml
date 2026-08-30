@@ -15,11 +15,11 @@ let register_codec =
 
 let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
 
-let from_operand = function
+let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with
   | Instruction_codec.Register r -> Register r
   | Instruction_codec.Constant z -> Constant z
 
-let to_operand = function
+let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with
   | Register r -> Instruction_codec.Register r
   | Constant z -> Instruction_codec.Constant z
 
@@ -29,7 +29,7 @@ let ro = Instruction_codec.pair r operand
 let roo = Instruction_codec.triple r operand operand
 let rrr = Instruction_codec.triple r r r
 
-let unit_case name construct project =
+let unit_case (name : string) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
   Instruction_codec.case ~name Instruction_codec.unit
     ~construct:(fun () -> construct)
     ~project:(fun x -> if project x then Some () else None)
@@ -117,11 +117,11 @@ let table =
 let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
 let allocations = Instruction_codec.allocations table
-let encode_tag tag scalar = Z.logor (Z.of_int tag) (Z.shift_left scalar 3)
-let permission_scalar = function O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
-let encode_permission p = encode_tag 0 (Z.of_int (permission_scalar p))
+let encode_tag (tag : int) (scalar : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left scalar 3)
+let permission_scalar (matched_value : permission) : int = match matched_value with O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
+let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
 
-let decode_permission z =
+let decode_permission (z : Z.t) : (permission, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) Z.zero) then
     Error "not a vanilla permission encoding"
   else
@@ -134,10 +134,10 @@ let decode_permission z =
     | payload when Z.equal payload (Z.of_int 7) -> Ok RWX
     | _ -> Error "unknown vanilla permission"
 
-let encode_seal_permission (s, u) =
+let encode_seal_permission ((s, u) : bool * bool) : Z.t =
   encode_tag 1 (Z.of_int ((if s then 2 else 0) + if u then 1 else 0))
 
-let decode_seal_permission z =
+let decode_seal_permission (z : Z.t) : (bool * bool, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 1)) then
     Error "not a seal permission encoding"
   else
@@ -148,7 +148,7 @@ let decode_seal_permission z =
     | payload when Z.equal payload (Z.of_int 3) -> Ok (true, true)
     | _ -> Error "unknown seal permission"
 
-let encode_word_type = function
+let encode_word_type (matched_value : word_type) : Z.t = match matched_value with
   | Integer -> encode_tag 3 Z.zero
   | Capability -> encode_tag 3 Z.one
   | Seal_range -> encode_tag 3 (Z.of_int 2)

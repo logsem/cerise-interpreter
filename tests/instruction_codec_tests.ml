@@ -41,12 +41,12 @@ module Codec_fixture = struct
   let codec = Instruction_codec.compile cases |> Result.get_ok
 end
 
-let check_round_trip instruction =
+let check_round_trip (instruction : Codec_fixture.instruction) : unit =
   let encoded = Instruction_codec.encode Codec_fixture.codec instruction |> Result.get_ok in
   let decoded = Instruction_codec.decode Codec_fixture.codec encoded |> Result.get_ok in
   Alcotest.(check bool) "codec round trip" true (instruction = decoded)
 
-let test_codec_allocation_and_variants () =
+let test_codec_allocation_and_variants (() : unit) : unit =
   Alcotest.(check (list (triple string int int)))
     "automatic and fixed allocations"
     [
@@ -82,7 +82,7 @@ let test_codec_allocation_and_variants () =
     "opcode occupies low eight bits" true
     (Z.equal (Z.extract encoded 0 8) (Z.of_int 3))
 
-let test_codec_large_signed_pairs () =
+let test_codec_large_signed_pairs (() : unit) : unit =
   let bit_count = 100_000 in
   let positive = Z.logor (Z.shift_left Z.one bit_count) (Z.of_int 0x5a) in
   let negative = Z.neg (Z.logor (Z.shift_left Z.one (bit_count + 37)) (Z.of_int 0xa5)) in
@@ -95,16 +95,20 @@ let test_codec_large_signed_pairs () =
      (Z.to_string first, Z.to_string second));
   check_round_trip (Codec_fixture.Signed_pair (negative, positive))
 
-let test_codec_structured_failures () =
+let test_codec_structured_failures (() : unit) : unit =
   let module C = Codec_fixture in
-  let compile_without_exception name cases =
+  let compile_without_exception (type instruction) (name : string)
+      (cases : instruction Instruction_codec.case list) :
+      (instruction Instruction_codec.t, Instruction_codec.error list) result =
     match Instruction_codec.compile cases with
     | result -> result
     | exception exn ->
         Alcotest.failf "%s raised %s instead of returning a structured error" name
           (Printexc.to_string exn)
   in
-  let halt_case ~name ?(allocation = Instruction_codec.Auto) shape =
+  let halt_case (type operand) ~name:(name : string)
+      ?(allocation : Instruction_codec.allocation = Instruction_codec.Auto)
+      (shape : operand Instruction_codec.shape) : C.instruction Instruction_codec.case =
     Instruction_codec.case ~name ~allocation shape ~construct:(fun _ -> C.Halt)
       ~project:(fun _ -> None)
   in

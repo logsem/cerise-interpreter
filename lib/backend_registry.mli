@@ -1,3 +1,3 @@
-val default : string
-val names : unit -> string list
-val find : string -> (module Machine_backend.S) option
+val default_backend_name : string
+val available_backend_names : unit -> string list
+val find_backend : string -> (module Machine_backend.S) option

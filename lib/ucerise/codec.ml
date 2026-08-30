@@ -14,18 +14,18 @@ let register_codec =
       else Error "invalid register encoding")
 
 let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
-let from_operand = function Instruction_codec.Register r -> Register r | Constant z -> Constant z
-let to_operand = function Register r -> Instruction_codec.Register r | Constant z -> Constant z
+let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with Instruction_codec.Register r -> Register r | Constant z -> Constant z
+let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with Register r -> Instruction_codec.Register r | Constant z -> Constant z
 let r = Instruction_codec.register register_codec
 let rr = Instruction_codec.pair r r
 let ro = Instruction_codec.pair r operand
 let roo = Instruction_codec.triple r operand operand
 let rro = Instruction_codec.triple r r operand
 
-let case name codec construct project =
+let case (name : string) (codec : 'a Instruction_codec.shape) (construct : ('a -> 'b)) (project : ('b -> 'a option)) : 'b Instruction_codec.case =
   Instruction_codec.case ~name codec ~construct ~project
 
-let unit_case name construct project =
+let unit_case (name : string) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
   case name Instruction_codec.unit (fun () -> construct)
     (fun x -> if project x then Some () else None)
 
@@ -82,20 +82,20 @@ let encode = Instruction_codec.encode table
 let decode = Instruction_codec.decode table
 let allocations = Instruction_codec.allocations table
 
-let encode_tag tag payload = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
+let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
 
-let permission_scalar = function
+let permission_scalar (matched_value : permission) : int = match matched_value with
   | O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
   | RWL -> 14 | RWLX -> 15 | URW -> 22 | URWX -> 23 | URWL -> 30 | URWLX -> 31
 
-let encode_permission p = encode_tag 0 (Z.of_int (permission_scalar p))
+let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
 
-let permission_of_scalar = function
+let permission_of_scalar (matched_value : int) : permission option = match matched_value with
   | 0 -> Some O | 1 -> Some E | 4 -> Some RO | 5 -> Some RX | 6 -> Some RW
   | 7 -> Some RWX | 14 -> Some RWL | 15 -> Some RWLX | 22 -> Some URW
   | 23 -> Some URWX | 30 -> Some URWL | 31 -> Some URWLX | _ -> None
 
-let decode_permission z =
+let decode_permission (z : Z.t) : (permission, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) Z.zero) then
     Error "not a uCerise permission encoding"
   else if not (Z.fits_int (Z.shift_right z 3)) then Error "unknown uCerise permission"
@@ -103,10 +103,10 @@ let decode_permission z =
     match permission_of_scalar (Z.to_int (Z.shift_right z 3)) with
     | Some p -> Ok p | None -> Error "unknown uCerise permission"
 
-let locality_scalar = function Global -> 2 | Local -> 1
-let encode_locality l = encode_tag 2 (Z.of_int (locality_scalar l))
+let locality_scalar (matched_value : locality) : int = match matched_value with Global -> 2 | Local -> 1
+let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
 
-let decode_locality z =
+let decode_locality (z : Z.t) : (locality, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 2)) then
     Error "not a uCerise locality encoding"
   else
@@ -115,10 +115,10 @@ let decode_locality z =
     | p when Z.equal p (Z.of_int 2) -> Ok Global
     | _ -> Error "unknown uCerise locality"
 
-let encode_permission_locality p l =
+let encode_permission_locality (p : permission) (l : locality) : Z.t =
   encode_tag 4 (Z.of_int ((locality_scalar l lsl 5) + permission_scalar p))
 
-let decode_permission_locality z =
+let decode_permission_locality (z : Z.t) : (permission * locality, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) (Z.of_int 4)) then
     Error "not a uCerise permission/locality encoding"
   else

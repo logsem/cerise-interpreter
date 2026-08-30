@@ -16,85 +16,89 @@ type asm_word = Asm_ir.word
 
 (* The generated machine fixes MemNum and ONum at this exclusive bound. *)
 let extracted_bound = Z.of_int 2_000_000
-let ( let* ) = Result.bind
-let boundary_error message = Error message
-let diagnostic message = Error [ Diagnostic.error message ]
-let rec nat_of_int n = if n = 0 then E.O else E.S (nat_of_int (n - 1))
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
+let boundary_error (message : 'a) : ('b, 'a) result = Error message
+let diagnostic (message : string) : ('a, Diagnostic.t list) result = Error [ Diagnostic.error message ]
+let rec nat_of_int (n : int) : E.nat = if n = 0 then E.O else E.S (nat_of_int (n - 1))
 
-let int_of_nat_bounded value =
-  let rec loop count = function
+let int_of_nat_bounded (value : E.nat) : (int, string) result =
+  let rec loop (count : int) (matched_value : E.nat) : (int, string) result = match matched_value with
     | E.O -> Ok count
     | E.S rest when count < 32 -> loop (count + 1) rest
     | E.S _ -> boundary_error "extracted register number exceeds 31"
   in
   loop 0 value
 
-let rec positive_of_z n =
+let rec positive_of_z (n : Z.t) : E.positive =
   if Z.equal n Z.one then E.XH
   else
     let quotient, remainder = Z.ediv_rem n (Z.of_int 2) in
     if Z.equal remainder Z.zero then E.XO (positive_of_z quotient)
     else E.XI (positive_of_z quotient)
 
-let z_to_e n =
+let z_to_e (n : Z.t) : E.z =
   match Z.sign n with
   | 0 -> E.Z0
   | 1 -> E.Zpos (positive_of_z n)
   | _ -> E.Zneg (positive_of_z (Z.neg n))
 
-let rec z_of_positive = function
+let rec z_of_positive (matched_value : E.positive) : Z.t = match matched_value with
   | E.XH -> Z.one
   | E.XO p -> Z.mul (Z.of_int 2) (z_of_positive p)
   | E.XI p -> Z.succ (Z.mul (Z.of_int 2) (z_of_positive p))
 
-let z_of_e = function
+let z_of_e (matched_value : E.z) : Z.t = match matched_value with
   | E.Z0 -> Z.zero
   | E.Zpos p -> z_of_positive p
   | E.Zneg p -> Z.neg (z_of_positive p)
 
-let register_to_e = function
+let register_to_e (matched_value : Ast.register) : (E.regName, string) result = match matched_value with
   | Ast.PC -> Ok E.PC
   | Ast.Reg n when n >= 0 && n <= 31 -> Ok (E.R (nat_of_int n))
   | Ast.Reg n -> boundary_error (Printf.sprintf "register r%d is outside Griotte's r0--r31 range" n)
 
-let register_of_e = function
+let register_of_e (matched_value : E.regName) : (Ast.register, string) result = match matched_value with
   | E.PC -> Ok Ast.PC
   | E.R n -> Result.map (fun n -> Ast.Reg n) (int_of_nat_bounded n)
 
-let system_register_to_e Ast.MTDC = E.MTDC
-let system_register_of_e E.MTDC = Ast.MTDC
+let system_register_to_e (Ast.MTDC : Ast.system_register) : E.sRegName = E.MTDC
+let system_register_of_e (E.MTDC : E.sRegName) : Ast.system_register = Ast.MTDC
 
-let permission_to_e (rx, w, dl, dro) =
+let permission_to_e ((rx, w, dl, dro) : Ast.rx_permission * Ast.write_permission * Ast.deep_local_permission *
+Ast.deep_read_only_permission) : E.perm =
   let rx = match rx with Ast.Orx -> E.Orx | R -> E.R0 | X -> E.X | XSR -> E.XSR in
   let w = match w with Ast.Ow -> E.Ow | W -> E.W | WL -> E.WL in
   let dl = match dl with Ast.LG -> E.LG | DL -> E.DL in
   let dro = match dro with Ast.LM -> E.LM | DRO -> E.DRO in
   E.BPerm (rx, w, dl, dro)
 
-let permission_of_e (E.BPerm (rx, w, dl, dro)) =
+let permission_of_e ((E.BPerm (rx, w, dl, dro)) : E.perm) : Ast.rx_permission * Ast.write_permission * Ast.deep_local_permission *
+Ast.deep_read_only_permission =
   let rx = match rx with E.Orx -> Ast.Orx | E.R0 -> R | E.X -> X | E.XSR -> XSR in
   let w = match w with E.Ow -> Ast.Ow | E.W -> W | E.WL -> WL in
   let dl = match dl with E.LG -> Ast.LG | E.DL -> DL in
   let dro = match dro with E.LM -> Ast.LM | E.DRO -> DRO in
   (rx, w, dl, dro)
 
-let locality_to_e = function Ast.Global -> E.Global | Local -> E.Local
-let locality_of_e = function E.Global -> Ast.Global | E.Local -> Local
+let locality_to_e (matched_value : Ast.locality) : E.locality = match matched_value with Ast.Global -> E.Global | Local -> E.Local
+let locality_of_e (matched_value : E.locality) : Ast.locality = match matched_value with E.Global -> Ast.Global | E.Local -> Local
 
-let finz_to_e kind value =
+let finz_to_e (kind : string) (value : Z.t) : (E.Coq_finz.finz, string) result =
   if Z.sign value < 0 || Z.compare value extracted_bound >= 0 then
     boundary_error
       (Printf.sprintf "%s %s is outside the extracted Griotte range [0,%s)" kind (Z.to_string value)
          (Z.to_string extracted_bound))
   else Ok (E.Coq_finz.FinZ (z_to_e value))
 
-let finz_of_e (E.Coq_finz.FinZ value) =
+let finz_of_e ((E.Coq_finz.FinZ value) : E.Coq_finz.finz) : (Z.t, string) result =
   let value = z_of_e value in
   if Z.sign value < 0 || Z.compare value extracted_bound >= 0 then
     boundary_error "generated machine produced an invalid finite value"
   else Ok value
 
-let sealable_to_e = function
+let sealable_to_e (matched_value : Ast.sealable) : (E.sealable, string) result = match matched_value with
   | Ast.Cap (p, l, b, e, a) ->
       let* b = finz_to_e "capability base" b in
       let* e = finz_to_e "capability limit" e in
@@ -106,7 +110,7 @@ let sealable_to_e = function
       let* a = finz_to_e "seal-range cursor" a in
       Ok (E.SSealRange (p, locality_to_e l, b, e, a))
 
-let sealable_of_e = function
+let sealable_of_e (matched_value : E.sealable) : (Ast.sealable, string) result = match matched_value with
   | E.SCap (p, l, b, e, a) ->
       let* b = finz_of_e b in
       let* e = finz_of_e e in
@@ -118,7 +122,7 @@ let sealable_of_e = function
       let* a = finz_of_e a in
       Ok (Ast.SealRange (p, locality_of_e l, b, e, a))
 
-let word_to_e = function
+let word_to_e (matched_value : Ast.word) : (E.word, string) result = match matched_value with
   | Ast.I z -> Ok (E.WInt (z_to_e z))
   | Ast.Sealable sealable -> Result.map (fun s -> E.WSealable s) (sealable_to_e sealable)
   | Ast.Sentry (p, l, b, e, a) ->
@@ -131,7 +135,7 @@ let word_to_e = function
       let* sealable = sealable_to_e sealable in
       Ok (E.WSealed (otype, sealable))
 
-let word_of_e = function
+let word_of_e (matched_value : E.word) : (Ast.word, string) result = match matched_value with
   | E.WInt z -> Ok (Ast.I (z_of_e z))
   | E.WSealable sealable -> Result.map (fun s -> Ast.Sealable s) (sealable_of_e sealable)
   | E.WSentry (p, l, b, e, a) ->
@@ -144,15 +148,15 @@ let word_of_e = function
       let* sealable = sealable_of_e sealable in
       Ok (Ast.Sealed (otype, sealable))
 
-let operand_to_e = function
+let operand_to_e (matched_value : Ast.reg_or_const) : ((E.z, E.regName) E.sum, string) result = match matched_value with
   | Ast.Constant z -> Ok (E.Inl (z_to_e z))
   | Ast.Register r -> Result.map (fun r -> E.Inr r) (register_to_e r)
 
-let operand_of_e = function
+let operand_of_e (matched_value : (E.z, E.regName) E.sum) : (Ast.reg_or_const, string) result = match matched_value with
   | E.Inl z -> Ok (Ast.Constant (z_of_e z))
   | E.Inr r -> Result.map (fun r -> Ast.Register r) (register_of_e r)
 
-let instruction_to_e = function
+let instruction_to_e (matched_value : Ast.instruction) : (E.instr, string) result = match matched_value with
   | Ast.Jmp a -> Result.map (fun a -> E.Jmp a) (operand_to_e a)
   | Jnz (r, a) ->
       let* r = register_to_e r in
@@ -235,7 +239,7 @@ let instruction_to_e = function
   | Fail -> Ok E.Fail
   | Halt -> Ok E.Halt
 
-let instruction_of_e = function
+let instruction_of_e (matched_value : E.instr) : (Ast.instruction, string) result = match matched_value with
   | E.Jmp a -> Result.map (fun a -> Ast.Jmp a) (operand_of_e a)
   | E.Jnz (a, r) ->
       let* r = register_of_e r in
@@ -322,7 +326,7 @@ let dummy_permission = permission_to_e Ast.null_permission
 
 exception Boundary_decode
 
-let decoded_or_fail = function Ok value -> value | Error _ -> raise Boundary_decode
+let decoded_or_fail (matched_value : ('a, 'b) result) : 'a = match matched_value with Ok value -> value | Error _ -> raise Boundary_decode
 
 (* Instruction decoding is totalized to [Fail]. Invalid scalar decodings raise
    the private [Boundary_decode] signal because substituting a valid permission
@@ -393,7 +397,7 @@ let parameters : E.machineParameters =
 
 type state = { config : Runtime_config.t; raw : E.conf; snapshot : State.t }
 
-let map_bindings_to_e bindings empty insert key_convert =
+let map_bindings_to_e (bindings : ('a * Ast.word) list) (empty : 'b) (insert : ('b -> 'c -> E.word -> 'b)) (key_convert : ('a -> ('c, string) result)) : ('b, string) result =
   List.fold_left
     (fun result (key, word) ->
       let* map = result in
@@ -402,7 +406,7 @@ let map_bindings_to_e bindings empty insert key_convert =
       Ok (insert map key word))
     (Ok empty) bindings
 
-let raw_of_snapshot (snapshot : State.t) =
+let raw_of_snapshot (snapshot : State.t) : (E.confFlag * ((E.reg * E.sReg) * E.mem), string) result =
   let* registers =
     map_bindings_to_e
       (State.RegMap.bindings snapshot.registers)
@@ -419,7 +423,7 @@ let raw_of_snapshot (snapshot : State.t) =
   in
   Ok (E.Executable, ((registers, system_registers), memory))
 
-let fold_extracted bindings empty add key_convert =
+let fold_extracted (bindings : ('a * E.word) list) (empty : 'b) (add : ('c -> Ast.word -> 'b -> 'b)) (key_convert : ('a -> ('c, string) result)) : ('b, string) result =
   List.fold_left
     (fun result (key, word) ->
       let* map = result in
@@ -428,7 +432,7 @@ let fold_extracted bindings empty add key_convert =
       Ok (add key word map))
     (Ok empty) bindings
 
-let snapshot_of_raw config (flag, conf) =
+let snapshot_of_raw (config : Runtime_config.t) ((flag, conf) : E.confFlag * E.execConf) : (State.t, string) result =
   try
     let* registers =
       fold_extracted
@@ -454,9 +458,9 @@ let snapshot_of_raw config (flag, conf) =
     Ok { State.config; status; registers; system_registers; memory }
   with _ -> boundary_error "exception while converting an extracted configuration"
 
-let fail_state state = { state with snapshot = { state.snapshot with status = State.Failed } }
+let fail_state (state : state) : state = { state with snapshot = { state.snapshot with status = State.Failed } }
 
-let init config program regfile =
+let init (config : Runtime_config.t) (program : Asm_ir.statement list) (regfile : Asm_ir.regfile_entry list option) : (state, Diagnostic.t list) result =
   if Z.compare (Runtime_config.max_addr config) extracted_bound > 0 then
     diagnostic
       (Printf.sprintf "Configured address limit %s exceeds extracted Griotte's fixed limit %s."
@@ -474,12 +478,15 @@ let init config program regfile =
     | Error message -> diagnostic ("Cannot represent initial extracted Griotte state: " ^ message)
     | Ok raw -> Ok { config; raw; snapshot }
 
-let parse_program = Parser.parse_program
-let parse_regfile = Parser.parse_regfile
-let parse_word = Parser.parse_word
-let inspect state = View.inspect ~backend_name:name state.snapshot
+let parse_program ?filename:(filename : string option) (source : string) :
+    (asm_program, Diagnostic.t list) result = Parser.parse_program ?filename source
+let parse_regfile ?filename:(filename : string option) (source : string) :
+    (asm_regfile, Diagnostic.t list) result = Parser.parse_regfile ?filename source
+let parse_word ?filename:(filename : string option) (source : string) :
+    (asm_word, Diagnostic.t list) result = Parser.parse_word ?filename source
+let inspect (state : state) : Machine_view.t = View.inspect ~backend_name:name state.snapshot
 
-let step state =
+let step (state : state) : (state, Machine_backend.execution_error) result =
   match state.snapshot.status with
   | State.Halted -> Error (Machine_backend.Stopped Machine_view.Halted)
   | Failed -> Error (Machine_backend.Stopped Machine_view.Failed)
@@ -492,7 +499,7 @@ let step state =
           | Ok snapshot -> Ok { state with raw; snapshot }
           | Error _ -> Ok (fail_state state)))
 
-let rec step_n count state =
+let rec step_n (count : int) (state : state) : (state, Machine_backend.execution_error) result =
   if count < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if count = 0 then Ok state
   else
@@ -501,9 +508,9 @@ let rec step_n count state =
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as error -> error
 
-let lower_edit state term = Asm_ir.lower_word state.config term
+let lower_edit (state : state) (term : asm_word) : (Ast.word, Diagnostic.t list) result = Asm_ir.lower_word state.config term
 
-let set_register id term state =
+let set_register (id : Machine_view.register_id) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   let* word = lower_edit state term in
   match (id.Machine_view.Register_id.bank, id.key) with
   | System, "mtdc" -> (
@@ -526,7 +533,7 @@ let set_register id term state =
           let snapshot = State.set_register register word state.snapshot in
           Ok { state with raw; snapshot })
 
-let set_memory address term state =
+let set_memory (address : Z.t) (term : asm_word) (state : state) : (state, Diagnostic.t list) result =
   if Z.sign address < 0 || Z.compare address (Runtime_config.max_addr state.config) >= 0 then
     diagnostic
       (Printf.sprintf "Memory address %s is outside the configured address space."

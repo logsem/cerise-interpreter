@@ -3,13 +3,13 @@ open Ast
 module RegMap = Map.Make (struct
   type t = register
 
-  let compare = compare
+  let compare (left : t) (right : t) : int = Stdlib.compare left right
 end)
 
 module SRegMap = Map.Make (struct
   type t = system_register
 
-  let compare = compare
+  let compare (left : t) (right : t) : int = Stdlib.compare left right
 end)
 
 module MemMap = Map.Make (Z)
@@ -24,12 +24,14 @@ type t = {
   memory : word MemMap.t;
 }
 
-let diagnostic message = Error [ Diagnostic.error message ]
-let ( let* ) = Result.bind
+let diagnostic (message : string) : ('a, Diagnostic.t list) result = Error [ Diagnostic.error message ]
+let ( let* ) (type value next error) (result : (value, error) result)
+        (continuation : value -> (next, error) result) : (next, error) result =
+  Result.bind result continuation
 let arch_root_memory_permission = (R, WL, LG, LM)
 let arch_root_executable_permission = (XSR, Ow, LG, LM)
 
-let rx_flows requested current =
+let rx_flows (requested : rx_permission) (current : rx_permission) : bool =
   match (requested, current) with
   | Orx, _ -> true
   | R, Orx -> false
@@ -39,7 +41,7 @@ let rx_flows requested current =
   | XSR, XSR -> true
   | XSR, _ -> false
 
-let write_flows requested current =
+let write_flows (requested : write_permission) (current : write_permission) : bool =
   match (requested, current) with
   | Ow, _ -> true
   | W, Ow -> false
@@ -47,36 +49,38 @@ let write_flows requested current =
   | WL, WL -> true
   | WL, _ -> false
 
-let deep_local_flows requested current =
+let deep_local_flows (requested : deep_local_permission) (current : deep_local_permission) : bool =
   match (requested, current) with DL, _ -> true | LG, LG -> true | LG, DL -> false
 
-let deep_read_only_flows requested current =
+let deep_read_only_flows (requested : deep_read_only_permission) (current : deep_read_only_permission) : bool =
   match (requested, current) with DRO, _ -> true | LM, LM -> true | LM, DRO -> false
 
-let permission_flows (rx, write, deep_local, deep_read_only)
-    (rx', write', deep_local', deep_read_only') =
+let permission_flows ((rx, write, deep_local, deep_read_only) : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission)
+    ((rx', write', deep_local', deep_read_only') : rx_permission * write_permission * deep_local_permission *
+deep_read_only_permission) : bool =
   rx_flows rx rx' && write_flows write write'
   && deep_local_flows deep_local deep_local'
   && deep_read_only_flows deep_read_only deep_read_only'
 
-let permission_of_word = function
+let permission_of_word (matched_value : word) : permission = match matched_value with
   | Sealable (Cap (permission, _, _, _, _))
   | Sentry (permission, _, _, _, _)
   | Sealed (_, Cap (permission, _, _, _, _)) ->
       permission
   | _ -> null_permission
 
-let word_is_derived word =
+let word_is_derived (word : word) : bool =
   permission_flows (permission_of_word word) arch_root_executable_permission
   || permission_flows (permission_of_word word) arch_root_memory_permission
 
-let zero_registers () =
+let zero_registers (() : unit) : word RegMap.t =
   let registers =
     List.init 32 (fun number -> (Reg number, I Z.zero)) |> List.to_seq |> RegMap.of_seq
   in
   registers |> RegMap.add PC (I Z.zero) |> RegMap.add cnull (I Z.zero)
 
-let initial_registers config =
+let initial_registers (config : Runtime_config.t) : word RegMap.t =
   let limit = Runtime_config.max_addr config in
   zero_registers ()
   |> RegMap.add PC (Sealable (Cap (arch_root_executable_permission, Global, Z.zero, limit, Z.zero)))
@@ -84,20 +88,20 @@ let initial_registers config =
   |> RegMap.add ca3 (Sealable (SealRange ((true, true), Global, Z.zero, max_object_type, Z.zero)))
   |> RegMap.add cnull (I Z.zero)
 
-let read_register register state =
+let read_register (register : register) (state : t) : word =
   match register with Reg 0 -> I Z.zero | _ -> RegMap.find register state.registers
 
-let set_register register word state =
+let set_register (register : register) (word : word) (state : t) : t =
   match register with
   | Reg 0 -> { state with registers = RegMap.add cnull (I Z.zero) state.registers }
   | _ -> { state with registers = RegMap.add register word state.registers }
 
-let set_system_register register word state =
+let set_system_register (register : system_register) (word : word) (state : t) : t =
   { state with system_registers = SRegMap.add register word state.system_registers }
 
-let set_memory_raw address word state = { state with memory = MemMap.add address word state.memory }
+let set_memory_raw (address : Z.t) (word : word) (state : t) : t = { state with memory = MemMap.add address word state.memory }
 
-let init config program regfile =
+let init (config : Runtime_config.t) (program : word list) (regfile : ((register * word) list * (system_register * word) list) option) : (t, Diagnostic.t list) result =
   let registers =
     match regfile with None -> initial_registers config | Some _ -> zero_registers ()
   in

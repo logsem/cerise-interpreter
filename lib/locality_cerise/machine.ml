@@ -3,7 +3,7 @@ open Ast
 module RegMap = Map.Make (struct
   type t = register
 
-  let compare a b =
+  let compare (a : t) (b : t) : int =
     match (a, b) with PC, PC -> 0 | PC, _ -> -1 | _, PC -> 1 | Reg a, Reg b -> Int.compare a b
 end)
 
@@ -18,7 +18,7 @@ type t = {
   memory : word MemMap.t;
 }
 
-let init config program regfile =
+let init (config : Runtime_config.t) (program : word list) (regfile : (register * word) list option) : t =
   let max_addr = Runtime_config.max_addr config and stack_addr = Runtime_config.stack_addr config in
   let registers = List.init 32 (fun n -> (Reg n, I Z.zero)) |> List.to_seq |> RegMap.of_seq in
   let registers =
@@ -40,19 +40,19 @@ let init config program regfile =
   in
   { config; status = Running; registers; memory }
 
-let read_register r state = RegMap.find r state.registers
+let read_register (r : register) (state : t) : word = RegMap.find r state.registers
 
-let read_memory a state =
+let read_memory (a : Z.t) (state : t) : word option =
   match MemMap.find_opt a state.memory with
   | Some w -> Some w
   | None when Z.sign a >= 0 && Z.compare a (Runtime_config.max_addr state.config) < 0 ->
       Some (I Z.zero)
   | None -> None
 
-let set_register r word state = { state with registers = RegMap.add r word state.registers }
-let set_memory_raw a word state = { state with memory = MemMap.add a word state.memory }
+let set_register (r : register) (word : word) (state : t) : t = { state with registers = RegMap.add r word state.registers }
+let set_memory_raw (a : Z.t) (word : word) (state : t) : t = { state with memory = MemMap.add a word state.memory }
 
-let pc_next state =
+let pc_next (state : t) : t =
   match read_register PC state with
   | Sealable (Cap (p, l, b, e, a)) ->
       {
@@ -61,10 +61,10 @@ let pc_next state =
       }
   | _ -> { state with status = Failed }
 
-let fail state = { state with status = Failed }
-let word_of_operand state = function Register r -> read_register r state | Constant z -> I z
+let fail (state : t) : t = { state with status = Failed }
+let word_of_operand (state : t) (matched_value : reg_or_const) : word = match matched_value with Register r -> read_register r state | Constant z -> I z
 
-let permission_flows requested current =
+let permission_flows (requested : permission) (current : permission) : bool =
   match requested with
   | O -> true
   | E -> ( match current with E | RX | RWX | RWLX -> true | _ -> false)
@@ -75,40 +75,40 @@ let permission_flows requested current =
   | RWL -> ( match current with RWL | RWLX -> true | _ -> false)
   | RWLX -> current = RWLX
 
-let seal_permission_flows (s, u) (s', u') = ((not s) || s') && ((not u) || u')
-let can_read = function RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
-let can_write = function RW | RWX | RWL | RWLX -> true | _ -> false
-let can_store_local = function RWL | RWLX -> true | _ -> false
-let is_exec = function RX | RWX | RWLX -> true | _ -> false
+let seal_permission_flows ((s, u) : bool * bool) ((s', u') : bool * bool) : bool = ((not s) || s') && ((not u) || u')
+let can_read (matched_value : permission) : bool = match matched_value with RO | RX | RW | RWX | RWL | RWLX -> true | _ -> false
+let can_write (matched_value : permission) : bool = match matched_value with RW | RWX | RWL | RWLX -> true | _ -> false
+let can_store_local (matched_value : permission) : bool = match matched_value with RWL | RWLX -> true | _ -> false
+let is_exec (matched_value : permission) : bool = match matched_value with RX | RWX | RWLX -> true | _ -> false
 
-let word_type = function
+let word_type (matched_value : word) : word_type = match matched_value with
   | I _ -> Integer
   | Sealable (Cap _) -> Capability
   | Sealable (SealRange _) -> Seal_range
   | Sealed _ -> Sealed
 
-let bounds = function Cap (_, _, b, e, a) | SealRange (_, _, b, e, a) -> (b, e, a)
-let locality = function Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
+let bounds (matched_value : sealable) : Z.t * Z.t * Z.t = match matched_value with Cap (_, _, b, e, a) | SealRange (_, _, b, e, a) -> (b, e, a)
+let locality (matched_value : sealable) : locality = match matched_value with Cap (_, l, _, _, _) | SealRange (_, l, _, _, _) -> l
 
-let with_cursor s cursor =
+let with_cursor (s : sealable) (cursor : Z.t) : sealable =
   match s with
   | Cap (p, l, b, e, _) -> Cap (p, l, b, e, cursor)
   | SealRange (p, l, b, e, _) -> SealRange (p, l, b, e, cursor)
 
-let with_bounds s base limit =
+let with_bounds (s : sealable) (base : Z.t) (limit : Z.t) : sealable =
   match s with
   | Cap (p, l, _, _, a) -> Cap (p, l, base, limit, a)
   | SealRange (p, l, _, _, a) -> SealRange (p, l, base, limit, a)
 
-let valid_pc state =
+let valid_pc (state : t) : bool =
   match read_register PC state with
   | Sealable (Cap ((RX | RWX | RWLX), _, b, e, a)) ->
       b <= a && a < e && Option.is_some (read_memory a state)
   | _ -> false
 
-let write_next r w state = pc_next (set_register r w state)
+let write_next (r : register) (w : word) (state : t) : t = pc_next (set_register r w state)
 
-let rec execute op state =
+let rec execute (op : instruction) (state : t) : t =
   let get = read_register and value = word_of_operand state in
   match op with
   | Fail -> fail state
@@ -246,7 +246,7 @@ let rec execute op state =
           | _ -> fail state)
       | _ -> fail state)
 
-let step state =
+let step (state : t) : (t, Machine_backend.execution_error) result =
   match state.status with
   | Halted -> Error (Machine_backend.Stopped Machine_view.Halted)
   | Failed -> Error (Machine_backend.Stopped Machine_view.Failed)
@@ -263,7 +263,7 @@ let step state =
             | _ -> Ok (fail state))
         | _ -> Ok (fail state))
 
-let rec step_n count state =
+let rec step_n (count : int) (state : t) : (t, Machine_backend.execution_error) result =
   if count < 0 then Error (Machine_backend.Backend_error "step count must be non-negative")
   else if count = 0 then Ok state
   else
@@ -272,15 +272,8 @@ let rec step_n count state =
     | Error (Machine_backend.Stopped _) -> Ok state
     | Error _ as e -> e
 
-let get_exec_state state = state.status
-let get_regfile state = state.registers
-let get_memory state = state.memory
-let read_reg = read_register
-let read_mem = read_memory
-let set_reg = set_register
-let set_mem = set_memory_raw
 
-let rec run state =
+let rec run (state : t) : t =
   match step state with
   | Ok next -> run next
   | Error (Machine_backend.Stopped _) -> state
