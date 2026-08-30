@@ -7,7 +7,7 @@ ddc:       RW     8-30 18   r9:                    0  r18:                    0 
  r5:                    0  r14:                    0  r23:                    0
  r6:                    0  r15:                    0  r24:                    0
  r7:                    0  r16:                    0  r25:                    0
-backend: vanilla                                                                                  machine state: Running
+                                                                                                  machine state: Running
 HEAP                                                                                                       CAPABILITY pc
 ┏ ▶  0                  B803  mov r1 7                                            mov r1 7  B803                   0 ◀ ┓
 ┃    1                    31  halt                                                    halt  31                     1   ┃
@@ -21,4 +21,4 @@ HEAP                                                                            
 ┃    9                     0  jmp pc                                                jmp pc  0                      9   ┃
 ┃    A                     0  jmp pc                                                jmp pc  0                      A   ┃
 ┃    B                     0  jmp pc                                                jmp pc  0                      B   ┃
-┃    C                     0  jmp pc                                                jmp pc  0                      C   ┃
+backend: vanilla

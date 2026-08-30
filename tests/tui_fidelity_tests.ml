@@ -396,6 +396,38 @@ let trim_line_end (line : string) : string =
 let normalize_frame (text : string) : string =
   String.split_on_char '\n' text |> List.map trim_line_end |> String.concat "\n"
 
+let cerisier_enclave_session (() : unit) : Machine_session.t =
+  let relative = "test_files/cerisier/pos/enclave.s" in
+  let path = if Sys.file_exists relative then relative else "tests/" ^ relative in
+  let source = In_channel.with_open_bin path In_channel.input_all in
+  let rec advance remaining session =
+    let populated =
+      match (Machine_session.view session).Machine_view.enclave_table with
+      | Some { entries = _ :: _; _ } -> true
+      | _ -> false
+    in
+    if populated then session
+    else if remaining = 0 then Alcotest.fail "Cerisier example did not initialize an enclave"
+    else
+      match Machine_session.step session with
+      | Ok session -> advance (remaining - 1) session
+      | Error _ -> Alcotest.fail "Cerisier example stopped before EInit"
+  in
+  advance 100 (create ~source "cerisier")
+
+let enclave_layout_and_truncation (() : unit) : unit =
+  let snapshot =
+    Interactive_ui.snapshot ~width:120 ~height:19
+      (Interactive_ui.create (cerisier_enclave_session ()))
+    |> normalize_frame
+  in
+  let lines = String.split_on_char '\n' snapshot in
+  Alcotest.(check int) "fixed constrained height" 19 (List.length lines);
+  Alcotest.(check bool) "clipped enclave count" true
+    (contains snapshot "… +1 enclave(s)");
+  Alcotest.(check string) "footer occupies final row" "backend: cerisier"
+    (List.nth lines 18)
+
 let full_frame_goldens (() : unit) : unit =
   let session ?regfile:(regfile : string option) (backend : string) (source : string) : Machine_session.t = create ?regfile ~source backend in
   let fixtures =
@@ -422,6 +454,8 @@ let full_frame_goldens (() : unit) : unit =
         12,
         session ~regfile:"stk := (RWLX, LOCAL, 16, 48, 24)"
           "locality-cerise" "mov r1 7\nhalt" );
+      ("cerisier-empty-120x30", 120, 30, session "cerisier" "halt");
+      ("cerisier-populated-120x30", 120, 30, cerisier_enclave_session ());
     ]
   in
   List.iter
@@ -440,5 +474,6 @@ let () =
       ("ansi", [ Alcotest.test_case "legacy style palette" `Quick ansi_styles ]);
       ("navigation", [ Alcotest.test_case "context and panel transitions" `Quick navigation_transitions ]);
       ("dimensions", [ Alcotest.test_case "all backends and terminal sizes" `Quick all_backend_dimensions ]);
+      ("enclaves", [ Alcotest.test_case "layout and truncation" `Quick enclave_layout_and_truncation ]);
       ("frames", [ Alcotest.test_case "complete text goldens" `Quick full_frame_goldens ]);
     ]

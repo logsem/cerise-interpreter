@@ -10,7 +10,7 @@ cnull:                                       0    ca2:                          
   cs0:                                       0    cs4:                                       0   mtdc:       [R W DL DRO]    Global    0-40  0
   cs1:                                       0    cs5:                                       0
   ca0:                                       0    cs6:                                       0
-backend: griotte                                                                                                                          machine state: Running
+                                                                                                                                          machine state: Running
 HEAP                                                                                                                                                       STACK
 ┏ ▶  0                                    1BC08  mov ca0 7                                               jmp pc  0                                        16   ┃
 ┃    1                                       36  halt                                                    jmp pc  0                                        17   ┃
@@ -27,4 +27,4 @@ HEAP                                                                            
 ┃    C                                        0  jmp pc                                                  jmp pc  0                                        22   ┃
 ┃    D                                        0  jmp pc                                                  jmp pc  0                                        23   ┃
 ┃    E                                        0  jmp pc                                                  jmp pc  0                                        24   ┃
-┃    F                                        0  jmp pc                                                  jmp pc  0                                        25   ┃
+backend: griotte

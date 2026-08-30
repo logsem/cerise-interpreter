@@ -57,6 +57,9 @@ let machine_alias (state : Cerise.Vanilla.Machine.t) : Cerise.Machine.t = state
 let typed_seal_range (word : Cerise.Machine_view.word) : Cerise.Machine_view.seal_range option =
   word.seal_range
 
+let typed_enclave_table (view : Cerise.Machine_view.t) : Cerise.Machine_view.enclave_table option =
+  view.enclave_table
+
 let default_backend_name : string = Cerise.Backend_registry.default_backend_name
 let available_backend_names : string list = Cerise.Backend_registry.available_backend_names ()
 let selected_backend : (module Cerise.Machine_backend.S) option =
@@ -78,6 +81,7 @@ let backends : (module Cerise.Machine_backend.S) list =
 let () =
   ignore machine_alias;
   ignore typed_seal_range;
+  ignore typed_enclave_table;
   ignore available_backend_names;
   ignore selected_backend;
   ignore find_memory_word;

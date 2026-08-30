@@ -140,6 +140,7 @@ let inspect ~backend_name:(backend_name : string) (state : State.t) : Machine_vi
     address_limit = Runtime_config.max_addr state.config;
     pc;
     registers;
+    enclave_table = None;
     memory;
     missing_cell = Default (word (I Z.zero));
   }

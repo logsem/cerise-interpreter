@@ -128,6 +128,7 @@ let inspect (state : state) : Machine_view.t =
     address_limit = Runtime_config.max_addr state.config;
     pc;
     registers;
+    enclave_table = None;
     memory;
     missing_cell = Default (view_word (Ast.I Z.zero));
   }

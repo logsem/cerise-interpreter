@@ -55,6 +55,8 @@ type word = {
 type register = { id : register_id; label : string; role : register_role; word : word }
 type memory_cell = { address : Z.t; word : word }
 type missing_cell = Unmapped | Default of word
+type enclave_table_entry = { id : Z.t; identity : Z.t }
+type enclave_table = { counter : Z.t; entries : enclave_table_entry list }
 
 type t = {
   backend_name : string;
@@ -62,12 +64,13 @@ type t = {
   address_limit : Z.t;
   pc : Z.t option;
   registers : register list;
+  enclave_table : enclave_table option;
   memory : memory_cell list;
   missing_cell : missing_cell;
 }
 
 let find_register (id : register_id) (view : t) : register option =
-  List.find_opt (fun register -> Register_id.equal id register.id) view.registers
+  List.find_opt (fun (register : register) -> Register_id.equal id register.id) view.registers
 
 let find_memory_word (address : Z.t) (view : t) : word option =
   if Z.sign address < 0 || Z.compare address view.address_limit >= 0 then None

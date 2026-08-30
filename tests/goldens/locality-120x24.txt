@@ -9,7 +9,7 @@ ddc:       SU    Global    0-20  0  r11:                             0  r22:    
  r7:                             0  r18:                             0  r29:                             0
  r8:                             0  r19:                             0  r30:                             0
  r9:                             0  r20:                             0  stk:       RWLX  Local    10-30 18
-backend: locality-cerise                                                                          machine state: Running
+                                                                                                  machine state: Running
 HEAP                                                                                                               STACK
 ┏ ▶  0                           B803  mov r1 7                            jmp pc  0                              16   ┃
 ┃    1                             32  halt                                jmp pc  0                              17   ┃
@@ -21,4 +21,4 @@ HEAP                                                                            
 ┃    7                              0  jmp pc                              jmp pc  0                              1D   ┃
 ┃    8                              0  jmp pc                              jmp pc  0                              1E   ┃
 ┃    9                              0  jmp pc                              jmp pc  0                              1F   ┃
-┃    A                              0  jmp pc                              jmp pc  0                              20   ┃
+backend: locality-cerise

@@ -120,6 +120,14 @@ let inspect (state : state) : Machine_view.t =
     Machine.MemMap.bindings state.Machine.memory
     |> List.map (fun (address, word) -> { Machine_view.address; word = view_word word })
   in
+  let enclave_table =
+    {
+      Machine_view.counter = state.Machine.enclave_counter;
+      entries =
+        (Machine.ETableMap.bindings state.Machine.enclave_table
+        |> List.map (fun (id, identity) -> { Machine_view.id; identity }));
+    }
+  in
   let pc =
     match Machine.read_register Ast.PC state with
     | Ast.Sealable (Ast.Cap (_, _, _, _, a)) -> Some a
@@ -132,6 +140,7 @@ let inspect (state : state) : Machine_view.t =
     address_limit = Runtime_config.max_addr state.config;
     pc;
     registers;
+    enclave_table = Some enclave_table;
     memory;
     missing_cell = Default (view_word (Ast.I Z.zero));
   }

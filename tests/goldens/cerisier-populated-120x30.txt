@@ -1,0 +1,30 @@
+ pc:       RWX   Global    0-15  C  r10:                             0  r21:                             0
+ddc:       E     Global   15-2B 16  r11:                             0  r22:                             0
+ r1:       RX    Global   15-2B 16  r12:                             0  r23:                             0
+ r2:                            15  r13:                             0  r24:                             0
+ r3:                            2B  r14:                             0  r25:                             0
+ r4:                             0  r15:                             0  r26:                             0
+ r5:                             0  r16:                             0  r27:                             0
+ r6:                             0  r17:                             0  r28:                             0
+ r7:                             0  r18:                             0  r29:                             0
+ r8:                             0  r19:                             0  r30:                             0
+ r9:                             0  r20:                             0  stk:                             0
+ENCLAVES  counter: 1
+id  identity
+0   25EB171C
+                                                                                                  machine state: Running
+HEAP                                                                                                       CAPABILITY pc
+┃    A                       20229022  restrict r1 556            restrict r1 556  20229022                        A   ┃
+┃    B                           2438  einit r0 r1                    einit r0 r1  2438                            B   ┃
+┃ ▶  C                         100002  mov r31 pc                      mov r31 pc  100002                          C ◀ ┃
+┃    D                         102820  lea r31 3                        lea r31 3  102820                          D   ┃
+┃    E                            100  jmp r0                              jmp r0  100                             E   ┃
+┃    F                           342C  getotype r2 r1              getotype r2 r1  342C                            F   ┃
+┃   10                           683A  estoreid r3 r2              estoreid r3 r2  683A                           10   ┃
+┃   11                         100002  mov r31 pc                      mov r31 pc  100002                         11   ┃
+┃   12                         102820  lea r31 3                        lea r31 3  102820                         12   ┃
+┃   13                            600  jmp r5                              jmp r5  600                            13   ┃
+┗   14                             3D  halt                                  halt  3D                             14   ┛
+    15        RW    Global   2B-2E 2B                                              2B RW    Global   2B-2E        15
+    16                            402                                              402                            16
+backend: cerisier

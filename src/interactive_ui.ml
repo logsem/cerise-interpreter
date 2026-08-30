@@ -229,7 +229,8 @@ let word_image (frame : fields) (side : side) (word : Machine_view.word) : image
 let word_snapshot_with (capability : Cap.t) ~address_limit:(address_limit : Z.t) ~width:(width : int) ~side:(side : side) (word : Machine_view.word) : string =
   let view = {
     Machine_view.backend_name = "test"; status = Running; address_limit; pc = None;
-    registers = []; memory = [ { address = Z.zero; word } ]; missing_cell = Unmapped;
+    registers = []; enclave_table = None; memory = [ { address = Z.zero; word } ];
+    missing_cell = Unmapped;
   } in
   let frame = fields view in
   let output = Buffer.create width in
@@ -312,7 +313,7 @@ let panel (frame : fields) ~title:(title : string) ~side:(side : side) ~capabili
 
 let deduplicate (registers : Machine_view.register list) : Machine_view.register list =
   List.fold_left
-    (fun unique register ->
+    (fun unique (register : Machine_view.register) ->
       if List.exists
            (fun (other : Machine_view.register) ->
              Machine_view.Register_id.equal register.Machine_view.id other.id)
@@ -353,9 +354,9 @@ let prioritized_registers (application : Application_model.t) (registers : Machi
     let ordered =
       preferred
       @ List.filter
-          (fun register ->
+          (fun (register : Machine_view.register) ->
             not (List.exists
-                   (fun preferred ->
+                   (fun (preferred : Machine_view.register) ->
                      Machine_view.Register_id.equal register.Machine_view.id
                        preferred.Machine_view.id)
                    preferred))
@@ -396,16 +397,64 @@ let register_panel (frame : fields) ~max_rows:(max_rows : int) (width : int) (ap
       |> List.fold_left ( <|> ) I.empty |> snap_left width)
     |> List.fold_left ( <-> ) I.empty
 
+let enclave_panel (width : int) (max_rows : int) (table : Machine_view.enclave_table) : image =
+  if max_rows <= 0 then I.empty
+  else
+    let heading = text width A.empty ("ENCLAVES  counter: " ^ hex table.counter) in
+    if max_rows = 1 then heading
+    else
+      let entry_count = List.length table.entries in
+      if max_rows = 2 then
+        if entry_count = 0 then heading <-> text width fallback_style "<empty>"
+        else
+          heading
+          <-> text width fallback_style (Printf.sprintf "… +%d enclave(s)" entry_count)
+      else
+        let id_width =
+          List.fold_left
+            (fun result (entry : Machine_view.enclave_table_entry) ->
+              max result (String.length (hex entry.id)))
+            (String.length "id") table.entries
+        in
+        let identity_width =
+          List.fold_left
+            (fun result (entry : Machine_view.enclave_table_entry) ->
+              max result (String.length (hex entry.identity)))
+            (String.length "identity") table.entries
+        in
+        let row id identity =
+          text width A.empty (pad_right id_width id ^ "  " ^ pad_right identity_width identity)
+        in
+        let header = row "id" "identity" in
+        if entry_count = 0 then heading <-> header <-> text width fallback_style "<empty>"
+        else
+          let data_rows = max_rows - 2 in
+          let keep = if entry_count <= data_rows then entry_count else max 0 (data_rows - 1) in
+          let entries =
+            table.entries
+            |> List.filteri (fun index _ -> index < keep)
+            |> List.map (fun (entry : Machine_view.enclave_table_entry) ->
+                row (hex entry.id) (hex entry.identity))
+          in
+          let rows =
+            if keep = entry_count then entries
+            else
+              entries
+              @ [ text width fallback_style
+                    (Printf.sprintf "… +%d enclave(s)" (entry_count - keep)) ]
+          in
+          List.fold_left ( <-> ) (heading <-> header) rows
+
 let status_row (width : int) (view : Machine_view.t) : image =
   let state_label = "machine state: " in
   let state_value = status_text view.Machine_view.status in
-  let state_width = String.length state_label + String.length state_value in
   let state =
     I.string A.empty state_label <|> I.string (status_style view.status) state_value
   in
-  if state_width >= width then snap_right width state
-  else
-    text (width - state_width) A.empty ("backend: " ^ view.backend_name) <|> state
+  snap_right width state
+
+let footer_row (width : int) (view : Machine_view.t) : image =
+  text width A.empty ("backend: " ^ view.backend_name)
 
 let secondary_register (application : Application_model.t) : Machine_view.register option =
   match Application_model.active_stack_pointer application with
@@ -435,29 +484,46 @@ let render_parts ~width:(width : int) ~height:(height : int) (state : t) : image
   let frame = fields view in
   if width <= 0 || height <= 0 then
     (I.empty, compute_layout ~width:0 ~rows:0 ~show_secondary:false frame)
-  else if height < 5 then
-    let status = status_row width view in
-    let remaining = height - 1 in
+  else if height - 1 < 5 then
+    let body_height = height - 1 in
+    let status = if body_height <= 0 then I.empty else status_row width view in
+    let remaining = body_height - 1 in
     let primary_register =
       List.find_opt
         (fun (register : Machine_view.register) -> register.role = Program_counter)
         view.registers
     in
     let capability = active_capability primary_register in
-    let display = display_application state (max 0 (remaining - 1)) in
+    let memory_rows = if remaining = 1 then 1 else max 0 (remaining - 1) in
+    let display = display_application state memory_rows in
     let heap =
       if remaining <= 0 then I.empty
+      else if remaining = 1 then
+        memory_line frame ~side:Left ~capability view
+          (Application_model.primary_start display) width
       else
         panel frame ~title:"HEAP" ~side:Left ~capability view
-          (Application_model.primary_start display) (remaining - 1) width
+          (Application_model.primary_start display) memory_rows width
     in
-    (status <-> heap,
-     compute_layout ~width ~rows:(max 0 (remaining - 1)) ~show_secondary:false frame)
+    let body = I.vsnap ~align:`Top (max 0 body_height) (status <-> heap) in
+    (body <-> footer_row width view,
+     compute_layout ~width ~rows:memory_rows ~show_secondary:false frame)
   else
+    let body_height = height - 1 in
+    let enclave_heading_rows = if Option.is_some view.enclave_table then 1 else 0 in
     let registers =
-      register_panel frame ~max_rows:(height - 5) width state.application view.registers
+      register_panel frame ~max_rows:(body_height - 5 - enclave_heading_rows) width
+        state.application view.registers
     in
-    let memory_rows = max 3 (height - I.height registers - 2) in
+    let enclave =
+      match view.enclave_table with
+      | None -> I.empty
+      | Some table ->
+          enclave_panel width (body_height - I.height registers - 5) table
+    in
+    let memory_rows =
+      max 3 (body_height - I.height registers - I.height enclave - 2)
+    in
     let layout =
       compute_layout ~width ~rows:memory_rows ~show_secondary:state.show_secondary frame
     in
@@ -489,7 +555,8 @@ let render_parts ~width:(width : int) ~height:(height : int) (state : t) : image
         in
         primary <|> I.string A.empty (spaces layout.gap) <|> secondary
     in
-    (registers <-> status_row width view <-> memories, layout)
+    let body = registers <-> enclave <-> status_row width view <-> memories in
+    (I.vsnap ~align:`Top body_height body <-> footer_row width view, layout)
 
 let render ~width:(width : int) ~height:(height : int) (state : t) : image =
   if width <= 0 || height <= 0 then I.empty

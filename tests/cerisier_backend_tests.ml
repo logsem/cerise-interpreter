@@ -435,6 +435,47 @@ let einit_configured_region (() : unit) : unit =
       | _ -> Alcotest.fail (label ^ " did not return an E capability"))
     [ ("bounded", bounded_end, bounded); ("oversized", oversized_end, oversized) ]
 
+let enclave_machine_view (() : unit) : unit =
+  let open Cerisier.Ast in
+  let initial = Cerisier.Machine.init config [] None in
+  let initial_view = Cerisier.Backend.inspect initial in
+  let table (view : Machine_view.t) : Machine_view.enclave_table =
+    match view.enclave_table with
+    | Some table -> table
+    | None -> Alcotest.fail "Cerisier enclave table was absent"
+  in
+  let initial_table = table initial_view in
+  Alcotest.(check string) "initial counter" "0" (Z.to_string initial_table.counter);
+  Alcotest.(check int) "initial table is empty" 0 (List.length initial_table.entries);
+  let enclave_base = Z.of_int 4 in
+  let key_address = Z.of_int 20 in
+  let initialized =
+    initial
+    |> Cerisier.Machine.set_register PC
+         (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
+    |> Cerisier.Machine.set_register (Reg 2)
+         (Sealable (Cap (RX, Global, enclave_base, Z.of_int 6, Z.of_int 5)))
+    |> Cerisier.Machine.set_memory_raw enclave_base
+         (Sealable (Cap (RW, Global, key_address, Z.of_int 24, key_address)))
+    |> Cerisier.Machine.execute (EInit (Reg 1, Reg 2))
+  in
+  let initialized_table = Cerisier.Backend.inspect initialized |> table in
+  Alcotest.(check string) "counter after EInit" "1"
+    (Z.to_string initialized_table.counter);
+  (match initialized_table.entries with
+  | [ entry ] -> Alcotest.(check string) "first ordered enclave ID" "0" (Z.to_string entry.id)
+  | entries -> Alcotest.failf "expected one enclave entry, got %d" (List.length entries));
+  let seal_keys = Cerisier.Machine.read_memory key_address initialized |> Option.get in
+  let deinitialized =
+    initialized |> Cerisier.Machine.set_register (Reg 3) seal_keys
+    |> Cerisier.Machine.execute (EDeInit (Reg 3))
+  in
+  let deinitialized_table = Cerisier.Backend.inspect deinitialized |> table in
+  Alcotest.(check string) "counter remains monotone" "1"
+    (Z.to_string deinitialized_table.counter);
+  Alcotest.(check int) "table after EDeInit is empty" 0
+    (List.length deinitialized_table.entries)
+
 let fixture (name : string) : string =
   let local = "test_files/cerisier/pos/" ^ name in
   if Sys.file_exists local then local else "tests/" ^ local
@@ -494,6 +535,7 @@ let () =
           Alcotest.test_case "finite bounds and edits" `Quick finite_bounds_and_edits;
           Alcotest.test_case "historical parity rules" `Quick parity_rules;
           Alcotest.test_case "EInit configured-memory region" `Quick einit_configured_region;
+          Alcotest.test_case "machine view enclave state" `Quick enclave_machine_view;
           Alcotest.test_case "examples and enclave lifecycle" `Quick examples_and_lifecycle;
         ] );
     ]

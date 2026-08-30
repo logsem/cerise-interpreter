@@ -64,7 +64,7 @@ let inspect (state : state) : Machine_view.t =
     | Ast.Cap (Ast.Cap (_,_,_,_,a)) -> Some a | _ -> None in
   { Machine_view.backend_name=name;
     status=(match state.Machine.status with Running->Running|Halted->Halted|Failed->Failed);
-    address_limit=Runtime_config.max_addr state.config;pc;registers;memory;
+    address_limit=Runtime_config.max_addr state.config;pc;registers;enclave_table=None;memory;
     missing_cell=Default (view_word (Ast.I Z.zero)) }
 let register_of_id (id:Machine_view.Register_id.t) : (Ast.register, Diagnostic.t list) result =
   match id.bank,id.key with
