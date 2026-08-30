@@ -422,14 +422,16 @@ module Macro_processing = struct
   let validate_statement ~(parameters : (string * parameter_kind) list) (statement : statement) :
       Diagnostic.t list =
     let accumulator = ref [] in
-    let r (x : register_term) : unit =
-      accumulator := validate_register_term parameters !accumulator x
-    and o x = accumulator := validate_operand_term parameters !accumulator x in
+    let validate_register_usage (register : register_term) : unit =
+      accumulator := validate_register_term parameters !accumulator register
+    and validate_operand_usage (operand : operand_term) : unit =
+      accumulator := validate_operand_term parameters !accumulator operand
+    in
     (match statement with
     | Word w -> accumulator := validate_word_term parameters !accumulator w
     | Op op -> (
         match op with
-        | Jmp_term a -> o a
+        | Jmp_term a -> validate_operand_usage a
         | Jalr_term (a, b)
         | Load_term (a, b)
         | GetL_term (a, b)
@@ -439,16 +441,16 @@ module Macro_processing = struct
         | GetP_term (a, b)
         | GetOType_term (a, b)
         | GetWType_term (a, b) ->
-            r a;
-            r b
+            validate_register_usage a;
+            validate_register_usage b
         | Jnz_term (a, b)
         | Move_term (a, b)
         | Store_term (a, b)
         | Lea_term (a, b)
         | Restrict_term (a, b) ->
-            r a;
-            o b
-        | ReadSR_term (a, _) | WriteSR_term (_, a) -> r a
+            validate_register_usage a;
+            validate_operand_usage b
+        | ReadSR_term (a, _) | WriteSR_term (_, a) -> validate_register_usage a
         | Add_term (a, b, c)
         | Sub_term (a, b, c)
         | Mul_term (a, b, c)
@@ -458,13 +460,13 @@ module Macro_processing = struct
         | LShiftR_term (a, b, c)
         | Lt_term (a, b, c)
         | SubSeg_term (a, b, c) ->
-            r a;
-            o b;
-            o c
+            validate_register_usage a;
+            validate_operand_usage b;
+            validate_operand_usage c
         | Seal_term (a, b, c) | UnSeal_term (a, b, c) ->
-            r a;
-            r b;
-            r c
+            validate_register_usage a;
+            validate_register_usage b;
+            validate_register_usage c
         | Fail_term | Halt_term -> ()));
     List.rev !accumulator
 
@@ -781,101 +783,132 @@ module Concrete_lowering = struct
   let lower_instruction (config : Runtime_config.t) (instruction : instruction_term) :
       (instruction, Diagnostic.t list) result =
     let register = lower_register and operand = lower_operand config in
-    let rr (construct : register * register -> 'a) (first : register_term) (second : register_term)
-        : ('a, Diagnostic.t list) result =
+    let lower_register_pair (construct : register * register -> 'a) (first : register_term)
+        (second : register_term) : ('a, Diagnostic.t list) result =
       let* first = register first in
       Result.map (fun second -> construct (first, second)) (register second)
     in
-    let ro (construct : register * reg_or_const -> 'a) (destination : register_term)
-        (source : operand_term) : ('a, Diagnostic.t list) result =
+    let lower_register_and_operand (construct : register * reg_or_const -> 'a)
+        (destination : register_term) (source : operand_term) : ('a, Diagnostic.t list) result =
       let* destination = register destination in
       Result.map (fun source -> construct (destination, source)) (operand source)
     in
-    let roo (construct : register * reg_or_const * reg_or_const -> 'a) (destination : register_term)
-        (left : operand_term) (right : operand_term) : ('a, Diagnostic.t list) result =
+    let lower_register_and_two_operands (construct : register * reg_or_const * reg_or_const -> 'a)
+        (destination : register_term) (left : operand_term) (right : operand_term) :
+        ('a, Diagnostic.t list) result =
       let* destination = register destination in
       let* left = operand left in
       Result.map (fun right -> construct (destination, left, right)) (operand right)
     in
-    let rrr (construct : register * register * register -> 'a) (destination : register_term)
-        (source : register_term) (sealing : register_term) : ('a, Diagnostic.t list) result =
+    let lower_three_registers (construct : register * register * register -> 'a)
+        (destination : register_term) (source : register_term) (sealing : register_term) :
+        ('a, Diagnostic.t list) result =
       let* destination = register destination in
       let* source = register source in
       Result.map (fun sealing -> construct (destination, source, sealing)) (register sealing)
     in
     match instruction with
-    | Jalr_term (first, second) -> rr (fun (first, second) -> Jalr (first, second)) first second
+    | Jalr_term (first, second) ->
+        lower_register_pair (fun (first, second) -> Jalr (first, second)) first second
     | Jmp_term target -> Result.map (fun target -> Jmp target) (operand target)
     | Jnz_term (condition, target) ->
-        ro (fun (condition, target) -> Jnz (condition, target)) condition target
+        lower_register_and_operand
+          (fun (condition, target) -> Jnz (condition, target))
+          condition target
     | ReadSR_term (destination, system_register) ->
         Result.map (fun destination -> ReadSR (destination, system_register)) (register destination)
     | WriteSR_term (system_register, source) ->
         Result.map (fun source -> WriteSR (system_register, source)) (register source)
     | Move_term (destination, source) ->
-        ro (fun (destination, source) -> Move (destination, source)) destination source
+        lower_register_and_operand
+          (fun (destination, source) -> Move (destination, source))
+          destination source
     | Load_term (destination, source) ->
-        rr (fun (destination, source) -> Load (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> Load (destination, source))
+          destination source
     | Store_term (destination, source) ->
-        ro (fun (destination, source) -> Store (destination, source)) destination source
+        lower_register_and_operand
+          (fun (destination, source) -> Store (destination, source))
+          destination source
     | Add_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> Add (destination, left, right))
           destination left right
     | Sub_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> Sub (destination, left, right))
           destination left right
     | Mul_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> Mul (destination, left, right))
           destination left right
     | LAnd_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> LAnd (destination, left, right))
           destination left right
     | LOr_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> LOr (destination, left, right))
           destination left right
     | LShiftL_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> LShiftL (destination, left, right))
           destination left right
     | LShiftR_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> LShiftR (destination, left, right))
           destination left right
     | Lt_term (destination, left, right) ->
-        roo (fun (destination, left, right) -> Lt (destination, left, right)) destination left right
+        lower_register_and_two_operands
+          (fun (destination, left, right) -> Lt (destination, left, right))
+          destination left right
     | Lea_term (destination, source) ->
-        ro (fun (destination, source) -> Lea (destination, source)) destination source
+        lower_register_and_operand
+          (fun (destination, source) -> Lea (destination, source))
+          destination source
     | Restrict_term (destination, source) ->
-        ro (fun (destination, source) -> Restrict (destination, source)) destination source
+        lower_register_and_operand
+          (fun (destination, source) -> Restrict (destination, source))
+          destination source
     | SubSeg_term (destination, left, right) ->
-        roo
+        lower_register_and_two_operands
           (fun (destination, left, right) -> SubSeg (destination, left, right))
           destination left right
     | GetL_term (destination, source) ->
-        rr (fun (destination, source) -> GetL (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetL (destination, source))
+          destination source
     | GetB_term (destination, source) ->
-        rr (fun (destination, source) -> GetB (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetB (destination, source))
+          destination source
     | GetE_term (destination, source) ->
-        rr (fun (destination, source) -> GetE (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetE (destination, source))
+          destination source
     | GetA_term (destination, source) ->
-        rr (fun (destination, source) -> GetA (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetA (destination, source))
+          destination source
     | GetP_term (destination, source) ->
-        rr (fun (destination, source) -> GetP (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetP (destination, source))
+          destination source
     | GetOType_term (destination, source) ->
-        rr (fun (destination, source) -> GetOType (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetOType (destination, source))
+          destination source
     | GetWType_term (destination, source) ->
-        rr (fun (destination, source) -> GetWType (destination, source)) destination source
+        lower_register_pair
+          (fun (destination, source) -> GetWType (destination, source))
+          destination source
     | Seal_term (destination, source, sealing) ->
-        rrr
+        lower_three_registers
           (fun (destination, source, sealing) -> Seal (destination, source, sealing))
           destination source sealing
     | UnSeal_term (destination, source, sealing) ->
-        rrr
+        lower_three_registers
           (fun (destination, source, sealing) -> UnSeal (destination, source, sealing))
           destination source sealing
     | Fail_term -> Ok Fail

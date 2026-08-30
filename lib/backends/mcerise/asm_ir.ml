@@ -275,13 +275,16 @@ module Macro_processing = struct
   let validate_statement ~(parameters : (string * parameter_kind) list) (statement : statement) :
       Diagnostic.t list =
     let accumulator = ref [] in
-    let r (x : register_term) : unit = accumulator := validate_register parameters !accumulator x
-    and o (x : operand_term) : unit = accumulator := validate_operand parameters !accumulator x in
+    let validate_register_usage (register : register_term) : unit =
+      accumulator := validate_register parameters !accumulator register
+    and validate_operand_usage (operand : operand_term) : unit =
+      accumulator := validate_operand parameters !accumulator operand
+    in
     (match statement with
     | Word word -> accumulator := validate_word parameters !accumulator word
     | Op op -> (
         match op with
-        | Jmp_term a | PromoteU_term a -> r a
+        | Jmp_term a | PromoteU_term a -> validate_register_usage a
         | Jnz_term (a, b)
         | Load_term (a, b)
         | IsPtr_term (a, b)
@@ -290,23 +293,23 @@ module Macro_processing = struct
         | GetB_term (a, b)
         | GetE_term (a, b)
         | GetA_term (a, b) ->
-            r a;
-            r b
+            validate_register_usage a;
+            validate_register_usage b
         | Move_term (a, b) | Store_term (a, b) | Lea_term (a, b) | Restrict_term (a, b) ->
-            r a;
-            o b
+            validate_register_usage a;
+            validate_operand_usage b
         | Add_term (a, b, c)
         | Sub_term (a, b, c)
         | Lt_term (a, b, c)
         | SubSeg_term (a, b, c)
         | StoreU_term (a, b, c) ->
-            r a;
-            o b;
-            o c
+            validate_register_usage a;
+            validate_operand_usage b;
+            validate_operand_usage c
         | LoadU_term (a, b, c) ->
-            r a;
-            r b;
-            o c
+            validate_register_usage a;
+            validate_register_usage b;
+            validate_operand_usage c
         | Fail_term | Halt_term -> ()));
     List.rev !accumulator
 
