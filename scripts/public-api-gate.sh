@@ -2,21 +2,34 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--root DIR]" >&2
+  echo "Usage: $0 [--root DIR] [--skip-build]" >&2
   exit 2
 }
 
 repository_root=$(cd "$(dirname "$0")/.." && pwd)
-if [[ $# -gt 0 ]]; then
-  [[ $# -eq 2 && $1 == --root ]] || usage
-  repository_root=$(cd "$2" && pwd)
-fi
+skip_build=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root)
+      [[ $# -ge 2 ]] || usage
+      repository_root=$(cd "$2" && pwd)
+      shift 2
+      ;;
+    --skip-build)
+      skip_build=true
+      shift
+      ;;
+    *) usage ;;
+  esac
+done
 
 stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
 
 cd "$repository_root"
-dune build @install
+if ! "$skip_build"; then
+  dune build @install
+fi
 dune install --prefix "$stage" cerise-interpreter
 
 export OCAMLPATH="$stage/lib${OCAMLPATH:+:$OCAMLPATH}"

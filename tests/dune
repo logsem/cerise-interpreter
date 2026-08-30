@@ -23,6 +23,17 @@
 (rule
  (alias runtest)
  (deps
+  ../scripts/public-api-wiring-gate.sh
+  ../scripts/full-test.sh
+  ../scripts/public-api-gate.sh
+  ../Makefile
+  ../flake.nix)
+ (action
+  (run %{dep:../scripts/public-api-wiring-gate.sh} --root %{workspace_root})))
+
+(rule
+ (alias runtest)
+ (deps
   ../lib/griotte_extracted/scripts/check.sh
   ../lib/griotte_extracted/scripts/regenerate.sh
   ../lib/griotte_extracted/scripts/regeneration-gate.sh

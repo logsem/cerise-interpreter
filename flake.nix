@@ -21,6 +21,8 @@
               root = ./.;
               include = [
                 "dune-project"
+                "Makefile"
+                "flake.nix"
                 (inDirectory "src")
                 (inDirectory "lib")
                 (inDirectory "tests")
@@ -28,7 +30,7 @@
               ];
             };
 
-          nativeBuildInputs = [ pkgs.bash pkgs.ripgrep menhir ];
+          nativeBuildInputs = [ pkgs.bash pkgs.gnumake pkgs.ripgrep menhir ];
           postPatch = ''
             patchShebangs scripts lib/griotte_extracted/scripts
           '';
@@ -36,6 +38,11 @@
           checkInputs = [ alcotest ];
 
           doCheck = true;
+          checkPhase = ''
+            runHook preCheck
+            make test
+            runHook postCheck
+          '';
 
           meta = with pkgs.lib; {
             description =

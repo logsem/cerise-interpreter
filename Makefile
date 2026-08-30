@@ -10,7 +10,7 @@ clean:
 	dune clean
 
 test:
-	dune test
+	./scripts/full-test.sh --root "$(CURDIR)"
 
 regenerate-griotte-extracted:
 	./lib/griotte_extracted/scripts/regenerate.sh
