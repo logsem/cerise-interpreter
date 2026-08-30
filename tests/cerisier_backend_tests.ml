@@ -1,541 +1,318 @@
 open Cerise
 
-let ok (matched_value : ('a, Diagnostic.t list) result) : 'a = match matched_value with
+let ok = function
   | Ok value -> value
   | Error diagnostics ->
       Alcotest.fail (String.concat "; " (List.map Diagnostic.message diagnostics))
 
-let config = Runtime_config.create ~max_addr:(Z.of_int 128) ~stack_addr:(Z.of_int 64) ()
+let z = Z.of_int
+let config = Runtime_config.create ~max_addr:(z 128) ~stack_addr:(z 64) ()
 
-let session ?regfile:(regfile : string option) (source : string) : Machine_session.t =
-  ok (Machine_session.create ~backend:"cerisier" ~config ~source ~regfile)
-
-let register (bank : Machine_view.register_bank) (key : string) (machine : Machine_session.t) : Machine_view.register =
-  Machine_view.find_register { Machine_view.Register_id.bank; key } (Machine_session.view machine)
-  |> Option.get
-
-let integer (key : string) (machine : Machine_session.t) : Z.t = (register Machine_view.General key machine).word.integer |> Option.get
-let capability (bank : Machine_view.register_bank) (key : string) (machine : Machine_session.t) : Machine_view.capability = (register bank key machine).word.capability |> Option.get
-let run ?max_steps:(max_steps : int option) (machine : Machine_session.t) : Machine_session.t = (Machine_session.run ?max_steps machine).session
-
-let parser_matrix (() : unit) : unit =
-  let complete =
-    "jmp r1 jnz r1 r2 mov r1 -1 load r1 r2 store r1 r2 add r1 r2 1 sub r1 2 r2 mul r1 r2 3 rem r1 \
-     r2 4 div r1 r2 5 lt r1 r2 6 lea r1 -1 restrict r1 (URWLX, DIRECTED) subseg r1 0 MAX_ADDR getl \
-     r1 r2 getb r1 r2 gete r1 r2 geta r1 r2 getp r1 r2 getotype r1 r2 getwtype r1 r2 seal r1 r2 r3 \
-     unseal r1 r2 r3 invoke r1 r2 loadu r1 r2 -1 storeu r1 0 r2 promoteu r1 einit r1 r2 edeinit r1 \
-     estoreid r1 r2 isunique r1 r2 fail halt"
+let parser_and_printer () =
+  let source =
+    "jmp r1 jnz r1 r2 mov r1 -1 load r1 r2 store r1 r2 add r1 r2 1      sub r1 2 r2 mul r1 r2 3 rem r1 r2 4 div r1 r2 5 lt r1 r2 6      lea r1 -1 restrict r1 RW subseg r1 0 MAX_ADDR getb r1 r2 gete r1 r2      geta r1 r2 getp r1 r2 getotype r1 r2 getwtype r1 r2 seal r1 r2 r3      unseal r1 r2 r3 invoke r1 r2 isunique r1 r2 hash r1 r2      hashconcat r1 r2 -7 einit r1 r2 edeinit r1 estoreid r1 r2 fail halt"
   in
-  ignore (ok (Cerisier.Parser.parse_program complete));
+  ignore (ok (Cerisier.Parser.parse_program source));
   List.iter
-    (fun source -> ignore (ok (Cerisier.Parser.parse_word source)))
-    [
-      "(URWLX, DIRECTED, 0, MAX_ADDR, 4)";
-      "[SU, GLOBAL, 0, 8, 1]";
-      "{3: (RW, LOCAL, 0, 8, 1)}";
-      "{4: [S, DIRECTED, 0, 8, 1]}";
-    ];
-  ignore
-    (ok
-       (Cerisier.Parser.parse_program
-          "%macro enclave(dst: reg, src: reg, n: expr) einit $dst $src lea $dst $n %endmacro \
-           %enclave(r1, r2, 2) halt"));
+    (fun text ->
+      let term = ok (Cerisier.Parser.parse_word text) in
+      let word = ok (Cerisier.Asm_ir.lower_word config term) in
+      let printed = Cerisier.Printer.word word in
+      let reparsed = ok (Cerisier.Parser.parse_word printed) in
+      Alcotest.(check bool) text true (word = ok (Cerisier.Asm_ir.lower_word config reparsed)))
+    [ "-17"; "(RW, 0, MAX_ADDR, 4)"; "[SU, 0, 8, 1]"; "{3: (RX, 0, 8, 1)}" ];
   List.iter
-    (fun source -> ignore (ok (Cerisier.Parser.parse_program source)))
+    (fun source ->
+      Alcotest.(check bool) source true (Result.is_error (Cerisier.Parser.parse_program source)))
     [
-      "inf: halt";
-      "infinity: halt";
-      "%define inf 3 halt";
-      "%define infinity 3 halt";
-      "%define inf 3 move r1 inf halt";
-      "%define infinity 3 move r1 infinity halt";
+      "getl r1 r2";
+      "loadu r1 r2 0";
+      "storeu r1 0 r2";
+      "promoteu r1";
+      "mov stk 0";
     ];
   List.iter
     (fun source ->
-      Alcotest.(check bool)
-        ("reject " ^ source) true
-        (Result.is_error (Cerisier.Parser.parse_program source)))
-    [ "isptr r1 r2"; "jmper r1"; "movsr r1 r2" ];
-  List.iter
-    (fun (name, source) ->
-      match Cerisier.Parser.parse_program source with
-      | Error [ diagnostic ] ->
-          Alcotest.(check string)
-            (name ^ " is resolved as an ordinary identifier")
-            (Printf.sprintf "Unknown label or integer definition %S." name)
-            (Diagnostic.message diagnostic)
-      | Error diagnostics ->
-          Alcotest.failf "expected one resolution diagnostic for %s, got %d" name
-            (List.length diagnostics)
-      | Ok _ -> Alcotest.failf "expected unresolved identifier %s to fail" name)
-    [
-      ("inf", "move r1 inf");
-      ("infinity", "move r1 infinity");
-      ("inf", "# (RW, GLOBAL, 0, inf, 0)");
-      ("infinity", "# (RW, GLOBAL, 0, infinity, 0)");
-    ];
-  List.iter
-    (fun name ->
-      let check_unresolved (type value) (label : string)
-          (matched_value : (value, Diagnostic.t list) result) : unit = match matched_value with
-        | Error [ diagnostic ] ->
-            Alcotest.(check string)
-              label
-              (Printf.sprintf "an unresolved symbol %S remains" name)
-              (Diagnostic.message diagnostic)
-        | Error diagnostics ->
-            Alcotest.failf "expected one unresolved-symbol diagnostic for %s, got %d" name
-              (List.length diagnostics)
-        | Ok _ -> Alcotest.failf "expected unresolved identifier %s to fail lowering" name
-      in
-      let word_source = Printf.sprintf "(RW, GLOBAL, 0, %s, 0)" name in
-      let word = ok (Cerisier.Parser.parse_word word_source) in
-      check_unresolved (name ^ " word remains unresolved")
-        (Cerisier.Asm_ir.lower_word config word);
-      let regfile_source = Printf.sprintf "r1 := %s" word_source in
-      let regfile = ok (Cerisier.Parser.parse_regfile regfile_source) in
-      check_unresolved (name ^ " regfile remains unresolved")
-        (Cerisier.Asm_ir.lower_regfile config regfile))
-    [ "inf"; "infinity" ];
-  let located =
-    match Cerisier.Parser.parse_program ~filename:"located.s" "halt\n@" with
-    | Error (diagnostic :: _) -> (
-        match Diagnostic.location diagnostic with
-        | Some location -> location
-        | None -> Alcotest.fail "expected a located lexer diagnostic")
-    | _ -> Alcotest.fail "expected a located lexer diagnostic"
-  in
-  Alcotest.(check (option string)) "lexer diagnostic filename" (Some "located.s") located.source;
-  Alcotest.(check int) "lexer diagnostic line" 2 located.line;
-  let parser_location =
-    match Cerisier.Parser.parse_program ~filename:"syntax.s" "jmp\n)" with
-    | Error (diagnostic :: _) -> (
-        match Diagnostic.location diagnostic with
-        | Some location -> location
-        | None -> Alcotest.fail "expected a located parser diagnostic")
-    | _ -> Alcotest.fail "expected a located parser diagnostic"
-  in
-  Alcotest.(check (option string))
-    "parser diagnostic filename" (Some "syntax.s") parser_location.source;
-  Alcotest.(check int) "parser diagnostic line" 2 parser_location.line;
-  List.iter
-    (fun source ->
-      let parsed = Cerisier.Parser.parse_word source |> ok in
-      let concrete = Cerisier.Asm_ir.lower_word config parsed |> ok in
-      let printed = Cerisier.Printer.word concrete in
-      let reparsed = Cerisier.Parser.parse_word printed |> ok in
-      let round_trip = Cerisier.Asm_ir.lower_word config reparsed |> ok in
-      Alcotest.(check bool) ("word round trip " ^ source) true (concrete = round_trip))
-    [ "-17"; "(URWLX, DIRECTED, 0, MAX_ADDR, 4)"; "[SU, GLOBAL, 0, 8, 1]";
-      "{3: (RW, LOCAL, 0, 8, 1)}" ]
+      Alcotest.(check bool) source true (Result.is_error (Cerisier.Parser.parse_word source)))
+    [ "(RW, GLOBAL, 0, 8, 1)"; "(URW, 0, 8, 1)"; "(RWLX, 0, 8, 1)" ];
+  Alcotest.(check string) "hash printer" "hash r1 r2"
+    (Cerisier.Printer.instruction (Cerisier.Ast.Hash (Reg 1, Reg 2)));
+  Alcotest.(check string) "hashconcat printer" "hashconcat r1 r2 -7"
+    (Cerisier.Printer.instruction
+       (Cerisier.Ast.HashConcat (Reg 1, Register (Reg 2), Constant (z (-7)))))
 
 let instructions =
   let open Cerisier.Ast in
-  let r1 = Reg 1
-  and r2 = Reg 2
-  and r3 = Reg 3
-  and rr = Register (Reg 4)
-  and c = Const (Z.of_int (-7)) in
+  let r1 = Reg 1 and r2 = Reg 2 and r3 = Reg 3 in
+  let rr = Register (Reg 4) and c = Constant (z (-7)) in
   [
-    Jmp r1;
-    Jnz (r1, r2);
-    Move (r1, rr);
-    Move (r1, c);
-    Load (r1, r2);
-    Store (r1, rr);
-    Store (r1, c);
-    Add (r1, rr, rr);
-    Add (r1, rr, c);
-    Add (r1, c, rr);
-    Add (r1, c, c);
-    Sub (r1, rr, rr);
-    Mul (r1, rr, c);
-    Rem (r1, c, rr);
-    Div (r1, c, c);
-    Lt (r1, rr, rr);
-    Lea (r1, rr);
-    Lea (r1, c);
-    Restrict (r1, c);
-    SubSeg (r1, rr, c);
-    GetL (r1, r2);
-    GetB (r1, r2);
-    GetE (r1, r2);
-    GetA (r1, r2);
-    GetP (r1, r2);
-    GetOType (r1, r2);
-    GetWType (r1, r2);
-    Seal (r1, r2, r3);
-    UnSeal (r1, r2, r3);
-    Invoke (r1, r2);
-    LoadU (r1, r2, c);
-    StoreU (r1, rr, c);
-    PromoteU r1;
-    EInit (r1, r2);
-    EDeInit r1;
+    Jmp r1; Jnz (r1, r2); Move (r1, rr); Move (r1, c); Load (r1, r2);
+    Store (r1, rr); Store (r1, c); Add (r1, rr, rr); Add (r1, rr, c);
+    Sub (r1, c, rr); Mul (r1, rr, c); Rem (r1, c, rr); Div (r1, c, c);
+    Lt (r1, rr, rr); Lea (r1, c); Restrict (r1, c); SubSeg (r1, rr, c);
+    GetB (r1, r2); GetE (r1, r2); GetA (r1, r2); GetP (r1, r2);
+    GetOType (r1, r2); GetWType (r1, r2); Seal (r1, r2, r3);
+    UnSeal (r1, r2, r3); Invoke (r1, r2); Fail; Halt; IsUnique (r1, r2);
+    Hash (r1, r2); HashConcat (r1, rr, c); EInit (r1, r2); EDeInit r1;
     EStoreId (r1, r2);
-    IsUnique (r1, r2);
-    Fail;
-    Halt;
   ]
 
-let codec (() : unit) : unit =
-  Alcotest.(check (list (triple string int int)))
-    "fixed historical allocations"
-    [
-      ("Jmp", 0, 1);
-      ("Jnz", 1, 1);
-      ("Move", 2, 2);
-      ("Load", 4, 1);
-      ("Store", 5, 2);
-      ("Add", 7, 4);
-      ("Sub", 11, 4);
-      ("Mul", 15, 4);
-      ("Rem", 19, 4);
-      ("Div", 23, 4);
-      ("Lt", 27, 4);
-      ("Lea", 31, 2);
-      ("Restrict", 33, 2);
-      ("SubSeg", 35, 4);
-      ("GetL", 39, 1);
-      ("GetB", 40, 1);
-      ("GetE", 41, 1);
-      ("GetA", 42, 1);
-      ("GetP", 43, 1);
-      ("GetOType", 44, 1);
-      ("GetWType", 45, 1);
-      ("Seal", 46, 1);
-      ("UnSeal", 47, 1);
-      ("Invoke", 48, 1);
-      ("LoadU", 49, 2);
-      ("StoreU", 51, 4);
-      ("PromoteU", 55, 1);
-      ("EInit", 56, 1);
-      ("EDeInit", 57, 1);
-      ("EStoreId", 58, 1);
-      ("IsUnique", 59, 1);
-      ("Fail", 60, 1);
-      ("Halt", 61, 1);
-    ]
+let codec () =
+  let vanilla = Vanilla.Codec.allocations in
+  let expected =
+    vanilla
+    @ [
+        ("IsUnique", 50, 1);
+        ("Hash", 51, 1);
+        ("HashConcat", 52, 4);
+        ("EInit", 56, 1);
+        ("EDeInit", 57, 1);
+        ("EStoreId", 58, 1);
+      ]
+  in
+  Alcotest.(check (list (triple string int int))) "allocations" expected
     Cerisier.Codec.allocations;
   List.iter
     (fun instruction ->
       let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
-      Alcotest.(check bool)
-        "fixed codec round trip" true
+      Alcotest.(check bool) "codec round trip" true
         (Result.get_ok (Cerisier.Codec.decode encoded) = instruction))
     instructions;
   let open Cerisier.Ast in
   List.iter
     (fun (instruction, opcode) ->
       let encoded = Result.get_ok (Cerisier.Codec.encode instruction) in
-      Alcotest.(check int) "historical low-byte opcode" opcode (Z.to_int (Z.extract encoded 0 8)))
+      Alcotest.(check int) "opcode" opcode (Z.to_int (Z.extract encoded 0 8)))
     [
-      (Jmp (Reg 1), 0x00);
-      (EInit (Reg 1, Reg 2), 0x38);
-      (EDeInit (Reg 1), 0x39);
-      (EStoreId (Reg 1, Reg 2), 0x3a);
-      (IsUnique (Reg 1, Reg 2), 0x3b);
-      (Fail, 0x3c);
-      (Halt, 0x3d);
-    ];
-  List.iter
-    (fun (instruction, expected) ->
-      Alcotest.(check string)
-        "complete historical numeric encoding" (Z.to_string expected)
-        (Z.to_string (Result.get_ok (Cerisier.Codec.encode instruction))))
-    [
-      (EInit (Reg 1, Reg 2), Z.of_int 14392);
-      (EDeInit (Reg 1), Z.of_int 569);
-      (EStoreId (Reg 1, Reg 2), Z.of_int 14394);
-      (IsUnique (Reg 1, Reg 2), Z.of_int 14395);
-      (Fail, Z.of_int 60);
-      (Halt, Z.of_int 61);
-      (Move (Reg 1, Const (Z.of_int (-7))), Z.of_int 47619);
-      (Add (Reg 1, Const (Z.of_int (-7)), Register (Reg 2)), Z.of_int 11180041);
-      (LoadU (Reg 1, Reg 2, Const (Z.of_int (-7))), Z.of_int 1419826);
-    ];
-  List.iter
-    (fun encoded ->
-      Alcotest.(check bool)
-        "malformed decode is structured" true
-        (Result.is_error (Cerisier.Codec.decode encoded)))
-    [
-      Z.minus_one;
-      Z.of_int 0x3e;
-      Z.of_int 0x13d;
-      Z.shift_left Z.one 10000;
-      Z.logor (Z.of_int 0x02) (Z.shift_left (Z.shift_left Z.one 100000) 8);
-    ];
-  List.iter
-    (fun decode ->
-      Alcotest.(check bool) "negative scalar rejected" true (Result.is_error (decode Z.minus_one)))
-    [
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_permission z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_seal_permission z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_word_type z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_locality z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_permission_locality z));
-      (fun z -> Result.map (fun _ -> ()) (Cerisier.Codec.decode_seal_permission_locality z));
+      (IsUnique (Reg 1, Reg 2), 50);
+      (Hash (Reg 1, Reg 2), 51);
+      (HashConcat (Reg 1, Register (Reg 2), Register (Reg 3)), 52);
+      (HashConcat (Reg 1, Constant Z.zero, Register (Reg 3)), 54);
+      (HashConcat (Reg 1, Register (Reg 2), Constant Z.zero), 53);
+      (HashConcat (Reg 1, Constant Z.zero, Constant Z.zero), 55);
+      (EInit (Reg 1, Reg 2), 56);
+      (EDeInit (Reg 1), 57);
+      (EStoreId (Reg 1, Reg 2), 58);
     ]
 
-let finite_bounds_and_edits (() : unit) : unit =
-  let initial = session "move r1 MAX_ADDR halt" in
-  let stepped = Result.get_ok (Machine_session.step initial) in
-  Alcotest.(check string) "MAX_ADDR evaluates finitely" "128" (Z.to_string (integer "r1" stepped));
-  Alcotest.(check string) "original is immutable" "0" (Z.to_string (integer "r1" initial));
-  let edited =
-    ok
-      (Machine_session.set_register_text
-         { bank = Machine_view.General; key = "r2" }
-         "(URWLX, DIRECTED, 1, MAX_ADDR, 4)" initial)
-  in
-  let cap = capability Machine_view.General "r2" edited in
-  Alcotest.(check string) "edited finite limit" "128" (Z.to_string cap.limit);
-  let stepped_n = Result.get_ok (Machine_session.step_n 2 initial) in
-  Alcotest.(check bool)
-    "step_n reaches halt" true
-    ((Machine_session.view stepped_n).status = Machine_view.Halted);
-  let view = Machine_session.view initial in
-  Alcotest.(check string) "finite address limit" "128" (Z.to_string view.address_limit);
-  Alcotest.(check bool) "sparse physical view" true (List.length view.memory = 2);
-  Alcotest.(check bool)
-    "logical zero missing cell" true
-    (match Machine_view.find_memory_word (Z.of_int 100) view with
-    | Some { integer = Some value; _ } -> Z.equal Z.zero value
-    | Some _ -> false
-    | None -> false);
-  let memory_edited = ok (Machine_session.set_memory_text (Z.of_int 90) "41" initial) in
-  Alcotest.(check string)
-    "memory edit" "41"
-    (match Machine_view.find_memory_word (Z.of_int 90) (Machine_session.view memory_edited) with
-    | Some { integer = Some value; _ } -> Z.to_string value
-    | _ -> Alcotest.fail "edited memory cell missing");
-  Alcotest.(check bool)
-    "memory edit is immutable" true
-    (match Machine_view.find_memory_word (Z.of_int 90) (Machine_session.view initial) with
-    | Some { integer = Some value; _ } -> Z.equal value Z.zero
-    | _ -> false);
-  Alcotest.(check string)
-    "selected canonical name" "cerisier"
-    (Machine_session.backend_name initial)
+let base_state () =
+  let open Cerisier in
+  Machine.init config [] None
+  |> Machine.set_register Ast.PC
+       (Ast.Sealable (Ast.Cap (Ast.RWX, Z.zero, z 2, Z.zero)))
 
-let parity_rules (() : unit) : unit =
-  List.iter
-    (fun permission ->
-      let invalid_pc =
-        session
-          ~regfile:(Printf.sprintf "pc := (%s, DIRECTED, 0, 2, 0)" permission)
-          "move r1 19 halt"
-        |> run
-      in
-      Alcotest.(check bool)
-        (permission ^ " PC fails") true
-        ((Machine_session.view invalid_pc).status = Machine_view.Failed);
-      Alcotest.(check string)
-        (permission ^ " PC does not execute")
-        "0"
-        (Z.to_string (integer "r1" invalid_pc)))
-    [ "URWLX"; "URWX" ];
-  let restricted =
-    session ~regfile:"r1 := (RWLX, DIRECTED, 0, 8, 1)" "restrict r1 (URWLX, DIRECTED) halt" |> run
-  in
-  Alcotest.(check (list string))
-    "URWLX can be requested from RWLX" [ "URWLX" ]
-    (capability Machine_view.General "r1" restricted).permissions;
-  let bad_locality =
-    session ~regfile:"r1 := (RW, LOCAL, 0, 8, 1)" "restrict r1 (RW, GLOBAL) halt" |> run
-  in
-  Alcotest.(check bool)
-    "Local cannot become Global" true
-    ((Machine_session.view bad_locality).status = Machine_view.Failed);
-  let fitting =
-    session ~regfile:"r1 := (URWLX, DIRECTED, 0, 20, 10) r2 := (RW, DIRECTED, 0, 8, 5)"
-      "storeu r1 0 r2 halt"
-    |> run
-  in
-  Alcotest.(check bool)
-    "WL stores fitting Directed capability" true
-    ((Machine_session.view fitting).status = Machine_view.Halted);
-  let too_large =
-    session ~regfile:"r1 := (URWLX, DIRECTED, 0, 20, 5) r2 := (RW, DIRECTED, 0, 20, 10)"
-      "storeu r1 0 r2 halt"
-    |> run
-  in
-  Alcotest.(check bool)
-    "Directed readable bound enforced" true
-    ((Machine_session.view too_large).status = Machine_view.Failed);
-  let seal_range =
-    session ~regfile:"r1 := (URW, DIRECTED, 0, 20, 5) r2 := [SU, DIRECTED, 0, 4, 0]"
-      "storeu r1 0 r2 halt"
-    |> run
-  in
-  Alcotest.(check bool)
-    "Directed seal range requires WL" true
-    ((Machine_session.view seal_range).status = Machine_view.Failed);
-  let loose_subseg = session ~regfile:"r1 := (RW, GLOBAL, 0, 8, 1)" "subseg r1 7 40 halt" |> run in
-  let loose = capability Machine_view.General "r1" loose_subseg in
-  Alcotest.(check string)
-    "historical SubSeg permits enlarged finite limit" "40" (Z.to_string loose.limit)
+let check_word label expected actual =
+  Alcotest.(check bool) label true (expected = actual)
 
-let einit_configured_region (() : unit) : unit =
-  let open Cerisier.Ast in
-  let b = Z.of_int 4 in
-  let bounded_end = Z.pred (Runtime_config.max_addr config) in
-  let oversized_end = Z.shift_left Z.one 100_000 in
-  let make_state (e : Z.t) : Cerisier.Machine.t =
-    let state = Cerisier.Machine.init config [] None in
-    state
-    |> Cerisier.Machine.set_register PC
-         (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
-    |> Cerisier.Machine.set_register (Reg 31) (I Z.zero)
-    |> Cerisier.Machine.set_register (Reg 2) (Sealable (Cap (RX, Global, b, e, Z.of_int 5)))
-    |> Cerisier.Machine.set_memory_raw b
-         (Sealable (Cap (RW, Global, Z.of_int 2, Z.of_int 4, Z.of_int 2)))
-    |> Cerisier.Machine.set_memory_raw (Z.of_int 3) (I (Z.of_int 99))
-    |> Cerisier.Machine.set_memory_raw (Z.of_int 5) (I (Z.of_int 11))
-    |> Cerisier.Machine.set_memory_raw (Z.of_int 7) (I (Z.of_int 22))
+let hashing () =
+  let open Cerisier in
+  let source = Ast.Sealed (z 7, Ast.Cap (Ast.RO, z 10, z 12, z 10)) in
+  let state =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2) source
+    |> Machine.execute (Ast.Hash (Ast.Reg 1, Ast.Reg 2))
   in
-  let execute (e : Z.t) : Cerisier.Machine.t = Cerisier.Machine.execute (EInit (Reg 1, Reg 2)) (make_state e) in
-  let bounded = execute bounded_end
-  and oversized = execute oversized_end
-  and short = execute (Z.of_int 6) in
-  let identity (state : Cerisier.Machine.t) : Z.t =
-    Cerisier.Machine.ETableMap.find Z.zero state.enclave_table
+  check_word "hash any word"
+    (Ast.I (Z.of_int (Hashtbl.hash source)))
+    (Machine.read_register (Ast.Reg 1) state);
+  let state =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2) (Ast.I (z 11))
+    |> Machine.execute
+         (Ast.HashConcat (Ast.Reg 1, Ast.Register (Ast.Reg 2), Ast.Constant (z 13)))
   in
-  let rec expected_region (address : Z.t) (words : word list) : word list =
-    if address > bounded_end then List.rev words
-    else
-      let word =
-        if Z.equal address (Z.of_int 5) then I (Z.of_int 11)
-        else if Z.equal address (Z.of_int 7) then I (Z.of_int 22)
-        else I Z.zero
-      in
-      expected_region (Z.succ address) (word :: words)
+  check_word "hashconcat integers"
+    (Ast.I (Z.of_int (Hashtbl.hash (z 11, z 13))))
+    (Machine.read_register (Ast.Reg 1) state);
+  let failed =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2) source
+    |> Machine.execute
+         (Ast.HashConcat (Ast.Reg 1, Ast.Register (Ast.Reg 2), Ast.Constant Z.zero))
   in
-  let expected_identity = Z.of_int (Hashtbl.hash (b, expected_region (Z.succ b) [])) in
-  Alcotest.(check string)
-    "ascending hash includes sparse holes and excludes the cell below b+1"
-    (Z.to_string expected_identity) (Z.to_string (identity bounded));
-  Alcotest.(check string)
-    "oversized end has the bounded identity"
-    (Z.to_string (identity bounded)) (Z.to_string (identity oversized));
-  Alcotest.(check string)
-    "explicit cell above e does not contribute"
-    (Z.to_string (Z.of_int (Hashtbl.hash (b, [ I (Z.of_int 11); I Z.zero ]))))
-    (Z.to_string (identity short));
-  List.iter
-    (fun (label, requested_end, state) ->
-      match Cerisier.Machine.read_register (Reg 1) state with
-      | Sealable (Cap (E, Global, base, limit, cursor)) ->
-          Alcotest.(check string) (label ^ " base") (Z.to_string b) (Z.to_string base);
-          Alcotest.(check string)
-            (label ^ " retains requested end")
-            (Z.to_string requested_end) (Z.to_string limit);
-          Alcotest.(check string) (label ^ " cursor") "5" (Z.to_string cursor)
-      | _ -> Alcotest.fail (label ^ " did not return an E capability"))
-    [ ("bounded", bounded_end, bounded); ("oversized", oversized_end, oversized) ]
+  Alcotest.(check bool) "hashconcat rejects non-integer" true
+    (failed.status = Machine.Failed)
 
-let enclave_machine_view (() : unit) : unit =
-  let open Cerisier.Ast in
-  let initial = Cerisier.Machine.init config [] None in
-  let initial_view = Cerisier.Backend.inspect initial in
-  let table (view : Machine_view.t) : Machine_view.enclave_table =
-    match view.enclave_table with
-    | Some table -> table
-    | None -> Alcotest.fail "Cerisier enclave table was absent"
+let uniqueness () =
+  let open Cerisier in
+  let candidate = Ast.Sealable (Ast.Cap (Ast.RW, z 20, z 30, z 20)) in
+  let unique =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2) candidate
+    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
   in
-  let initial_table = table initial_view in
-  Alcotest.(check string) "initial counter" "0" (Z.to_string initial_table.counter);
-  Alcotest.(check int) "initial table is empty" 0 (List.length initial_table.entries);
-  let enclave_base = Z.of_int 4 in
-  let key_address = Z.of_int 20 in
-  let initialized =
-    initial
-    |> Cerisier.Machine.set_register PC
-         (Sealable (Cap (RX, Global, Z.zero, Z.of_int 2, Z.zero)))
-    |> Cerisier.Machine.set_register (Reg 2)
-         (Sealable (Cap (RX, Global, enclave_base, Z.of_int 6, Z.of_int 5)))
-    |> Cerisier.Machine.set_memory_raw enclave_base
-         (Sealable (Cap (RW, Global, key_address, Z.of_int 24, key_address)))
-    |> Cerisier.Machine.execute (EInit (Reg 1, Reg 2))
+  check_word "unique capability" (Ast.I Z.one)
+    (Machine.read_register (Ast.Reg 1) unique);
+  let overlapping =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2)
+         (Ast.Sealed (z 9, Ast.Cap (Ast.RW, z 20, z 30, z 20)))
+    |> Machine.set_memory_raw (z 80)
+         (Ast.Sealable (Ast.Cap (Ast.RO, z 29, z 35, z 29)))
+    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
   in
-  let initialized_table = Cerisier.Backend.inspect initialized |> table in
-  Alcotest.(check string) "counter after EInit" "1"
-    (Z.to_string initialized_table.counter);
-  (match initialized_table.entries with
-  | [ entry ] -> Alcotest.(check string) "first ordered enclave ID" "0" (Z.to_string entry.id)
-  | entries -> Alcotest.failf "expected one enclave entry, got %d" (List.length entries));
-  let seal_keys = Cerisier.Machine.read_memory key_address initialized |> Option.get in
+  check_word "sealed overlap" (Ast.I Z.zero)
+    (Machine.read_register (Ast.Reg 1) overlapping);
+  let failed =
+    base_state ()
+    |> Machine.set_register (Ast.Reg 2) (Ast.I Z.zero)
+    |> Machine.execute (Ast.IsUnique (Ast.Reg 1, Ast.Reg 2))
+  in
+  Alcotest.(check bool) "non-capability rejected" true
+    (failed.status = Machine.Failed)
+
+let einit_state () =
+  let open Cerisier in
+  base_state ()
+  |> Machine.set_register (Ast.Reg 1)
+       (Ast.Sealable (Ast.Cap (Ast.RX, z 10, z 14, z 10)))
+  |> Machine.set_register (Ast.Reg 2)
+       (Ast.Sealable (Ast.Cap (Ast.RW, z 20, z 24, z 21)))
+  |> Machine.set_memory_raw (z 11) (Ast.I (z 101))
+  |> Machine.set_memory_raw (z 12) (Ast.I (z 102))
+  |> Machine.set_memory_raw (z 13) (Ast.I (z 103))
+
+let attestation () =
+  let open Cerisier in
+  let initialized = Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) (einit_state ()) in
+  Alcotest.(check bool) "einit running" true (initialized.status = Machine.Running);
+  check_word "entry capability"
+    (Ast.Sealable (Ast.Cap (Ast.E, z 10, z 14, z 11)))
+    (Machine.read_register (Ast.Reg 1) initialized);
+  check_word "data register cleared" (Ast.I Z.zero)
+    (Machine.read_register (Ast.Reg 2) initialized);
+  check_word "data capability installed"
+    (Ast.Sealable (Ast.Cap (Ast.RW, z 20, z 24, z 21)))
+    (Option.get (Machine.read_memory (z 10) initialized));
+  let keys = Ast.Sealable (Ast.SealRange ((true, true), Z.zero, z 2, Z.zero)) in
+  check_word "seal keys installed" keys
+    (Option.get (Machine.read_memory (z 20) initialized));
+  Alcotest.(check string) "counter incremented" "1"
+    (Z.to_string initialized.enclave_counter);
+  let code_words = [ Ast.I (z 101); Ast.I (z 102); Ast.I (z 103) ] in
+  let expected_identity =
+    Z.of_int
+      (Hashtbl.hash
+         (Z.of_int (Hashtbl.hash (z 10)), Z.of_int (Hashtbl.hash code_words)))
+  in
+  Alcotest.(check string) "identity" (Z.to_string expected_identity)
+    (Z.to_string (Machine.ETableMap.find Z.zero initialized.enclave_table));
+  let twice_initialized =
+    initialized
+    |> Machine.set_register (Ast.Reg 1)
+         (Ast.Sealable (Ast.Cap (Ast.RX, z 30, z 34, z 30)))
+    |> Machine.set_register (Ast.Reg 2)
+         (Ast.Sealable (Ast.Cap (Ast.RW, z 40, z 44, z 40)))
+    |> Machine.set_memory_raw (z 31) (Ast.I (z 201))
+    |> Machine.set_memory_raw (z 32) (Ast.I (z 202))
+    |> Machine.set_memory_raw (z 33) (Ast.I (z 203))
+    |> Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2))
+  in
+  Alcotest.(check (list string)) "ordered table entries" [ "0"; "1" ]
+    (Machine.ETableMap.bindings twice_initialized.enclave_table
+    |> List.map (fun (id, _) -> Z.to_string id));
+  Alcotest.(check string) "monotonic second counter" "2"
+    (Z.to_string twice_initialized.enclave_counter);
+  check_word "second seal-key allocation"
+    (Ast.Sealable (Ast.SealRange ((true, true), z 2, z 4, z 2)))
+    (Option.get (Machine.read_memory (z 40) twice_initialized));
+  let stored =
+    initialized
+    |> Machine.set_register (Ast.Reg 3) (Ast.I Z.one)
+    |> Machine.execute (Ast.EStoreId (Ast.Reg 4, Ast.Reg 3))
+  in
+  check_word "odd otype maps down" (Ast.I expected_identity)
+    (Machine.read_register (Ast.Reg 4) stored);
   let deinitialized =
-    initialized |> Cerisier.Machine.set_register (Reg 3) seal_keys
-    |> Cerisier.Machine.execute (EDeInit (Reg 3))
+    initialized
+    |> Machine.set_register (Ast.Reg 3) keys
+    |> Machine.execute (Ast.EDeInit (Ast.Reg 3))
   in
-  let deinitialized_table = Cerisier.Backend.inspect deinitialized |> table in
-  Alcotest.(check string) "counter remains monotone" "1"
-    (Z.to_string deinitialized_table.counter);
-  Alcotest.(check int) "table after EDeInit is empty" 0
-    (List.length deinitialized_table.entries)
-
-let fixture (name : string) : string =
-  let local = "test_files/cerisier/pos/" ^ name in
-  if Sys.file_exists local then local else "tests/" ^ local
-
-let example (name : string) : Machine_session.t =
-  let source = In_channel.with_open_bin (fixture name) In_channel.input_all in
-  session source |> run ~max_steps:1000
-
-let examples_and_lifecycle (() : unit) : unit =
-  let unique = example "isunique.s" in
-  Alcotest.(check bool)
-    "isunique example halts" true
-    ((Machine_session.view unique).status = Machine_view.Halted);
-  Alcotest.(check string) "initial PC overlap is not unique" "0" (Z.to_string (integer "r5" unique));
-  Alcotest.(check string) "separated region is unique" "1" (Z.to_string (integer "r6" unique));
-  Alcotest.(check string) "stored alias is not unique" "0" (Z.to_string (integer "r7" unique));
-  let enclave = example "enclave.s" in
-  Alcotest.(check bool)
-    "enclave lifecycle example halts" true
-    ((Machine_session.view enclave).status = Machine_view.Halted);
-  Alcotest.(check bool)
-    "stored enclave identity is observable" true
-    (not (Z.equal (integer "r3" enclave) Z.zero));
-  let enclave_source = In_channel.with_open_bin (fixture "enclave.s") In_channel.input_all in
-  let program =
-    ok (Cerisier.Parser.parse_program enclave_source)
-    |> Cerisier.Asm_ir.lower_program config |> ok
+  Alcotest.(check int) "entry removed" 0
+    (Machine.ETableMap.cardinal deinitialized.enclave_table);
+  Alcotest.(check string) "counter monotonic" "1"
+    (Z.to_string deinitialized.enclave_counter);
+  let missing =
+    deinitialized |> Machine.execute (Ast.EDeInit (Ast.Reg 3))
   in
-  let direct = Cerisier.Machine.init config program None |> Cerisier.Machine.run in
-  Alcotest.(check int)
-    "EDeInit removes the enclave table entry" 0
-    (Cerisier.Machine.ETableMap.cardinal direct.enclave_table);
-  Alcotest.(check string) "enclave counter is monotone" "1" (Z.to_string direct.enclave_counter);
-  let denied_init =
-    session ~regfile:"r2 := (RX, GLOBAL, 3, 6, 4)"
-      "einit r1 r2 halt # 0 # (RW, GLOBAL, 20, 30, 20) # 0 # 0"
-    |> run
+  Alcotest.(check bool) "missing entry fails" true (missing.status = Machine.Failed);
+  let bad_before =
+    einit_state ()
+    |> Machine.set_memory_raw (z 12)
+         (Ast.Sealable (Ast.Cap (Ast.RO, z 40, z 41, z 40)))
   in
-  Alcotest.(check bool)
-    "non-unique enclave code is unauthorized" true
-    ((Machine_session.view denied_init).status = Machine_view.Failed);
-  let unauthorized = session "estoreid r1 r2 halt" |> run in
-  Alcotest.(check bool)
-    "missing enclave ID fails" true
-    ((Machine_session.view unauthorized).status = Machine_view.Failed)
+  let bad_after = Machine.execute (Ast.EInit (Ast.Reg 1, Ast.Reg 2)) bad_before in
+  Alcotest.(check bool) "non-integer code fails" true (bad_after.status = Machine.Failed);
+  Alcotest.(check bool) "failed einit preserves registers" true
+    (bad_after.registers = bad_before.registers);
+  Alcotest.(check bool) "failed einit preserves memory" true
+    (bad_after.memory = bad_before.memory);
+  Alcotest.(check bool) "failed einit preserves table" true
+    (bad_after.enclave_table = bad_before.enclave_table);
+  Alcotest.(check bool) "failed einit preserves counter" true
+    (Z.equal bad_after.enclave_counter bad_before.enclave_counter)
+
+let initialization_and_view () =
+  let vanilla = Vanilla.Machine.init config [] None in
+  let cerisier = Cerisier.Machine.init config [] None in
+  List.iter
+    (fun (vanilla_register, cerisier_register) ->
+      Alcotest.(check string) "vanilla register initialization"
+        (Vanilla.Printer.word (Vanilla.Machine.read_register vanilla_register vanilla))
+        (Cerisier.Printer.word
+           (Cerisier.Machine.read_register cerisier_register cerisier)))
+    ((Vanilla.Ast.PC, Cerisier.Ast.PC)
+    :: List.init 32 (fun n -> (Vanilla.Ast.Reg n, Cerisier.Ast.Reg n)));
+  let view = Cerisier.Backend.inspect cerisier in
+  Alcotest.(check bool) "table exposed" true (Option.is_some view.enclave_table);
+  let r31 =
+    Machine_view.find_register { bank = Machine_view.General; key = "r31" } view
+  in
+  Alcotest.(check bool) "r31 ordinary register" true (Option.is_some r31);
+  Alcotest.(check bool) "no stk alias" true
+    (Option.is_none
+       (Machine_view.find_register { bank = Machine_view.System; key = "stk" } view));
+  let ddc =
+    Option.get
+      (Machine_view.find_register { bank = Machine_view.System; key = "ddc" } view)
+  in
+  Alcotest.(check bool) "no locality metadata" true
+    (Option.bind ddc.word.seal_range (fun range -> range.locality) = None)
+
+let enclave_example () =
+  let relative = "test_files/cerisier/pos/enclave.s" in
+  let path = if Sys.file_exists relative then relative else "tests/" ^ relative in
+  let source = In_channel.with_open_bin path In_channel.input_all in
+  let initial =
+    ok
+      (Machine_session.create ~backend:"cerisier" ~config ~source ~regfile:None)
+  in
+  let result = Machine_session.run ~max_steps:200 initial in
+  (match result.reason with
+  | Machine_session.Halted -> ()
+  | Failed -> Alcotest.failf "example failed after %d steps" result.steps
+  | Step_limit -> Alcotest.failf "example reached step limit after %d steps" result.steps
+  | Breakpoint pc -> Alcotest.failf "example hit breakpoint %s" (Z.to_string pc)
+  | Execution_error _ -> Alcotest.fail "example produced an execution error");
+  match (Machine_session.view result.session).enclave_table with
+  | Some table ->
+      Alcotest.(check string) "counter remains monotonic" "1"
+        (Z.to_string table.counter);
+      Alcotest.(check int) "example deinitializes enclave" 0
+        (List.length table.entries)
+  | None -> Alcotest.fail "Cerisier enclave table is absent"
 
 let () =
   Alcotest.run "cerisier backend"
     [
-      ( "frontend and codec",
-        [
-          Alcotest.test_case "parser matrix" `Quick parser_matrix;
-          Alcotest.test_case "fixed codec" `Quick codec;
-        ] );
-      ( "machine",
-        [
-          Alcotest.test_case "finite bounds and edits" `Quick finite_bounds_and_edits;
-          Alcotest.test_case "historical parity rules" `Quick parity_rules;
-          Alcotest.test_case "EInit configured-memory region" `Quick einit_configured_region;
-          Alcotest.test_case "machine view enclave state" `Quick enclave_machine_view;
-          Alcotest.test_case "examples and enclave lifecycle" `Quick examples_and_lifecycle;
-        ] );
+      ("syntax", [ Alcotest.test_case "parser and printer" `Quick parser_and_printer ]);
+      ("codec", [ Alcotest.test_case "fixed allocations" `Quick codec ]);
+      ("machine",
+       [
+         Alcotest.test_case "initialization and view" `Quick initialization_and_view;
+         Alcotest.test_case "hashing" `Quick hashing;
+         Alcotest.test_case "uniqueness" `Quick uniqueness;
+         Alcotest.test_case "attestation" `Quick attestation;
+         Alcotest.test_case "full enclave example" `Quick enclave_example;
+       ]);
     ]

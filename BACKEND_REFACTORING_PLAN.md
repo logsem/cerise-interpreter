@@ -50,7 +50,7 @@ codecs, machine semantics, CLI, linear history, and source-only ownership of Not
   5. Migrate the terminal application to backend sessions.
   6. Add the handwritten Griotte backend.
   7. Add the Rocq-extracted Griotte backend.
-  8. Add the historical Cerisier backend.
+  8. Add the Cerisier attestation backend.
   9. Complete backend cleanup and correctness hardening.
 
 - Recreate the Griotte and Cerisier merge diffs as normal commits. Do not retain their branch
@@ -153,7 +153,8 @@ Mul Rem Div Invoke GetOType GetWType Seal UnSeal
 
 - uCerise has `Global | Local`; mCerise additionally has `Directed`. Their duplicated ASTs and
   semantics remain intentionally independent.
-- Cerisier remains a finite-`Z.t` historical implementation.
+- Cerisier remains finite-`Z.t` and is a strict vanilla extension with attestation state and
+  instructions, without locality or uninitialized permissions.
 - Handwritten and extracted Griotte remain independent sibling snapshots. Both reject `Rem` and
   `Div` and preserve their opcode gaps, but semantic identity is not required. Their per-step
   differential suite is a regression corpus for the explicitly shared subset, not proof or a

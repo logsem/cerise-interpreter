@@ -236,7 +236,7 @@ available backends are:
 | `locality-cerise` | global and local capabilities with sealing; no uninitialized permissions |
 | `ucerise` | historical uninitialized capabilities with global and local locality; no sealing |
 | `mcerise` | historical uninitialized capabilities with global, local, and directed locality; no sealing |
-| `cerisier` | historical enclave backend with sealing, uninitialized, and directed capabilities |
+| `cerisier` | vanilla-compatible capability machine extended with local attestation |
 | `griotte` | Griotte capability machine with its own parser and instruction set |
 | `griotte-extracted` | Rocq-extracted Griotte independent sibling snapshot |
 
@@ -256,10 +256,9 @@ Restrict SubSeg IsPtr GetP GetL GetB GetE GetA Fail Halt LoadU StoreU PromoteU`.
 not contain `Mul Rem Div Invoke GetOType GetWType Seal UnSeal`. Vanilla is global-only and supports
 sealing; the locality extension adds `GetL`, `RWL`, and `RWLX` locality forms only. Vanilla capability
 syntax therefore has no locality field, while locality syntax uses `Global`/`Local` (not `Directed` or
-`U`). Historical uCerise/mCerise and Cerisier retain their distinct locality, uninitialized, sealing,
-and enclave semantics. Cerisier's exact constructors are `Jmp Jnz Move Load Store Add Sub Mul Rem
-Div Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType GetWType Seal UnSeal Invoke LoadU
-StoreU PromoteU EInit EDeInit EStoreId IsUnique Fail Halt`.
+`U`). Historical uCerise/mCerise retain their distinct locality and uninitialized semantics.
+Cerisier uses vanilla capability and sealing-range syntax and extends vanilla's complete ISA with
+`IsUnique Hash HashConcat EInit EDeInit EStoreId`.
 
 Both Griotte backends have exactly `Jalr Jmp Jnz ReadSR WriteSR Move Load Store Add Sub Mul LAnd
 LOr LShiftL LShiftR Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType GetWType Seal UnSeal
@@ -270,9 +269,9 @@ semantic identity; see [Griotte sibling snapshots](griotte-snapshots.md) when se
 Backend value shapes are independent. Vanilla capabilities are exactly `(permission, base, end,
 address)` and are global-only; locality-Cerise capabilities are `(permission, locality, base, end,
 address)`. Vanilla has no locality field, and no directed locality or uninitialized permissions or
-capabilities. uCerise and mCerise use their
-historical capability and uninitialized-word shapes (mCerise additionally has `Directed` locality),
-while Cerisier adds its enclave/sealing forms. Griotte uses CHERI register aliases (`cnull`, `cra`,
+capabilities. Cerisier uses those same vanilla word shapes. uCerise and mCerise use their
+historical capability and uninitialized-word shapes (mCerise additionally has `Directed` locality).
+Griotte uses CHERI register aliases (`cnull`, `cra`,
 `csp`, `cgp`, `ctp`, `ct0`–`ct6`, `cs0`–`cs11`, `ca0`–`ca7`) and system register `MTDC`; its
 four-component permissions, `Global`/`Local` capabilities, and `Int`, `Cap`, `SealRange`, `Sealed`,
 and `Sentry` word types are distinct from Cerise. Register aliases (`pc`, `ddc`, and `stk`) are

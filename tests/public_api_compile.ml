@@ -37,6 +37,22 @@ module Cerisier_codec = Cerise.Cerisier.Codec
 module Cerisier_machine = Cerise.Cerisier.Machine
 module Cerisier_backend = Cerise.Cerisier.Backend
 
+let cerisier_capability : Cerisier_ast.word =
+  Cerisier_ast.Sealable
+    (Cerisier_ast.Cap (Cerisier_ast.RW, Z.zero, Z.one, Z.zero))
+
+let cerisier_hash : Cerisier_ast.instruction =
+  Cerisier_ast.Hash (Cerisier_ast.Reg 1, Cerisier_ast.Reg 2)
+
+let cerisier_hash_concat : Cerisier_ast.instruction =
+  Cerisier_ast.HashConcat
+    ( Cerisier_ast.Reg 1,
+      Cerisier_ast.Register (Cerisier_ast.Reg 2),
+      Cerisier_ast.Constant Z.zero )
+
+let cerisier_einit : Cerisier_ast.instruction =
+  Cerisier_ast.EInit (Cerisier_ast.Reg 1, Cerisier_ast.Reg 2)
+
 module Griotte_ast = Cerise.Griotte.Ast
 module Griotte_asm_ir = Cerise.Griotte.Asm_ir
 module Griotte_parser = Cerise.Griotte.Parser
@@ -82,6 +98,10 @@ let () =
   ignore machine_alias;
   ignore typed_seal_range;
   ignore typed_enclave_table;
+  ignore cerisier_capability;
+  ignore cerisier_hash;
+  ignore cerisier_hash_concat;
+  ignore cerisier_einit;
   ignore available_backend_names;
   ignore selected_backend;
   ignore find_memory_word;

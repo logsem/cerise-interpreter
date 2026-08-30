@@ -27,4 +27,6 @@
   --unused-token EINIT
   --unused-token EDEINIT
   --unused-token ESTOREID
-  --unused-token ISUNIQUE))
+  --unused-token ISUNIQUE
+  --unused-token HASH_WORD
+  --unused-token HASH_CONCAT))

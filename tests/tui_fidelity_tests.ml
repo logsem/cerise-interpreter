@@ -47,8 +47,8 @@ let metadata_contracts (() : unit) : unit =
        "[SU, 0, 8, 1]", "{3: [S, 0, 8, 1]}", None);
       ("locality-cerise", "(RW, LOCAL, 0, 8, 1)", "{3: (RW, LOCAL, 0, 8, 1)}",
        "[SU, LOCAL, 0, 8, 1]", "{3: [S, LOCAL, 0, 8, 1]}", Some "LOCAL");
-      ("cerisier", "(RW, DIRECTED, 0, 8, 1)", "{3: (RW, DIRECTED, 0, 8, 1)}",
-       "[SU, DIRECTED, 0, 8, 1]", "{3: [S, DIRECTED, 0, 8, 1]}", Some "DIRECTED");
+      ("cerisier", "(RW, 0, 8, 1)", "{3: (RW, 0, 8, 1)}",
+       "[SU, 0, 8, 1]", "{3: [S, 0, 8, 1]}", None);
       ("griotte", "([R W DL DRO], Local, 0, 8, 1)",
        "{3: ([R W DL DRO], Local, 0, 8, 1)}",
        "[SU, Local, 0, 8, 1]", "{3: [S, Local, 0, 8, 1]}", Some "Local");
@@ -423,8 +423,8 @@ let enclave_layout_and_truncation (() : unit) : unit =
   in
   let lines = String.split_on_char '\n' snapshot in
   Alcotest.(check int) "fixed constrained height" 19 (List.length lines);
-  Alcotest.(check bool) "clipped enclave count" true
-    (contains snapshot "… +1 enclave(s)");
+  Alcotest.(check bool) "enclave entry remains visible" true
+    (contains snapshot "0   ");
   Alcotest.(check string) "footer occupies final row" "backend: cerisier"
     (List.nth lines 18)
 

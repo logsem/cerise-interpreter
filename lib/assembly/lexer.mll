@@ -47,6 +47,8 @@ let word (lexbuf : Lexing.lexbuf) : Generated_parser.token =
   | "edeinit" -> EDEINIT original
   | "estoreid" -> ESTOREID original
   | "isunique" -> ISUNIQUE original
+  | "hash" -> HASH_WORD original
+  | "hashconcat" -> HASH_CONCAT original
   | "readsr" -> READSR original
   | "writesr" -> WRITESR original
   | "land" -> LAND original

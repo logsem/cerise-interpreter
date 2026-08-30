@@ -6,9 +6,7 @@ module Codec = Codec
 module Machine = Machine
 
 let name = "cerisier"
-
-let description =
-  "Historical Cerisier enclave machine with Directed, uninitialized, and sealing capabilities"
+let description = "Vanilla Cerise machine extended with local attestation"
 
 type asm_program = Asm_ir.program
 type asm_regfile = Asm_ir.regfile
@@ -63,14 +61,14 @@ let view_word (word : Ast.word) : Machine_view.word =
     }
   in
   let capability (matched_value : Ast.sealable) : Machine_view.capability option = match matched_value with
-    | Ast.Cap (p, l, b, e, a) ->
+    | Ast.Cap (p, b, e, a) ->
         Some
           {
             Machine_view.base = b;
             limit = e;
             cursor = a;
             permissions = [ permission_text p ];
-            locality = Some (Printer.locality l);
+            locality = None;
           }
     | SealRange _ -> None
   in
@@ -79,18 +77,18 @@ let view_word (word : Ast.word) : Machine_view.word =
         if sealed then
           Some { Machine_view.object_type; can_seal = None; can_unseal = None; is_sealed = true }
         else None
-    | SealRange ((s, u), _, _, _, _) ->
+    | SealRange ((s, u), _, _, _) ->
         Some
           { Machine_view.object_type; can_seal = Some s; can_unseal = Some u; is_sealed = sealed }
   in
   let seal_range (matched_value : Ast.sealable) : Machine_view.seal_range option = match matched_value with
-    | Ast.SealRange (_, l, b, e, a) ->
-        Some { Machine_view.base = b; limit = e; cursor = a; locality = Some (Printer.locality l) }
+    | Ast.SealRange (_, b, e, a) ->
+        Some { Machine_view.base = b; limit = e; cursor = a; locality = None }
     | Cap _ -> None
   in
   match word with
   | Ast.I z -> base Integer (Some z) None None None
-  | Sealable (Cap (Ast.E, _, _, _, _) as c) -> base Sentry None (capability c) None None
+  | Sealable (Cap (Ast.E, _, _, _) as c) -> base Sentry None (capability c) None None
   | Sealable (Cap _ as c) -> base Capability None (capability c) None None
   | Sealable (SealRange _ as s) -> base Seal_range None None (seal_range s) (sealing ~sealed:false s)
   | Sealed (o, s) ->
@@ -103,8 +101,6 @@ let register_description (matched_value : Ast.register) : Machine_view.register_
       ( { Machine_view.Register_id.bank = System; key = "ddc" },
         "ddc",
         Machine_view.Backend_specific "default-data-capability" )
-  | Reg 31 ->
-      ({ Machine_view.Register_id.bank = System; key = "stk" }, "stk", Machine_view.Stack_pointer)
   | Reg n ->
       let label = "r" ^ string_of_int n in
       ({ Machine_view.Register_id.bank = General; key = label }, label, Machine_view.General)
@@ -120,6 +116,11 @@ let inspect (state : state) : Machine_view.t =
     Machine.MemMap.bindings state.Machine.memory
     |> List.map (fun (address, word) -> { Machine_view.address; word = view_word word })
   in
+  let pc =
+    match Machine.read_register Ast.PC state with
+    | Ast.Sealable (Ast.Cap (_, _, _, a)) -> Some a
+    | _ -> None
+  in
   let enclave_table =
     {
       Machine_view.counter = state.Machine.enclave_counter;
@@ -127,11 +128,6 @@ let inspect (state : state) : Machine_view.t =
         (Machine.ETableMap.bindings state.Machine.enclave_table
         |> List.map (fun (id, identity) -> { Machine_view.id; identity }));
     }
-  in
-  let pc =
-    match Machine.read_register Ast.PC state with
-    | Ast.Sealable (Ast.Cap (_, _, _, _, a)) -> Some a
-    | _ -> None
   in
   {
     Machine_view.backend_name = name;
@@ -149,10 +145,9 @@ let register_of_id (id : Machine_view.Register_id.t) : (Ast.register, Diagnostic
   match (id.bank, id.key) with
   | System, "pc" -> Ok Ast.PC
   | System, ("ddc" | "r0") -> Ok (Ast.Reg 0)
-  | System, ("stk" | "r31") -> Ok (Ast.Reg 31)
   | General, name when String.length name > 1 && name.[0] = 'r' -> (
       match int_of_string_opt (String.sub name 1 (String.length name - 1)) with
-      | Some n when n >= 1 && n <= 30 -> Ok (Ast.Reg n)
+      | Some n when n >= 1 && n <= 31 -> Ok (Ast.Reg n)
       | _ -> Error [ Diagnostic.error (Printf.sprintf "Unknown Cerisier register %S." name) ])
   | _, name ->
       Error [ Diagnostic.error (Printf.sprintf "Register %S does not belong to that bank." name) ]

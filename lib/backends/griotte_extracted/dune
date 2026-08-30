@@ -26,4 +26,8 @@
   --unused-token
   ESTOREID
   --unused-token
-  ISUNIQUE))
+  ISUNIQUE
+  --unused-token
+  HASH_WORD
+  --unused-token
+  HASH_CONCAT))

@@ -14,11 +14,6 @@ let permission (position : Lexing.position) (name : string) : Ast.permission =
   | Some permission -> permission
   | None -> reject position "Expected a Cerisier permission."
 
-let locality (position : Lexing.position) (name : string) : Ast.locality =
-  match parse_locality name with
-  | Some locality -> locality
-  | None -> reject position "Expected GLOBAL, LOCAL, or DIRECTED."
-
 let seal_permission (position : Lexing.position) (name : string) : Ast.seal_permission =
   match parse_seal_permission name with
   | Some permission -> permission
@@ -55,7 +50,6 @@ let word_type (position : Lexing.position) (name : string) : Ast.word_type =
       { Op (Restrict_term (destination, source)) }
   | SUBSEG; destination = register_term; left = operand; right = operand
       { Op (SubSeg_term (destination, left, right)) }
-  | GETL; destination = register_term; source = register_term { Op (GetL_term (destination, source)) }
   | GETB; destination = register_term; source = register_term { Op (GetB_term (destination, source)) }
   | GETE; destination = register_term; source = register_term { Op (GetE_term (destination, source)) }
   | GETA; destination = register_term; source = register_term { Op (GetA_term (destination, source)) }
@@ -69,13 +63,11 @@ let word_type (position : Lexing.position) (name : string) : Ast.word_type =
   | UNSEAL; destination = register_term; source = register_term; sealing = register_term
       { Op (UnSeal_term (destination, source, sealing)) }
   | INVOKE; first = register_term; second = register_term { Op (Invoke_term (first, second)) }
-  | LOADU; destination = register_term; source = register_term; offset = operand
-      { Op (LoadU_term (destination, source, offset)) }
-  | STOREU; destination = register_term; offset = operand; source = operand
-      { Op (StoreU_term (destination, offset, source)) }
-  | PROMOTEU; register = register_term { Op (PromoteU_term register) }
-  | EINIT; destination = register_term; source = register_term
-      { Op (EInit_term (destination, source)) }
+  | HASH_WORD; destination = register_term; source = register_term
+      { Op (Hash_term (destination, source)) }
+  | HASH_CONCAT; destination = register_term; left = operand; right = operand
+      { Op (HashConcat_term (destination, left, right)) }
+  | EINIT; code = register_term; data = register_term { Op (EInit_term (code, data)) }
   | EDEINIT; source = register_term { Op (EDeInit_term source) }
   | ESTOREID; destination = register_term; source = register_term
       { Op (EStoreId_term (destination, source)) }
@@ -99,21 +91,10 @@ seal_permission_term:
   | name = SEAL_PERMISSION { Seal_permission_literal (seal_permission $startpos name) }
   | name = PARAMETER { Seal_permission_parameter name }
 
-locality_term:
-  | name = LOCALITY { Locality (locality $startpos name) }
-  | name = PARAMETER { Locality_parameter name }
-
 constant:
   | name = PERMISSION { Permission (permission $startpos name) }
   | name = SEAL_PERMISSION { Seal_permission (seal_permission $startpos name) }
-  | name = LOCALITY { Locality_constant (locality $startpos name) }
   | name = WORD_TYPE { Word_type (word_type $startpos name) }
-  | LPAREN; name = PERMISSION; COMMA; locality = locality_term; RPAREN
-      { Permission_locality (Permission_literal (permission $startpos(name) name), locality) }
-  | LPAREN; name = SEAL_PERMISSION; COMMA; locality = locality_term; RPAREN
-      { Seal_permission_locality (Seal_permission_literal (seal_permission $startpos(name) name), locality) }
-  | LPAREN; name = PARAMETER; COMMA; locality = locality_term; RPAREN
-      { Parameterized_permission_locality (name, locality) }
 
 operand:
   | name = REGISTER { Register_term (Named (register $startpos name)) }
@@ -122,12 +103,12 @@ operand:
   | value = operand_expression %prec OPERAND_END { Constant_term (Expression value) }
 
 sealable:
-  | LPAREN; permission = permission_term; COMMA; locality = locality_term; COMMA;
-      base = expression; COMMA; limit = expression; COMMA; cursor = expression; RPAREN
-      { Cap_term (permission, locality, base, limit, cursor) }
-  | LBRACKET; permission = seal_permission_term; COMMA; locality = locality_term; COMMA;
-      base = expression; COMMA; limit = expression; COMMA; cursor = expression; RBRACKET
-      { SealRange_term (permission, locality, base, limit, cursor) }
+  | LPAREN; permission = permission_term; COMMA; base = expression; COMMA;
+      limit = expression; COMMA; cursor = expression; RPAREN
+      { Cap_term (permission, base, limit, cursor) }
+  | LBRACKET; permission = seal_permission_term; COMMA; base = expression; COMMA;
+      limit = expression; COMMA; cursor = expression; RBRACKET
+      { SealRange_term (permission, base, limit, cursor) }
 
 %public raw_word:
   | value = expression { I_term value }
