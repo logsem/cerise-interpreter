@@ -1,3 +1,6 @@
+(** Core uCerise machine values and instructions. The assembler lowers source terms to these
+    concrete values before the machine executes them. *)
+
 type register = PC | Reg of int
 type permission = O | E | RO | RX | RW | RWX | RWL | RWLX | URW | URWX | URWL | URWLX
 type locality = Global | Local

@@ -1,3 +1,6 @@
+(** Bidirectional instruction and capability-field encoding for uCerise. Shape codecs define
+    instruction payloads once so encoding and decoding cannot silently drift apart. *)
+
 open Ast
 
 let register_codec =
@@ -13,87 +16,150 @@ let register_codec =
         if n >= 0 && n <= 31 then Ok (Reg n) else Error "invalid register encoding"
       else Error "invalid register encoding")
 
-let operand = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
-let from_operand (matched_value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const = match matched_value with Instruction_codec.Register r -> Register r | Constant z -> Constant z
-let to_operand (matched_value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant = match matched_value with Register r -> Instruction_codec.Register r | Constant z -> Constant z
-let r = Instruction_codec.register register_codec
-let rr = Instruction_codec.pair r r
-let ro = Instruction_codec.pair r operand
-let roo = Instruction_codec.triple r operand operand
-let rro = Instruction_codec.triple r r operand
+let operand_shape = Instruction_codec.register_or_constant register_codec Instruction_codec.zarith
 
-let case (name : string) (codec : 'a Instruction_codec.shape) (construct : ('a -> 'b)) (project : ('b -> 'a option)) : 'b Instruction_codec.case =
+let from_operand (value : (register, Z.t) Instruction_codec.register_or_constant) : reg_or_const =
+  match value with
+  | Instruction_codec.Register register -> Register register
+  | Constant z -> Constant z
+
+let to_operand (value : reg_or_const) : (register, Z.t) Instruction_codec.register_or_constant =
+  match value with
+  | Register register -> Instruction_codec.Register register
+  | Constant z -> Constant z
+
+let register_shape = Instruction_codec.register register_codec
+let two_registers_shape = Instruction_codec.pair register_shape register_shape
+let register_operand_shape = Instruction_codec.pair register_shape operand_shape
+let register_operands_shape = Instruction_codec.triple register_shape operand_shape operand_shape
+
+let two_registers_operand_shape =
+  Instruction_codec.triple register_shape register_shape operand_shape
+
+let case (name : string) (codec : 'a Instruction_codec.shape) (construct : 'a -> 'b)
+    (project : 'b -> 'a option) : 'b Instruction_codec.case =
   Instruction_codec.case ~name codec ~construct ~project
 
-let unit_case (name : string) (construct : 'a) (project : ('a -> bool)) : 'a Instruction_codec.case =
-  case name Instruction_codec.unit (fun () -> construct)
+let unit_case (name : string) (construct : 'a) (project : 'a -> bool) : 'a Instruction_codec.case =
+  case name Instruction_codec.unit
+    (fun () -> construct)
     (fun x -> if project x then Some () else None)
 
-let cases =
+(** Instruction table: payload shapes and constructor projections. *)
+let cases : instruction Instruction_codec.case list =
   [
-    case "Jmp" r (fun x -> Jmp x) (function Jmp x -> Some x | _ -> None);
-    case "Jnz" rr (fun (a,b) -> Jnz (a,b)) (function Jnz (a,b) -> Some (a,b) | _ -> None);
-    case "Move" ro (fun (a,b) -> Move (a,from_operand b))
-      (function Move (a,b) -> Some (a,to_operand b) | _ -> None);
-    case "Load" rr (fun (a,b) -> Load (a,b)) (function Load (a,b) -> Some (a,b) | _ -> None);
-    case "Store" ro (fun (a,b) -> Store (a,from_operand b))
-      (function Store (a,b) -> Some (a,to_operand b) | _ -> None);
-    case "Add" roo (fun (a,b,c) -> Add (a,from_operand b,from_operand c))
-      (function Add (a,b,c) -> Some (a,to_operand b,to_operand c) | _ -> None);
-    case "Sub" roo (fun (a,b,c) -> Sub (a,from_operand b,from_operand c))
-      (function Sub (a,b,c) -> Some (a,to_operand b,to_operand c) | _ -> None);
-    case "Lt" roo (fun (a,b,c) -> Lt (a,from_operand b,from_operand c))
-      (function Lt (a,b,c) -> Some (a,to_operand b,to_operand c) | _ -> None);
-    case "Lea" ro (fun (a,b) -> Lea (a,from_operand b))
-      (function Lea (a,b) -> Some (a,to_operand b) | _ -> None);
-    case "Restrict" ro (fun (a,b) -> Restrict (a,from_operand b))
-      (function Restrict (a,b) -> Some (a,to_operand b) | _ -> None);
-    case "SubSeg" roo (fun (a,b,c) -> SubSeg (a,from_operand b,from_operand c))
-      (function SubSeg (a,b,c) -> Some (a,to_operand b,to_operand c) | _ -> None);
-    case "IsPtr" rr (fun (a,b) -> IsPtr (a,b))
-      (function IsPtr (a,b) -> Some (a,b) | _ -> None);
-    case "GetP" rr (fun (a,b) -> GetP (a,b))
-      (function GetP (a,b) -> Some (a,b) | _ -> None);
-    case "GetL" rr (fun (a,b) -> GetL (a,b))
-      (function GetL (a,b) -> Some (a,b) | _ -> None);
-    case "GetB" rr (fun (a,b) -> GetB (a,b))
-      (function GetB (a,b) -> Some (a,b) | _ -> None);
-    case "GetE" rr (fun (a,b) -> GetE (a,b))
-      (function GetE (a,b) -> Some (a,b) | _ -> None);
-    case "GetA" rr (fun (a,b) -> GetA (a,b))
-      (function GetA (a,b) -> Some (a,b) | _ -> None);
+    case "Jmp" register_shape (fun x -> Jmp x) (function Jmp x -> Some x | _ -> None);
+    case "Jnz" two_registers_shape
+      (fun (a, b) -> Jnz (a, b))
+      (function Jnz (a, b) -> Some (a, b) | _ -> None);
+    case "Move" register_operand_shape
+      (fun (a, b) -> Move (a, from_operand b))
+      (function Move (a, b) -> Some (a, to_operand b) | _ -> None);
+    case "Load" two_registers_shape
+      (fun (a, b) -> Load (a, b))
+      (function Load (a, b) -> Some (a, b) | _ -> None);
+    case "Store" register_operand_shape
+      (fun (a, b) -> Store (a, from_operand b))
+      (function Store (a, b) -> Some (a, to_operand b) | _ -> None);
+    case "Add" register_operands_shape
+      (fun (a, b, c) -> Add (a, from_operand b, from_operand c))
+      (function Add (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
+    case "Sub" register_operands_shape
+      (fun (a, b, c) -> Sub (a, from_operand b, from_operand c))
+      (function Sub (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
+    case "Lt" register_operands_shape
+      (fun (a, b, c) -> Lt (a, from_operand b, from_operand c))
+      (function Lt (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
+    case "Lea" register_operand_shape
+      (fun (a, b) -> Lea (a, from_operand b))
+      (function Lea (a, b) -> Some (a, to_operand b) | _ -> None);
+    case "Restrict" register_operand_shape
+      (fun (a, b) -> Restrict (a, from_operand b))
+      (function Restrict (a, b) -> Some (a, to_operand b) | _ -> None);
+    case "SubSeg" register_operands_shape
+      (fun (a, b, c) -> SubSeg (a, from_operand b, from_operand c))
+      (function SubSeg (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
+    case "IsPtr" two_registers_shape
+      (fun (a, b) -> IsPtr (a, b))
+      (function IsPtr (a, b) -> Some (a, b) | _ -> None);
+    case "GetP" two_registers_shape
+      (fun (a, b) -> GetP (a, b))
+      (function GetP (a, b) -> Some (a, b) | _ -> None);
+    case "GetL" two_registers_shape
+      (fun (a, b) -> GetL (a, b))
+      (function GetL (a, b) -> Some (a, b) | _ -> None);
+    case "GetB" two_registers_shape
+      (fun (a, b) -> GetB (a, b))
+      (function GetB (a, b) -> Some (a, b) | _ -> None);
+    case "GetE" two_registers_shape
+      (fun (a, b) -> GetE (a, b))
+      (function GetE (a, b) -> Some (a, b) | _ -> None);
+    case "GetA" two_registers_shape
+      (fun (a, b) -> GetA (a, b))
+      (function GetA (a, b) -> Some (a, b) | _ -> None);
     unit_case "Fail" Fail (function Fail -> true | _ -> false);
     unit_case "Halt" Halt (function Halt -> true | _ -> false);
-    case "LoadU" rro (fun (a,b,c) -> LoadU (a,b,from_operand c))
-      (function LoadU (a,b,c) -> Some (a,b,to_operand c) | _ -> None);
-    case "StoreU" roo (fun (a,b,c) -> StoreU (a,from_operand b,from_operand c))
-      (function StoreU (a,b,c) -> Some (a,to_operand b,to_operand c) | _ -> None);
-    case "PromoteU" r (fun a -> PromoteU a)
+    case "LoadU" two_registers_operand_shape
+      (fun (a, b, c) -> LoadU (a, b, from_operand c))
+      (function LoadU (a, b, c) -> Some (a, b, to_operand c) | _ -> None);
+    case "StoreU" register_operands_shape
+      (fun (a, b, c) -> StoreU (a, from_operand b, from_operand c))
+      (function StoreU (a, b, c) -> Some (a, to_operand b, to_operand c) | _ -> None);
+    case "PromoteU" register_shape
+      (fun a -> PromoteU a)
       (function PromoteU a -> Some a | _ -> None);
   ]
 
 let table =
   match Instruction_codec.compile cases with
   | Ok table -> table
-  | Error errors ->
-      failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
+  (* Case declarations are static. A conflict means the backend itself is
+     inconsistent, so initialization must fail rather than choose an encoding. *)
+  | Error errors -> failwith (String.concat "; " (List.map Instruction_codec.error_message errors))
 
-let encode = Instruction_codec.encode table
-let decode = Instruction_codec.decode table
-let allocations = Instruction_codec.allocations table
+let encode (instruction : instruction) : (Z.t, Instruction_codec.error) result =
+  Instruction_codec.encode table instruction
 
+let decode (encoded : Z.t) : (instruction, Instruction_codec.error) result =
+  Instruction_codec.decode table encoded
+
+let allocations : (string * int * int) list = Instruction_codec.allocations table
+
+(* Capability-field encodings used by restrict and inspection instructions. *)
 let encode_tag (tag : int) (payload : Z.t) : Z.t = Z.logor (Z.of_int tag) (Z.shift_left payload 3)
 
-let permission_scalar (matched_value : permission) : int = match matched_value with
-  | O -> 0 | E -> 1 | RO -> 4 | RX -> 5 | RW -> 6 | RWX -> 7
-  | RWL -> 14 | RWLX -> 15 | URW -> 22 | URWX -> 23 | URWL -> 30 | URWLX -> 31
+let permission_scalar (value : permission) : int =
+  match value with
+  | O -> 0
+  | E -> 1
+  | RO -> 4
+  | RX -> 5
+  | RW -> 6
+  | RWX -> 7
+  | RWL -> 14
+  | RWLX -> 15
+  | URW -> 22
+  | URWX -> 23
+  | URWL -> 30
+  | URWLX -> 31
 
 let encode_permission (p : permission) : Z.t = encode_tag 0 (Z.of_int (permission_scalar p))
 
-let permission_of_scalar (matched_value : int) : permission option = match matched_value with
-  | 0 -> Some O | 1 -> Some E | 4 -> Some RO | 5 -> Some RX | 6 -> Some RW
-  | 7 -> Some RWX | 14 -> Some RWL | 15 -> Some RWLX | 22 -> Some URW
-  | 23 -> Some URWX | 30 -> Some URWL | 31 -> Some URWLX | _ -> None
+let permission_of_scalar (value : int) : permission option =
+  match value with
+  | 0 -> Some O
+  | 1 -> Some E
+  | 4 -> Some RO
+  | 5 -> Some RX
+  | 6 -> Some RW
+  | 7 -> Some RWX
+  | 14 -> Some RWL
+  | 15 -> Some RWLX
+  | 22 -> Some URW
+  | 23 -> Some URWX
+  | 30 -> Some URWL
+  | 31 -> Some URWLX
+  | _ -> None
 
 let decode_permission (z : Z.t) : (permission, string) result =
   if Z.sign z < 0 || not (Z.equal (Z.extract z 0 3) Z.zero) then
@@ -101,9 +167,10 @@ let decode_permission (z : Z.t) : (permission, string) result =
   else if not (Z.fits_int (Z.shift_right z 3)) then Error "unknown uCerise permission"
   else
     match permission_of_scalar (Z.to_int (Z.shift_right z 3)) with
-    | Some p -> Ok p | None -> Error "unknown uCerise permission"
+    | Some p -> Ok p
+    | None -> Error "unknown uCerise permission"
 
-let locality_scalar (matched_value : locality) : int = match matched_value with Global -> 2 | Local -> 1
+let locality_scalar (value : locality) : int = match value with Global -> 2 | Local -> 1
 let encode_locality (l : locality) : Z.t = encode_tag 2 (Z.of_int (locality_scalar l))
 
 let decode_locality (z : Z.t) : (locality, string) result =
@@ -126,7 +193,7 @@ let decode_permission_locality (z : Z.t) : (permission * locality, string) resul
     if not (Z.fits_int payload) then Error "unknown uCerise permission/locality"
     else
       let payload = Z.to_int payload in
-      match permission_of_scalar (payload land 31), payload lsr 5 with
+      match (permission_of_scalar (payload land 31), payload lsr 5) with
       | Some p, 1 -> Ok (p, Local)
       | Some p, 2 -> Ok (p, Global)
       | _ -> Error "unknown uCerise permission/locality"

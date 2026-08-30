@@ -1,4 +1,8 @@
 %{
+(** mCerise grammar actions construct symbolic assembly terms. Semantic checks
+    retain token positions so invalid register and capability names point to the
+    original source location. *)
+
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =
