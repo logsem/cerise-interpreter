@@ -1,7 +1,8 @@
 %{
 open Assembly_construction
 
-let at (position : Lexing.position) : Diagnostic.source_location = location position
+let at (position : Lexing.position) : Diagnostic.source_location =
+  source_location_of_lexing_position position
 
 let item (position : Lexing.position)
     (node : ('statement, 'word, 'argument, 'kind) Assembly_construction.item_node) :

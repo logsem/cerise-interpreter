@@ -4,15 +4,23 @@ module Expression : sig
   type t = Integer of Z.t | Current_address | Max_address | Stack_address | Symbol of string | Parameter of string
     | Add of t * t | Subtract of t * t | Multiply of t * t | Logand of t * t | Logor of t * t
     | Shift_left of t * t | Shift_right of t * t
-  val map_symbols : (string -> t) -> t -> t
-  val map_parameters : (string -> t option) -> t -> t
-  val simplify : t -> t
-  val evaluate_runtime : Runtime_config.t -> t -> (Z.t,string) result
+  (** Rewrite every symbolic name while preserving the expression's arithmetic structure. *)
+  val map_symbol_references : (string -> t) -> t -> t
+
+  (** Substitute macro parameters for which the callback supplies an expression. *)
+  val map_parameter_references : (string -> t option) -> t -> t
+
+  (** Fold operations whose operands are integer literals, leaving symbolic values intact. *)
+  val fold_constant_operations : t -> t
+
+  (** Evaluate a fully resolved expression using the runtime-configured address constants. *)
+  val evaluate_with_runtime_config : Runtime_config.t -> t -> (Z.t,string) result
 end
 
 exception Parse_error of Diagnostic.source_location * string
 
-val location : Lexing.position -> Diagnostic.source_location
+(** Convert a lexer position to the source-location representation used in diagnostics. *)
+val source_location_of_lexing_position : Lexing.position -> Diagnostic.source_location
 
 type 'kind parameter = { name : string; kind : 'kind }
 
@@ -77,5 +85,6 @@ module Make (Syntax : SYNTAX) : sig
   type source_program =
     (Syntax.statement, Syntax.raw_word, Syntax.macro_argument, Syntax.parameter_kind) item list
 
-  val assemble : source_program -> (Syntax.statement list, Diagnostic.t list) result
+  (** Validate and expand macros, resolve declarations and labels, and return emitted statements. *)
+  val assemble_source_program : source_program -> (Syntax.statement list, Diagnostic.t list) result
 end

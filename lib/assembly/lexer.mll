@@ -4,7 +4,7 @@ open Generated_parser
 exception Error of Diagnostic.source_location * string
 
 let location (lexbuf : Lexing.lexbuf) : Diagnostic.source_location =
-  Assembly_construction.location (Lexing.lexeme_start_p lexbuf)
+  Assembly_construction.source_location_of_lexing_position (Lexing.lexeme_start_p lexbuf)
 
 let fail (lexbuf : Lexing.lexbuf) (message : string) : 'a =
   raise (Error (location lexbuf, message))

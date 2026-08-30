@@ -2,7 +2,7 @@
 open Asm_ir
 
 let reject (position : Lexing.position) (message : string) : 'a =
-  raise (Assembly_construction.Parse_error (Assembly_construction.location position, message))
+  raise (Assembly_construction.Parse_error (Assembly_construction.source_location_of_lexing_position position, message))
 
 let register (position : Lexing.position) (name : string) : Ast.register =
   match parse_register_name name with

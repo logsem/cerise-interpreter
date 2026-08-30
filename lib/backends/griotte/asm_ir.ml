@@ -550,11 +550,11 @@ type source_program =
 
 module Assembler = Assembly_construction.Make (Syntax)
 
-let assemble (program : source_program) : (statement list, Diagnostic.t list) result =
-  Assembler.assemble program
+let assemble_source_program (program : source_program) : (statement list, Diagnostic.t list) result =
+  Assembler.assemble_source_program program
 
 let eval (config : Runtime_config.t) (expression : expression) : (Z.t, Diagnostic.t list) result =
-  match Assembly_construction.Expression.evaluate_runtime config expression with
+  match Assembly_construction.Expression.evaluate_with_runtime_config config expression with
   | Ok value -> Ok value
   | Error message -> diagnostic message
 
