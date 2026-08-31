@@ -15,9 +15,9 @@ build the `extraction` Nix flake output. The script atomically installs both gen
 always removes its temporary clone. A local Git source can be supplied with `--source` (or
 `GRIOTTE_URL`) and a revision with `--branch` (or `GRIOTTE_BRANCH`).
 
-`make regeneration-gate` uses the factored `--install-from` mode to exercise installation twice in
-a temporary destination, prove byte identity/idempotence, and verify the provenance hashes without
-network access. This is the normal CI gate; it intentionally does not rewrite the vendored source.
+For an already-built extraction, `regenerate.sh --install-from DIR` installs the generated pair
+without cloning or building upstream. Add `--check` to compare that pair byte-for-byte with the
+destination without installing it.
 
 The generated code, its `Obj.magic`-based map runtime, and erased dependent invariants form a trust
 boundary. `Griotte_extracted.Backend` and `Griotte_extracted.Codec` are explicitly untrusted adapter

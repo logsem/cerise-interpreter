@@ -24,4 +24,4 @@ jobs:
         run: nix build --print-build-logs
 
       - name: Format
-        run: nix develop --command make format-production-check
+        run: nix develop --command make format-check

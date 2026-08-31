@@ -35,8 +35,8 @@ All runtimes use finite configured address bounds.
 
 `griotte` and `griotte-extracted` are independent sibling snapshots, not two universally equivalent
 implementations. They share a textual instruction set, while encoded instruction integers and some
-semantics intentionally differ; choose the snapshot you intend to study. See
-[Griotte sibling snapshots](griotte-snapshots.md).
+semantics intentionally differ; choose the snapshot you intend to study. Their exact instruction
+sets are documented in [assembler.md](assembler.md#exact-backend-isa).
 
 Example:
 
@@ -63,9 +63,7 @@ make regenerate-griotte-extracted
 The defaults are `https://github.com/logsem/griotte.git` and branch
 `interpreter-extraction`. `GRIOTTE_URL` and `GRIOTTE_BRANCH`, or the script's `--source` and
 `--branch` options, can select a local Git repository/revision. The source checkout is never built
-or modified in place. `make check-griotte-extracted` verifies checked-in provenance hashes, while
-`make regeneration-gate` exercises the atomic installer twice from a controlled local output and
-checks byte identity and idempotence without network access. See
+or modified in place. See
 `lib/backends/griotte_extracted/generated/README.md` for the trust boundary and exact provenance.
 
 ## Interactive interpreter

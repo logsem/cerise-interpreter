@@ -19,7 +19,8 @@ Common options:
 
 Defaults may also be set with GRIOTTE_URL and GRIOTTE_BRANCH. The normal mode
 always clones into mktemp -d, builds source#extraction with Nix, and removes the
-temporary clone. --install-from exists for deterministic offline/CI gating.
+temporary clone. --install-from supports deterministic offline installation or
+comparison.
 EOF
 }
 

@@ -53,7 +53,7 @@ printer string to recover capability structure.
 
 The handwritten backends share construction and codec *mechanisms*, not semantic types or encoding
 tables. The generated part of `griotte-extracted` is a separate trust boundary and must not be
-hand-edited; see [griotte-snapshots.md](griotte-snapshots.md).
+hand-edited; regenerate it with `make regenerate-griotte-extracted`.
 
 ## A Vanilla `mov` from text to a rendered step
 
@@ -151,8 +151,6 @@ The trace is protected at several levels:
   paired values, and structured failures in the shared engine.
 - `tests/core_contract_tests.ml` covers persistent stepping, session configuration, and stable
   inspection data.
-- `tests/cli_ui_fixture_tests.ml` checks that this exact memory word is exposed as
-  `"mov r1 7"` through `Machine_view.decoded_instruction`.
 
 ## What macro expansion and symbol resolution actually do
 

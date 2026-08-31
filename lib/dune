@@ -9,4 +9,5 @@
   cerise_griotte_extracted_generated
   menhirLib
   zarith)
- (flags (:standard -open Cerise_core)))
+ (flags
+  (:standard -open Cerise_core)))

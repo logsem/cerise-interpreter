@@ -274,8 +274,8 @@ LOr LShiftL LShiftR Lt Lea Restrict SubSeg GetL GetB GetE GetA GetP GetOType Get
 Fail Halt`. They reject `Rem` and `Div`. Instruction text is portable between them, but encoded
 instruction integers are not: handwritten Griotte uses compact declaration-order opcodes, while
 extracted Griotte retains its fixed Rocq layout. They are independent sibling snapshots, so the
-shared textual ISA does not require universal semantic identity; see
-[Griotte sibling snapshots](griotte-snapshots.md) when selecting a backend.
+shared textual ISA does not require universal semantic identity; select the intended backend
+explicitly.
 
 Backend value shapes are independent. Vanilla capabilities are exactly `(permission, base, end,
 address)` and are global-only; locality-Cerise capabilities are `(permission, locality, base, end,

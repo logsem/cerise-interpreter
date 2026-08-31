@@ -1,6 +1,8 @@
 ; Every backend composes the shared token universe. Keep the explicit unused-token list in sync:
 ; it documents which recognized cross-backend keywords this grammar intentionally rejects.
+
 (copy_files ../../assembly/*.mly)
+
 (copy_files ../../assembly/lexer.mll)
 
 (ocamllex lexer)
@@ -10,25 +12,25 @@
  (merge_into vanilla_parser_engine)
  (flags
   --strict
-  --unused-token JALR
-  --unused-token READSR
-  --unused-token WRITESR
-  --unused-token LAND
-  --unused-token LOR
-  --unused-token LSHIFTL
-  --unused-token LSHIFTR
-  --unused-token SYSTEM_REGISTER
-  --unused-token GRIOTTE_PERMISSION
+  --unused-token=JALR
+  --unused-token=READSR
+  --unused-token=WRITESR
+  --unused-token=LAND
+  --unused-token=LOR
+  --unused-token=LSHIFTL
+  --unused-token=LSHIFTR
+  --unused-token=SYSTEM_REGISTER
+  --unused-token=GRIOTTE_PERMISSION
   --unused-precedence-levels
-  --unused-token GETL
-  --unused-token LOCALITY
-  --unused-token LOADU
-  --unused-token STOREU
-  --unused-token ISPTR
-  --unused-token PROMOTEU
-  --unused-token EINIT
-  --unused-token EDEINIT
-  --unused-token ESTOREID
-  --unused-token ISUNIQUE
-  --unused-token HASH_WORD
-  --unused-token HASH_CONCAT))
+  --unused-token=GETL
+  --unused-token=LOCALITY
+  --unused-token=LOADU
+  --unused-token=STOREU
+  --unused-token=ISPTR
+  --unused-token=PROMOTEU
+  --unused-token=EINIT
+  --unused-token=EDEINIT
+  --unused-token=ESTOREID
+  --unused-token=ISUNIQUE
+  --unused-token=HASH_WORD
+  --unused-token=HASH_CONCAT))

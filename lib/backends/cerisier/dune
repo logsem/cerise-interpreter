@@ -1,6 +1,8 @@
 ; Every backend composes the shared token universe. Keep the explicit unused-token list in sync:
 ; it documents which recognized cross-backend keywords this grammar intentionally rejects.
+
 (copy_files ../../assembly/*.mly)
+
 (copy_files ../../assembly/lexer.mll)
 
 (ocamllex lexer)
@@ -10,14 +12,14 @@
  (merge_into cerisier_parser_engine)
  (flags
   --strict
-  --unused-token JALR
-  --unused-token READSR
-  --unused-token WRITESR
-  --unused-token LAND
-  --unused-token LOR
-  --unused-token LSHIFTL
-  --unused-token LSHIFTR
-  --unused-token SYSTEM_REGISTER
-  --unused-token GRIOTTE_PERMISSION
+  --unused-token=JALR
+  --unused-token=READSR
+  --unused-token=WRITESR
+  --unused-token=LAND
+  --unused-token=LOR
+  --unused-token=LSHIFTL
+  --unused-token=LSHIFTR
+  --unused-token=SYSTEM_REGISTER
+  --unused-token=GRIOTTE_PERMISSION
   --unused-precedence-levels
-  --unused-token ISPTR))
+  --unused-token=ISPTR))

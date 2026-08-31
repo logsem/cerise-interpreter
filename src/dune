@@ -1,8 +1,17 @@
 (library
  (name cerise_terminal)
  (wrapped false)
- (modules cli_options cli_parser application_model interactive_ui interpreter_ui)
- (libraries cerise-interpreter containers notty-community notty-community.unix))
+ (modules
+  cli_options
+  cli_parser
+  application_model
+  interactive_ui
+  interpreter_ui)
+ (libraries
+  cerise-interpreter
+  containers
+  notty-community
+  notty-community.unix))
 
 (executable
  (name interpreter)
