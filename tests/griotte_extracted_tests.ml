@@ -269,41 +269,38 @@ let decoder_totality (() : unit) : unit =
 let parser_ownership_and_corpus (() : unit) : unit =
   let program_files =
     [
-      "case_studies/counter.s";
-      "case_studies/deep_immutability.s";
-      "case_studies/deep_locality.s";
-      "case_studies/kvs.s";
-      "case_studies/lse.s";
-      "case_studies/mutually_distrustful.s";
-      "case_studies/stack_object.s";
-      "case_studies/vae.s";
-      "switcher/switcher.s";
-      "switcher/switcher_commented.s";
-      "switcher/switcher_example.s";
-      "default/pos/deep_local.s";
-      "default/pos/deep_ro.s";
-      "default/pos/jmper_jalr.s";
-      "default/neg/bad_movsr_noperm.s";
-      "cli_smoke.s";
+      "case_studies/griotte/counter.s";
+      "case_studies/griotte/deep_immutability.s";
+      "case_studies/griotte/deep_locality.s";
+      "case_studies/griotte/kvs.s";
+      "case_studies/griotte/lse.s";
+      "case_studies/griotte/mutually_distrustful.s";
+      "case_studies/griotte/stack_object.s";
+      "case_studies/griotte/vae.s";
+      "case_studies/griotte/switcher/switcher.s";
+      "case_studies/griotte/switcher/switcher_commented.s";
+      "case_studies/griotte/switcher/switcher_example.s";
+      "tests/test_files/griotte/pos/deep_local.s";
+      "tests/test_files/griotte/pos/deep_ro.s";
+      "tests/test_files/griotte/pos/jmper_jalr.s";
+      "tests/test_files/griotte/neg/bad_movsr_noperm.s";
     ]
   in
   let regfile_files =
     [
-      "case_studies/counter.reg";
-      "case_studies/deep_immutability.reg";
-      "case_studies/deep_locality.reg";
-      "case_studies/kvs.reg";
-      "case_studies/lse.reg";
-      "case_studies/mutually_distrustful.reg";
-      "case_studies/stack_object.reg";
-      "case_studies/vae.reg";
-      "switcher/switcher.reg";
+      "case_studies/griotte/counter.reg";
+      "case_studies/griotte/deep_immutability.reg";
+      "case_studies/griotte/deep_locality.reg";
+      "case_studies/griotte/kvs.reg";
+      "case_studies/griotte/lse.reg";
+      "case_studies/griotte/mutually_distrustful.reg";
+      "case_studies/griotte/stack_object.reg";
+      "case_studies/griotte/vae.reg";
+      "case_studies/griotte/switcher/switcher.reg";
     ]
   in
-  let base = "tests/test_files/griotte/" in
   List.iter
-    (fun relative ->
-      let path = base ^ relative in
+    (fun path ->
       match Griotte_extracted.Parser.parse_program ~filename:path (read_file path) with
       | Ok _ -> ()
       | Error diagnostics ->
@@ -311,8 +308,7 @@ let parser_ownership_and_corpus (() : unit) : unit =
             (String.concat "; " (List.map Diagnostic.to_string diagnostics)))
     program_files;
   List.iter
-    (fun relative ->
-      let path = base ^ relative in
+    (fun path ->
       match Griotte_extracted.Parser.parse_regfile ~filename:path (read_file path) with
       | Ok _ -> ()
       | Error diagnostics ->

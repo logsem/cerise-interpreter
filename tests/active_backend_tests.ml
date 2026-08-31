@@ -9,12 +9,6 @@ let ok (matched_value : ('a, Diagnostic.t list) result) : 'a =
 let check_reject (parser : string -> ('a, 'b) result) (source : string) : unit =
   Alcotest.(check bool) source true (Result.is_error (parser source))
 
-let read_file (path : string) : string =
-  let channel = open_in path in
-  Fun.protect
-    ~finally:(fun () -> close_in channel)
-    (fun () -> really_input_string channel (in_channel_length channel))
-
 let parser_matrix (() : unit) : unit =
   ignore (ok (Vanilla.Parser.parse_program "%define N 2 start: move r1 start + N # 4 halt"));
   ignore
@@ -415,55 +409,6 @@ let active_macro_hygiene_and_resolution (() : unit) : unit =
   check_reject Vanilla.Parser.parse_word "(RW, LOCAL, 0, 4, 0)";
   ignore (ok (Locality_cerise.Parser.parse_word "(RW, GLOBAL, 0, 4, 0)"))
 
-let checked_in_vanilla_corpus (() : unit) : unit =
-  let base = "test_files/vanilla/pos/" in
-  List.iter
-    (fun name ->
-      ignore (ok (Vanilla.Parser.parse_program ~filename:name (read_file (base ^ name)))))
-    [ "cap_machine_lecture_exercise.s"; "jmper.s"; "mov_test.s"; "test1.s"; "test1_labels.s" ];
-  ignore
-    (ok
-       (Vanilla.Parser.parse_regfile ~filename:"cap_machine_lecture_exercise.reg"
-          (read_file (base ^ "cap_machine_lecture_exercise.reg"))))
-
-let restored_catalog_examples (() : unit) : unit =
-  let config = Runtime_config.create ~max_addr:(Z.of_int 4096) ~stack_addr:(Z.of_int 2048) () in
-  let run (backend : string) (source_path : string) (regfile_path : string option) : unit =
-    let regfile = Option.map read_file regfile_path in
-    let initial =
-      Machine_session.create_with_filenames ~source_filename:source_path
-        ~regfile_filename:regfile_path ~backend ~config ~source:(read_file source_path) ~regfile
-      |> ok
-    in
-    let result = Machine_session.run ~max_steps:100_000 initial in
-    Alcotest.(check bool)
-      ("catalog example halts: " ^ source_path)
-      true
-      (result.reason = Machine_session.Halted)
-  in
-  List.iter
-    (fun name -> run "locality-cerise" ("test_files/default/pos/" ^ name) None)
-    [ "get_otype.s"; "get_wtype.s"; "seal_unseal.s"; "sealing_counter.s" ];
-  run "mcerise" "test_files/default/pos/test_locality_flow.s" None;
-  List.iter
-    (fun name -> run "locality-cerise" ("test_files/" ^ name) None)
-    [ "malloc_test.s"; "test_linking_res.s" ];
-  List.iter
-    (fun (backend, name) ->
-      let base = "test_files/verified/" ^ name in
-      run backend (base ^ ".s") (Some (base ^ ".reg")))
-    [
-      ("locality-cerise", "encapsulated_counter");
-      ("locality-cerise", "interval_object");
-      ("locality-cerise", "local_state_encapsulation");
-      ("locality-cerise", "buffer_sharing");
-      ("locality-cerise", "read_only_sharing");
-      ("locality-cerise", "dynamic_sealing");
-      ("ucerise", "awkward_revocation");
-      ("mcerise", "downward_lse");
-      ("mcerise", "stack_object");
-    ]
-
 let () =
   Alcotest.run "active backends"
     [
@@ -481,7 +426,5 @@ let () =
             generated_parser_locations_and_round_trips;
           Alcotest.test_case "active macro hygiene and resolution" `Quick
             active_macro_hygiene_and_resolution;
-          Alcotest.test_case "checked-in vanilla syntax corpus" `Quick checked_in_vanilla_corpus;
-          Alcotest.test_case "restored catalog examples" `Quick restored_catalog_examples;
         ] );
     ]

@@ -1,7 +1,8 @@
 # Cerise assembler reference
 
 This document describes the assembly and register-file syntax accepted by the Cerise interpreter.
-Assembly examples are available under `tests/test_files`.
+Runnable assembly examples are available under [`case_studies`](case_studies); regression inputs
+used by the test suite are under `tests/test_files`.
 
 The shared lexer recognizes the combined vocabulary of all backends, so the reference tables below
 describe available forms, not a promise that every selected backend accepts every row. Acceptance

@@ -17,7 +17,8 @@ Finally, the command `make install` creates a symbolic link to the interpreter i
 
 ## Usage
 Executable: `./interpreter [options] <file>`
-Assembly examples in `./tests/test_files` (for the syntax)
+Runnable assembly examples live in [`case_studies`](case_studies); regression inputs used by the
+test suite live in `tests/test_files`.
 
 See [assembler.md](assembler.md) for the complete assembly language, register-file, integer
 definition, and sequence-macro reference.
@@ -41,7 +42,7 @@ sets are documented in [assembler.md](assembler.md#exact-backend-isa).
 Example:
 
 ```
-./interpreter -I --backend vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+./interpreter -I --backend vanilla --regfile ./case_studies/vanilla/cap_machine_lecture_exercise.reg ./case_studies/vanilla/cap_machine_lecture_exercise.s
 ```
 
 For more information about the options, `./interpreter --help`.
@@ -106,7 +107,7 @@ nix run .# -- <args>
 ```
 For instance
 ```
-nix run .# -- -I --backend vanilla --regfile ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.reg ./tests/test_files/vanilla/pos/cap_machine_lecture_exercise.s
+nix run .# -- -I --backend vanilla --regfile ./case_studies/vanilla/cap_machine_lecture_exercise.reg ./case_studies/vanilla/cap_machine_lecture_exercise.s
 ```
 
 To format

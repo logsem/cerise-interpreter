@@ -23,6 +23,7 @@
                 "dune-project"
                 "Makefile"
                 "flake.nix"
+                (inDirectory "case_studies")
                 (inDirectory "src")
                 (inDirectory "lib")
                 (inDirectory "tests")

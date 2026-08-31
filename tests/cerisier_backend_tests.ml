@@ -348,8 +348,8 @@ type case_study_expectation = {
 let case_study_config = Runtime_config.create ~max_addr:(z 4096) ~stack_addr:(z 3072) ()
 
 let case_study_path (fixture : string) : string =
-  let relative = "test_files/cerisier/case_studies/" ^ fixture in
-  if Sys.file_exists relative then relative else "tests/" ^ relative
+  let relative = "case_studies/cerisier/" ^ fixture in
+  if Sys.file_exists relative then relative else "../../../" ^ relative
 
 let read_case_study_file (fixture : string) : string =
   In_channel.with_open_bin (case_study_path fixture) In_channel.input_all
